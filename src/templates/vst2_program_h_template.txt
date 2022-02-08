@@ -1,0 +1,25 @@
+class {{=it.class_name}}
+{
+public:
+	void setSampleRate(float sampleRate);
+	void reset();
+	void process({{=it.audio_inputs.concat(it.outputs).map(x => 'float *' + x).join(', ')}}, int nSamples);
+{{~it.control_inputs:c}}
+	float get{{=c}}();
+	void set{{=c}}(float value);{{~}}
+
+private:
+	
+	float fs;
+	{{~it.control_inputs:c}}
+	float {{=c}};
+	float {{=c}}_z1;
+	char {{=c}}_CHANGED;
+	{{~}}
+
+	{{~it.declarations:d}}
+	float {{=d.left}};{{~}}
+	
+	char firstRun;
+
+};

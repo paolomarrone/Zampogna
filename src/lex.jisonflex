@@ -1,0 +1,41 @@
+/*
+	Copyright (C) 2021, 2022 Orastron Srl
+
+	Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is 
+	hereby granted, provided that the above copyright notice and this permission notice appear in all copies.
+
+	THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE 
+	INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE 
+	FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM 
+	LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, 
+	ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+	Author: Paolo Marrone
+*/
+
+integer 					'0' | [1-9] [0-9]*
+e 							[eE] ('+'|'-')?[0-9]+
+float						{integer}("."[0-9]+)?{e}?
+id                          [_a-zA-Z][_a-zA-Z0-9]*
+
+%%
+"#"[^\n\r]*					/* inline comment */
+"..."[^\n^\n]*[\n\r]+		/* pause comment */
+"="                         return 'ASSIGN';
+"{"                         return 'LBRACE';
+"}"                         return 'RBRACE';
+{float}						return 'NUMBER';
+"fs"						return 'SAMPLERATE';
+{id}                        return 'ID';
+"+"                         return 'PLUS';
+"-"                         return 'MINUS';
+"*"                         return 'TIMES';
+"/"							return 'DIV';
+"("                         return 'LPAREN';
+")"                         return 'RPAREN';
+","							return 'COMMA';
+"@"							return 'INIT';
+[\n\r]						return 'END';
+[;]+						return 'END';
+
+[ \t]+                       /* skip whitespace */

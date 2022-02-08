@@ -1,0 +1,52 @@
+function [{{=it.outputs.join(', ')}}] = {{=it.class_name}}({{=it.audio_inputs.join(', ')}}{{?it.audio_inputs.length > 0}},{{?}} fs{{?it.control_inputs.length > 0}},{{?}} {{=it.control_inputs.join(', ')}})
+
+  % constants
+
+  {{~it.constant_rate:c}}{{=c.left}} = {{=c.right}};
+  {{~}}
+
+
+  % fs
+
+  {{~it.sampling_rate:s}}{{=s.left}} = {{=s.right}};
+  {{~}}
+
+
+  % controlli/coefficienti
+
+  {{~it.controls_rate:c}} 
+  % {{=c.label}}
+  {{~c.stmts: s}}
+  {{=s.left}} = {{=s.right}};{{~}}
+  {{~}}
+  
+
+  
+  % init delay
+
+  {{~it.reset1:r}}{{=r.left}} = {{=r.right}};
+  {{~}}
+  {{~it.reset2:r}}{{=r.left}} = {{=r.right}};
+  {{~}}
+  
+  
+  for i = 1:length({{=it.audio_inputs[0]}})
+
+    % audio rate
+
+    {{~it.audio_rate: a}}
+    {{=a.left}} = {{=a.right}};{{~}}
+
+    % delay updates
+    
+    {{~it.delay_updates:u}}{{=u.left}} = {{=u.right}};
+    {{~}}
+
+    % output
+
+    {{~it.output_updates:u}}
+    {{=u.left}}(i) = {{=u.right}};{{~}}
+    
+  endfor
+
+endfunction
