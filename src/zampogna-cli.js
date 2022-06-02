@@ -56,7 +56,7 @@
 	if (options["-i"] == "")
 		throw new Error("Specify the initial_block.", usage);
 	
-	const supported_target_languages = ["cpp", "MATLAB", "js"];
+	const supported_target_languages = ["cpp", "MATLAB", "js", "d"];
 	if (!supported_target_languages.includes(options["-t"]))
 		throw new Error(options["-t"] + " is not a supported target language. Choose among: " + supported_target_languages.join(", "))
 

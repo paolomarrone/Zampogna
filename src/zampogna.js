@@ -34,7 +34,8 @@
 					"vst2_effect_h": 	String(fs.readFileSync(path.join(__dirname, "templates", "vst2_effect_h_template.txt"))),
 					"vst2_effect_cpp": 	String(fs.readFileSync(path.join(__dirname, "templates", "vst2_effect_c_template.txt"))),
 					"js_html": 			String(fs.readFileSync(path.join(__dirname, "templates", "js_html_template.txt"))),
-					"js_processor": 	String(fs.readFileSync(path.join(__dirname, "templates", "js_processor_template.txt")))
+					"js_processor": 	String(fs.readFileSync(path.join(__dirname, "templates", "js_processor_template.txt"))),
+					"d_processor":		String(fs.readFileSync(path.join(__dirname, "templates", "d_processor_template.txt")))
 				}
 			}
 		}
