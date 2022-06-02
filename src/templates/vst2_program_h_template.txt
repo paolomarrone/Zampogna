@@ -9,17 +9,19 @@ public:
 	void set{{=c}}(float value);{{~}}
 
 private:
+
+	{{~it.declarations1:d}}
+	float {{=d.left}};{{~}}
 	
-	float fs;
+	{{~it.declarations2:d}}
+	float {{=d.left}} = {{=d.right}};{{~}}
+
 	{{~it.control_inputs:c}}
-	float {{=c}};
 	float {{=c}}_z1;
 	char {{=c}}_CHANGED;
 	{{~}}
 
-	{{~it.declarations:d}}
-	float {{=d.left}};{{~}}
-	
+	float fs;
 	char firstRun;
 
 };

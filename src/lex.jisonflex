@@ -35,7 +35,7 @@ id                          [_a-zA-Z][_a-zA-Z0-9]*
 ")"                         return 'RPAREN';
 ","							return 'COMMA';
 "@"							return 'INIT';
-[\n\r]						return 'END';
+[\n\r]+						return 'END';
 [;]+						return 'END';
 
 [ \t]+                       /* skip whitespace */

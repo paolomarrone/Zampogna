@@ -74,19 +74,8 @@
 		scope_program.father = scope_reserved
 		scopes.push(scope_program)
 
-		AST_root.stmts.filter(stmt => stmt.name == 'BLOCK_DEF').forEach(function (block) {
-			if (block.inputs.some(o => o.name != 'ID'))
-				err("Invalid arguments in block definition. Use only IDs")
-			if (block.outputs.some(o => o.init))
-				err("Cannot use '@' in block definitions")
-			if (block.outputs.some(o => o.val == '_'))
-				err("Cannot use '_' in block definitions")
-			scope_program.add(block.id.val, {
-				kind: 		"block",
-				inputsN: 	block.inputs.length,
-				outputsN: 	block.outputs.length
-			})
-		})
+		AST_root.stmts.filter(stmt => stmt.name == 'BLOCK_DEF').forEach(
+			block => analyze_block_signature(scope_program, block))
 
 		AST_root.stmts.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(ass => ass.outputs.forEach(function (output) {
 				if (output.init)
@@ -95,50 +84,11 @@
 				scope_program.elements[output.val].kind = 'const'
 		}))
 
-		AST_root.stmts.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(function (ass) {
-			analyze_right_assignment(scope_program, ass.expr, ass.outputs.length)
-		})
+		AST_root.stmts.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(
+			ass => analyze_right_assignment(scope_program, ass.expr, ass.outputs.length))
 
-		AST_root.stmts.filter(stmt => stmt.name == 'BLOCK_DEF').forEach(function (block) {
-			let scope_block = Object.create(ScopeTable)
-			scope_block.init(block.id.val)
-			scope_block.father = scope_program
-			scopes.push(scope_block)
-
-			block.inputs.forEach(i => scope_block.add(i.val, {
-				kind: 	'port_in',
-				used: 	false
-			}))
-
-			block.outputs.forEach(o => scope_block.add(o.val, {
-				kind: 	'port_out',
-				used: 	true
-			}))
-
-			block.body.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(function (ass) {
-				ass.outputs.filter(o => !o.init).forEach(function (o) {
-					analyze_left_assignment(scope_block, o)
-				})
-			})
-
-			block.body.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(function (ass) {
-				ass.outputs.filter(o => o.init).forEach(function (o) {
-					analyze_left_assignment_init(scope_block, o)
-				})
-			})
-
-			block.body.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(function (ass) {
-				analyze_right_assignment(scope_block, ass.expr, ass.outputs.length)
-			})
-
-			for (let i in scope_block.elements) {
-				let item = scope_block.elements[i]
-				if (item.kind == 'port_out' && !item.assigned)
-					err("Output port not assigned: " + i)
-				if (!item.used)
-					warn(item.kind + " " + i + " not used")
-			}
-		})
+		AST_root.stmts.filter(stmt => stmt.name == 'BLOCK_DEF').forEach(
+			block => analyze_block_body(scope_program, block))
 
 		for (let i in scope_program.elements) {
 			let item = scope_program.elements[i]
@@ -147,6 +97,91 @@
 		}
 
 		return scopes;
+	}
+
+	function analyze_block_signature(parent_scope, block) {
+		if (block.inputs.some(o => o.name != 'ID'))
+			err("Invalid arguments in block definition. Use only IDs")
+		if (block.outputs.some(o => o.init))
+			err("Cannot use '@' in block definitions")
+		if (block.outputs.some(o => o.val == '_'))
+			err("Cannot use '_' in block definitions")
+		parent_scope.add(block.id.val, {
+			kind: 		"block",
+			inputsN: 	block.inputs.length,
+			outputsN: 	block.outputs.length
+		})
+	}
+
+	function analyze_anonym_block_signature(block) {
+		if (block.outputs.some(o => o.val == '_'))
+			err("Cannot use '_' in block definitions")
+		if (block.outputs.some(o => o.init))
+			err("Cannot use '@' in block definitions")
+	}
+
+	function analyze_block_body(parent_scope, block) {
+		let scope_block = Object.create(ScopeTable)
+		scope_block.init(block.id.val)
+		scope_block.father = parent_scope
+		scopes.push(scope_block)
+
+		block.inputs.forEach(i => scope_block.add(i.val, {
+			kind: 	'port_in',
+			used: 	false
+		}))
+
+		block.outputs.forEach(o => scope_block.add(o.val, {
+			kind: 	'port_out',
+			used: 	true
+		}))
+
+		// Create scopes
+
+		block.body.filter(stmt => stmt.name == 'BLOCK_DEF').forEach(function (block) {
+			analyze_block_signature(scope_block, block)
+		})
+
+		block.body.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(function (ass) {
+			ass.outputs.filter(o => !o.init).forEach(function (o) {
+				analyze_left_assignment(scope_block, o)
+			})
+		})
+
+		block.body.filter(stmt => stmt.name == 'ANONYM_BLOCK_DEF').forEach(function (block) {
+			block.outputs.filter(o => !o.init).forEach(function (o) {
+				analyze_left_assignment(scope_block, o)
+			})
+			analyze_anonym_block_signature(block);
+		})
+
+		// Validate expr
+
+		block.body.filter(stmt => stmt.name == 'BLOCK_DEF').forEach(function (block) {
+			analyze_block_body(scope_block, block)
+		})
+
+		block.body.filter(stmt => stmt.name == 'ANONYM_BLOCK_DEF').forEach(function (block) {
+			analyze_block_body(scope_block, block);
+		})
+
+		block.body.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(function (ass) {
+			ass.outputs.filter(o => o.init).forEach(function (o) {
+				analyze_left_assignment_init(scope_block, o)
+			})
+		})
+
+		block.body.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(function (ass) {
+			analyze_right_assignment(scope_block, ass.expr, ass.outputs.length)
+		})
+
+		for (let i in scope_block.elements) {
+			let item = scope_block.elements[i]
+			if (item.kind == 'port_out' && !item.assigned)
+				err("Output port not assigned: " + i)
+			if (!item.used)
+				warn(item.kind + " " + i + " not used")
+		}
 	}
 
 	function analyze_left_assignment(scope, id_node) {
@@ -193,7 +228,7 @@
 			let item = scope.find(expr_node.val)
 
 			if (!item)
-				err("ID not found: " + expr_node.val)
+				err("ID not found: " + expr_node.val + ". Scope: \n" + scope)
 
 			if (item.kind == 'var' || item.kind == 'const' || item.kind == 'port_in' || item.kind == 'port_out')
 				item.used = true;
@@ -232,8 +267,6 @@
 		throw new Error("***Error*** " + e)
 	}
 
-	module.exports = {
-		"validate": validate
-	}
+	exports["validate"] = validate
 
 }());

@@ -2,7 +2,7 @@
 #define _EFFECT_H
 
 #include "audioeffectx.h"
-#include "vst2_EQregalia.h"
+#include "vst2_EQregaliaStereo.h"
 
 class Effect : public AudioEffectX
 {
@@ -30,7 +30,7 @@ public:
 private:
 	char programName[32];
 
-	EQregalia instance;
+	EQregaliaStereo instance;
 };
 
 #endif

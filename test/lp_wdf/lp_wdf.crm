@@ -34,3 +34,7 @@ y = lp_filter(x, cutoff) {
 	
 	y = 0.5 * (aC + bC)
 }
+
+y = lp_filter3 (x, cutoff, vol) {
+	y = lp_filter(lp_filter(lp_filter(x, cutoff), cutoff), cutoff) * vol
+}

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Plugin</title>
+<script type="text/javascript">
+
+var node;
+var ctx;
+var inputNode;
+
+var begin = async function () {
+	ctx = new AudioContext();
+
+	await ctx.audioWorklet.addModule("processor.js");
+
+	node = new AudioWorkletNode(ctx, "PluginProcessor", { outputChannelCount: [1] });
+
+	node.connect(ctx.destination);
+
+	var stream = await navigator.mediaDevices.getUserMedia({ audio: { autoGainControl: false, echoCancellation: false, noiseSuppression: false, latency: 0.005 } });
+	inputNode = ctx.createMediaStreamSource(stream);
+
+	inputNode.connect(node);
+
+  
+  document.getElementById("cutoff").oninput = handleInput; 
+  
+};
+
+function handleInput(e) {
+	node.port.postMessage({type: "paramChange", id: e.target.id, value: e.target.value})
+};
+</script>
+</head>
+<body>
+  <h1>lp_filter</h1>
+  
+  
+  <label for="cutoff">cutoff</label>
+  <input type="range" id="cutoff" name="cutoff" min="0" max="1" value="0.5" step="any"><br>
+
+  <button onclick="begin()">Start</button>
+</body>
+</html>

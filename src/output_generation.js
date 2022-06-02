@@ -23,7 +23,8 @@
 			audio_inputs: 	graph.input_ports.filter(p => p.update_rate == 3).map(p => p.block.label),
 			outputs: 		[],
 
-			declarations: 	[],
+			declarations1: 	[],
+			declarations2:  [],
 
 			reset1: 		[],
 			reset2: 		[],
@@ -47,6 +48,8 @@
 		graph.output_ports.forEach(op => op.block.operation = "VAR_OUT")
 		graph_init.input_ports.forEach(ip => ip.block.operation = 'VAR_IN')
 
+		const id_prefix = target_lang == 'js' ? "this." : "";
+
 		schedule.forEach(block => convertBlock(block))
 		schedule_init.forEach(block => convertBlockInit(block))
 
@@ -56,6 +59,12 @@
 		}
 
 		groupControls()
+
+		program.declarations2 = program.declarations2.concat(
+			graph.input_ports.filter(p => p.update_rate == 2).map(p => p.block).map(function (block) {
+				return { left: block.output_ports[0].code, right: block.block_init.output_ports[0].code }
+			})
+		)
 
 		doT.templateSettings.strip = false
 		if (target_lang == 'cpp') {
@@ -69,6 +78,12 @@
 		else if (target_lang == 'MATLAB') {
 			return [
 				{ name: graph.id + '.m', str: doT.template(templates["matlab"])(program) }
+			]
+		}
+		else if (target_lang == "js") {
+			return [
+				{ name: "main.html", str: doT.template(templates["js_html"])(program) },
+				{ name: "processor.js", str: doT.template(templates["js_processor"])(program) }
 			]
 		}
 
@@ -90,40 +105,40 @@
 			switch (block.operation) {
 				case 'VAR':
 					if (block.output_ports[0].toBeCached || output_blocks.length > 1) {
-						appendAssignment(block.label, input_blocks_code[0], update_rate, block.control_dependencies, true, is_used_locally)
-						code.add(block.label)
+						code.add(id_prefix, block.label)
+						appendAssignment(code, input_blocks_code[0], update_rate, block.control_dependencies, true, is_used_locally)
 					}
 					else
 						code.add(input_blocks_code[0])
 					return
 				case 'VAR_IN':
 					if (update_rate == 3) {
-						if (target_lang == 'cpp')
+						if (target_lang == 'cpp' || target_lang == 'js')
 							code.add(block.label, "[i]")
 						else if (target_lang == 'MATLAB')
 							code.add(block.label, "(i)")
 					}
 					else if (update_rate == 2)
-						code.add(block.label)
+						code.add(id_prefix, block.label)
 					return
 				case 'VAR_OUT':
-					appendAssignment(block.label, input_blocks_code[0], update_rate, block.control_dependencies, true, is_used_locally)
-					code.add(block.label)
+					code.add(id_prefix, block.label)
+					appendAssignment(code, input_blocks_code[0], update_rate, block.control_dependencies, true, is_used_locally)
 					return
 				case 'DELAY1_EXPR':
 					const id = '__delayed__' + extra_vars_n++
-					appendAssignment(id, input_blocks_code[0], 4, block.control_dependencies, false, null)
-					appendAssignment(id, input_blocks[0].block_init.output_ports[0].code, -1, null, true, false)
-					code.add(id)
+					code.add(id_prefix, id)
+					appendAssignment(code, input_blocks_code[0], 4, block.control_dependencies, false, null)
+					appendAssignment(code, input_blocks[0].block_init.output_ports[0].code, -1, null, true, false)
 					return
 				case 'NUMBER':
 					if (target_lang == 'cpp')
 						code.add(block.val + ((block.val.toString().includes('.') || block.val.toString().toLowerCase().includes('e')) ? 'f' : '.f'));
-					else if (target_lang == 'MATLAB')
+					else if (target_lang == 'MATLAB' || target_lang == 'js')
 						code.add(block.val)
 					return
 				case 'SAMPLERATE':
-					code.add('fs')
+					code.add(id_prefix, 'fs')
 					return
 				case 'UMINUS_EXPR':
 					auxcode.add('-(', input_blocks_code[0], ')')
@@ -149,7 +164,7 @@
 			}
 
 			if (block.output_ports[0].toBeCached) {
-				code.add(program.class_name + '__extra__' + extra_vars_n++)
+				code.add(id_prefix, program.class_name + '__extra__' + extra_vars_n++)
 				appendAssignment(code, auxcode, update_rate, block.control_dependencies, true, is_used_locally)
 			}
 			else
@@ -174,17 +189,17 @@
 			switch (block.operation) {
 				case 'VAR':
 					if (block.output_ports[0].toBeCached || output_blocks.length > 1) {
-						appendAssignment(block.label, input_blocks_code[0], level, block.control_dependencies, true, is_used_locally)
-						code.add(block.label)
+						code.add(id_prefix, block.label)
+						appendAssignment(code, input_blocks_code[0], level, block.control_dependencies, true, is_used_locally)
 					}
 					else
 						code.add(input_blocks_code[0])
 					return
 				case 'VAR_IN':
-					if (update_rate == 2)
-						code.add(block.label)
+					if (update_rate == 0)
+						code.add(block.val) // This surely is a number
 					else
-						throw new Error("Unexpected update_rate in init graph " + block )
+						throw new Error("Unexpected update_rate in init graph " + block + ": " + update_rate)
 					return
 				case 'DELAY1_EXPR':
 					code.add(input_blocks_code[0])
@@ -192,11 +207,11 @@
 				case 'NUMBER':
 					if (target_lang == 'cpp')
 						code.add(block.val + ((block.val.toString().includes('.') || block.val.toString().toLowerCase().includes('e')) ? 'f' : '.f'));
-					else if (target_lang == 'MATLAB')
+					else if (target_lang == 'MATLAB' || target_lang == 'js')
 						code.add(block.val)
 					return
 				case 'SAMPLERATE':
-					code.add('fs')
+					code.add(id_prefix, 'fs')
 					return
 				case 'UMINUS_EXPR':
 					auxcode.add('-(', input_blocks_code[0], ')')
@@ -222,7 +237,7 @@
 			}
 
 			if (block.output_ports[0].toBeCached) {
-				code.add(program.class_name + '__extraI__' + extra_vars_n++)
+				code.add(id_prefix, program.class_name + '__extraI__' + extra_vars_n++)
 				appendAssignment(code, auxcode, level, block.control_dependencies, true, is_used_locally)
 			}
 			else
@@ -233,10 +248,10 @@
 			let stmt = {left: left, right: right}
 
 			if (to_be_declared && level != 0) {
-				if (is_used_locally)
+				if (is_used_locally) 
 					stmt.is_used_locally = true
 				else
-					program.declarations.push(stmt)
+					program.declarations1.push(stmt)
 			}
 
 			switch (level) {
@@ -316,8 +331,7 @@
 		return checkSetsInclusion(A, B) && checkSetsInclusion(B, A)
 	}
 
-	module.exports = {
-		"convert": convert
-	}
+
+	exports["convert"] = convert;
 
 }())

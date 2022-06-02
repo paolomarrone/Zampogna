@@ -14,74 +14,31 @@
 */
 
 (function() {
-	// Node env
-
-	const fs = require('fs')
-	const path = require('path')
-
-	const env = {
-		"parser": 			require("./grammar"),
-		"extended_syntax": 	require("./extended_syntax"),
-		"graph": 			require("./graph"),
-		"scheduler": 		require("./scheduler"),
-		"output_generation":require("./output_generation"),
-		"doT": 				require("dot"),
-		"templates":{
-			"matlab": 			String(fs.readFileSync(path.join(path.dirname(process.argv[1]), "templates", "matlab_template.txt"))),
-			"vst2_main_h": 		String(fs.readFileSync(path.join(path.dirname(process.argv[1]), "templates", "vst2_program_h_template.txt"))),
-			"vst2_main_cpp": 	String(fs.readFileSync(path.join(path.dirname(process.argv[1]), "templates", "vst2_program_c_template.txt"))),
-			"vst2_effect_h": 	String(fs.readFileSync(path.join(path.dirname(process.argv[1]), "templates", "vst2_effect_h_template.txt"))),
-			"vst2_effect_cpp": 	String(fs.readFileSync(path.join(path.dirname(process.argv[1]), "templates", "vst2_effect_c_template.txt")))
-		}
-	}
-
-	const usage = "Usage: zampogna.js [-i initial_block] [-c control_inputs] [-v initial_values] \
-										[-t target_lang] [-o output_folder] [-d debug_bool] \
-										input_file";
-	let options = {
-		"-i": "",
-		"-t": "cpp",
-		"-o": "build", 
-		"-d": "false",
-		"-c": "",
-		"-v": ""
-	}
-	let input_code = "";
-
-	let args = process.argv.slice(2)
-
-	for (let a = 0; a < args.length; a++) {
-		let arg = args[a];
-		if (options.hasOwnProperty(arg)) {
-			if (!options[args[a + 1]]) {
-				options[arg] = args[a + 1];
-				a++;
-			}
-			else
-				throw new Error("Bad syntax. " + usage);
-		}
-		else {
-			input_code = String(fs.readFileSync(arg));
-		}
-	}
-
-	if (input_code == "")
-		throw new Error("No input file. " + usage);
-	if (options["-i"] == "")
-		throw new Error("Specify the initial_block.", usage);
-
-	let debug = options["-d"].toLowerCase() == "true";
-	let control_inputs = options['-c'] ? options['-c'].split(',') : []
-	let initial_values = {}
-	if (options['-v'])
-		options['-v'].split(',').map(o => o.split('=')).forEach(e => initial_values[e[0]] = e[1])
-	let files = compile(env, debug, input_code, options["-i"], control_inputs, initial_values, options["-t"]);
-
-	if (!fs.existsSync(options['-o']))
-	    fs.mkdirSync(options['-o']);
-	files.forEach(f => fs.writeFile(path.normalize(path.join(options['-o'], f.name)), f.str, err => { if (err) throw err }))
 
 	function compile(env, debug, code, initial_block, control_inputs, initial_values, target_lang) {
+		if (!env) {
+			const fs = require('fs')
+			const path = require('path')
+
+			env = {
+				"parser": 			require("./grammar"),
+				"extended_syntax": 	require("./extended_syntax"),
+				"graph": 			require("./graph"),
+				"scheduler": 		require("./scheduler"),
+				"output_generation":require("./output_generation"),
+				"doT": 				require("dot"),
+				"templates":{
+					"matlab": 			String(fs.readFileSync(path.join(__dirname, "templates", "matlab_template.txt"))),
+					"vst2_main_h": 		String(fs.readFileSync(path.join(__dirname, "templates", "vst2_program_h_template.txt"))),
+					"vst2_main_cpp": 	String(fs.readFileSync(path.join(__dirname, "templates", "vst2_program_c_template.txt"))),
+					"vst2_effect_h": 	String(fs.readFileSync(path.join(__dirname, "templates", "vst2_effect_h_template.txt"))),
+					"vst2_effect_cpp": 	String(fs.readFileSync(path.join(__dirname, "templates", "vst2_effect_c_template.txt"))),
+					"js_html": 			String(fs.readFileSync(path.join(__dirname, "templates", "js_html_template.txt"))),
+					"js_processor": 	String(fs.readFileSync(path.join(__dirname, "templates", "js_processor_template.txt")))
+				}
+			}
+		}
+
 		let tree = env["parser"].parse(code);
 		if (debug) console.log(tree)
 		
@@ -100,5 +57,7 @@
 		let files = env["output_generation"].convert(env["doT"], env["templates"], target_lang, graphes[0], graphes[1], scheduled_blocks, scheduled_blocks_init)
 		return files
 	}
+
+	exports["compile"] = compile
 
 }());

@@ -15,7 +15,7 @@ Effect::Effect(audioMasterCallback audioMaster) : AudioEffectX(audioMaster, 1, 3
 	canProcessReplacing();
 	strcpy(programName, "Effect");
 
-	instance = EQregalia();
+	instance = EQregaliaStereo();
 }
 
 Effect::~Effect() {}
@@ -39,13 +39,13 @@ void Effect::setParameter(VstInt32 index, float value) {
 	switch (index) {
 	
 	case 0:
-		instance.setlow_1(value);
+		instance.setlow(value);
 		break;
 	case 1:
-		instance.setmed_1(value);
+		instance.setmed(value);
 		break;
 	case 2:
-		instance.sethigh_1(value);
+		instance.sethigh(value);
 		break;
 	}
 }
@@ -55,20 +55,20 @@ float Effect::getParameter(VstInt32 index) {
 	switch (index) {
 	
 	case 0:
-		v = instance.getlow_1();
+		v = instance.getlow();
 		break;
 	case 1:
-		v = instance.getmed_1();
+		v = instance.getmed();
 		break;
 	case 2:
-		v = instance.gethigh_1();
+		v = instance.gethigh();
 		break;
 	}
 	return v;
 }
 
 void Effect::getParameterName(VstInt32 index, char *text) {
-	const char *names[] = { "low_1","med_1","high_1"};
+	const char *names[] = { "low","med","high"};
 	strcpy(text, names[index]);
 }
 

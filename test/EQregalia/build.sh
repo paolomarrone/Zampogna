@@ -1,1 +1,1 @@
-node ../../src/zampogna.js -i EQregalia -c low,med,high -t cpp -d false EQregalia.crm
+node ../../src/zampogna-cli.js -i EQregaliaStereo -c low,med,high -v low=1 -t cpp -d false EQregalia.crm

@@ -1,0 +1,108 @@
+var Plugin = {
+	init: function () {
+		this.fs = 0;
+		this.firstRun = 1;
+
+		{{~it.constant_rate:c}}{{=c.left}} = {{=c.right}};
+		{{~}}
+
+		this.params = [{{=it.control_inputs.map(c => '"' + c + '"').join(", ")}}];
+
+		{{~it.declarations1:d}}
+		{{=d.left}} = 0;{{~}}
+
+		{{~it.declarations2:d}}
+		{{=d.left}} = {{=d.right}};{{~}}
+
+		{{~it.control_inputs:c}}
+		this.{{=c}}_z1 = 0;
+		this.{{=c}}_CHANGED = true;
+		{{~}}
+	},
+
+	reset: function () {
+		this.firstRun = 1
+	},
+
+	setSampleRate: function (sampleRate) {
+		this.fs = sampleRate;
+		{{~it.sampling_rate:s}}{{=s.left}} = {{=s.right}};
+		{{~}}
+	},
+
+	process: function ({{=it.audio_inputs.concat(it.outputs).join(', ')}}, nSamples) {
+		if (this.firstRun) {{{~it.control_inputs:c}}
+			this.{{=c}}_CHANGED = true;{{~}}
+		}
+		else {{{~it.control_inputs:c}}
+			this.{{=c}}_CHANGED = this.{{=c}} != this.{{=c}}_z1;{{~}}
+		}
+
+		{{~it.controls_rate:c}}
+		if ({{=Array.from(c.set).map(e => "this." + e + "_CHANGED").join(' | ')}}) {{{~c.stmts: s}}
+			{{=s.left}} = {{=s.right}};{{~}}
+		}{{~}}
+		{{~it.control_inputs:c}}
+		this.{{=c}}_CHANGED = false;{{~}}
+
+		if (this.firstRun) { {{~it.reset1:r}}
+			{{=r.left}} = {{=r.right}};{{~}}
+			{{~it.reset2:r}}
+			{{=r.left}} = {{=r.right}};{{~}}
+		}
+
+		for (let i = 0; i < nSamples; i++) {
+			{{~it.audio_rate: a}}
+			{{=a.left}} = {{=a.right}};{{~}}
+			
+			{{~it.delay_updates:u}}{{=u.left}} = {{=u.right}};
+			{{~}}
+			{{~it.output_updates:u}}
+			{{=u.left}}[i] = {{=u.right}};{{~}}
+		}
+
+		{{~it.control_inputs:c}}
+		this.{{=c}}_z1 = this.{{=c}};{{~}}
+		this.firstRun = 0;
+	}
+}
+
+// Static part
+class PluginProcessor extends AudioWorkletProcessor {
+	constructor () {
+
+		super();
+		this.instance = Object.create(Plugin);
+		this.instance.init();
+		this.instance.setSampleRate(sampleRate);
+		this.instance.reset();
+
+		this.port.onmessage = (e) => {
+			if (e.data.type == "changeInstance") {
+				eval(e.data.value)
+				this.instance = Object.create(Plugin);
+				this.instance.init();
+				this.instance.setSampleRate(sampleRate);
+				this.instance.reset();
+			}
+			else if (e.data.type == "paramChange") {
+				this.instance[e.data.id] = e.data.value
+			}
+		}
+	}
+	process (inputs, outputs, parameters) {
+
+		var input = inputs[0];
+		var output = outputs[0];
+		let nSamples = Math.min(input.length >= 1 ? input[0].length : 0, output[0].length)
+		this.instance.process(input[0], output[0], nSamples);
+
+		return true;
+	}
+
+	static get parameterDescriptors() {
+		return [];
+	}
+}
+
+registerProcessor("PluginProcessor", PluginProcessor);

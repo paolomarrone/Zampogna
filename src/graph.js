@@ -122,26 +122,26 @@
 			AST_root.stmts.filter(stmt => stmt.name == 'BLOCK_DEF').forEach(block => named_blocks[block.id.val] = block)
 
 			if (!named_blocks[initial_block])
-				throw new Error("Undefined initial block: " + initial_block + ". Availbale blocks: " + Object.keys(named_blocks))
+				throw new Error("Undefined initial block: " + initial_block + ". Available blocks: " + Object.keys(named_blocks))
 
 			let postfix = '_0'
 
 			let block_fs = Object.create(Block)
-			block_fs.init(0, 1, "SAMPLERATE", "fs", postfix, NaN)
-			named_vars[block_fs.id + block_fs.postfix] = block_fs
+			block_fs.init(0, 1, "SAMPLERATE", "fs", postfix, NaN, undefined)
+			named_vars[block_fs.id] = block_fs
 			graph.blocks.push(block_fs)
 
 			AST_root.stmts.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(stmt => stmt.outputs.forEach(function (output) {
 				let block_const = Object.create(Block)
-				block_const.init(1, 1, 'VAR', output.val, postfix, NaN)
-				named_vars[block_const.id + block_const.postfix] = block_const
+				block_const.init(1, 1, 'VAR', output.val, postfix, NaN, undefined)
+				named_vars[block_const.id] = block_const
 				graph.blocks.push(block_const)
 			}))
 
 			AST_root.stmts.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(stmt => {
-				let ports = convertExpr(stmt.expr, postfix, {})
+				let ports = convertExpr(stmt.expr, {}, named_blocks, named_vars)
 				stmt.outputs.forEach((output, index) => {
-					let block_const = named_vars[output.val + postfix]
+					let block_const = named_vars[output.val]
 					let connection = Object.create(Connection)
 					connection.in = ports[1][index]
 					connection.out = block_const.input_ports[0]
@@ -149,17 +149,19 @@
 				})
 			})
 
-			let ports = expandCompositeBlock(named_blocks[initial_block], ++expansions_count, {})
+			let ports = expandCompositeBlock(named_blocks[initial_block], ++expansions_count, {}, {...named_blocks}, {...named_vars})
 			graph.input_ports = ports[0]
 			graph.output_ports = ports[1]
 
-			function expandCompositeBlock (block, expansions_count, expansionsStack) {
-				if (expansionsStack[block.id.val])
-					throw new Error("Recursive block expansion. Stack: " + Object.keys(expansionsStack) + "," + block.id.val)
-				expansionsStack[block.id.val] = true
+			return graph
+
+			function expandCompositeBlock (block, expansions_count, expansion_stack, named_blocks, named_vars) {
+				if (block.id.val != "" && expansion_stack[block.id.val])
+					throw new Error("Recursive block expansion. Stack: " + Object.keys(expansion_stack) + "," + block.id.val)
+				expansion_stack[block.id.val] = true
 
 				let prefix  = '_' + block.id.val + '_'
-				let postfix = '_' + expansions_count
+				let postfix = expansions_count == 1 ? "" : '_' + expansions_count
 
 				let input_ports = []
 				let output_ports = []
@@ -167,30 +169,36 @@
 				block.inputs.forEach(function (input) {
 					let block_var = Object.create(Block)
 					block_var.init(1, 1, "VAR", input.val, postfix, NaN)
-					named_vars[block_var.id + block_var.postfix] = block_var
+					named_vars[block_var.id] = block_var
 					graph.blocks.push(block_var)
 					input_ports.push(block_var.input_ports[0])
 				})
 
-				block.body.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(stmt => stmt.outputs.filter(output => !output.init).forEach(function (output) {
-					let block_var = Object.create(Block)
-					block_var.init(1, 1, "VAR", output.val, postfix, NaN)
-					named_vars[block_var.id + block_var.postfix] = block_var
-					graph.blocks.push(block_var)
-					if (block.outputs.some(o => o.val == output.val)) {
-						//console.log("aqswasdasd", block_var.id)
-						//output_ports.push(block_var.output_ports[0])
-					}
-				}))
+				block.body.filter(stmt => stmt.name == 'BLOCK_DEF').forEach(block => named_blocks[block.id.val] = block)
+
+				block.body.filter(stmt => stmt.name == 'ASSIGNMENT' || stmt.name == 'ANONYM_BLOCK_DEF').forEach(
+					stmt => stmt.outputs.filter(output => !output.init).forEach(output => {
+						let block_var = Object.create(Block)
+						block_var.init(1, 1, "VAR", output.val, postfix, NaN)
+						named_vars[block_var.id] = block_var
+						graph.blocks.push(block_var)
+					})
+				)
+
 				block.outputs.forEach(o => {
-					output_ports.push(named_vars[o.val + postfix].output_ports[0])
+					output_ports.push(named_vars[o.val].output_ports[0])
 				})
-				
-				block.body.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(function (stmt) {
-					let ports = convertExpr(stmt.expr, postfix, {...expansionsStack})
+
+				block.body.filter(stmt => stmt.name == 'ASSIGNMENT' || stmt.name == 'ANONYM_BLOCK_DEF').forEach(function (stmt) {
+					let ports;
+					if (stmt.name == 'ASSIGNMENT')
+						ports = convertExpr(stmt.expr, {...expansion_stack}, {...named_blocks}, {...named_vars})
+					else if (stmt.name == 'ANONYM_BLOCK_DEF')
+						ports = expandCompositeBlock(stmt, ++expansions_count, {...expansion_stack}, {...named_blocks}, {...named_vars})
+
 					stmt.outputs.forEach(function (output, index) {
 						if (!output.init) {
-							let block_var = named_vars[output.val + postfix]
+							let block_var = named_vars[output.val]
 							let connection = Object.create(Connection)
 							connection.in  = ports[1][index]
 							connection.out = block_var.input_ports[0]
@@ -199,15 +207,15 @@
 					})
 					stmt.outputs.forEach(function(output, index) {
 						if (output.init) {
-							named_vars[output.val + postfix].block_init = ports[1][index].block
+							named_vars[output.val].block_init = ports[1][index].block
 						}
 					})
-				})
+				})				
 
 				return [input_ports, output_ports]
 			}
 
-			function convertExpr(expr_node, postfix, expansionsStack) {
+			function convertExpr(expr_node, expansion_stack, named_blocks, named_vars) {
 				let block_expr = Object.create(Block)
 
 				let input_ports = []
@@ -232,7 +240,7 @@
 						break
 					case 'SAMPLERATE':
 					case 'ID':
-						let block_var = named_vars[expr_node.val + postfix] || named_vars[expr_node.val + '_0']
+						let block_var = named_vars[expr_node.val]
 						output_ports = block_var.output_ports
 						break
 					case 'CALL_EXPR':
@@ -250,7 +258,8 @@
 								output_ports = block_expr.output_ports
 								break
 							case 'BLOCK_CALL':
-								let ports = expandCompositeBlock(named_blocks[expr_node.id.val], ++expansions_count, {...expansionsStack})
+								let ports = expandCompositeBlock(named_blocks[expr_node.id.val], ++expansions_count, 
+									{...expansion_stack}, {...named_blocks}, {...named_vars})
 								input_ports = ports[0]
 								output_ports = ports[1]
 								break
@@ -264,7 +273,7 @@
 				}
 
 				for (let argi = 0; argi < input_ports.length; argi++) {
-					let ports = convertExpr(expr_node.args[argi], postfix, expansionsStack)
+					let ports = convertExpr(expr_node.args[argi], expansion_stack, named_blocks, named_vars)
 					let connection = Object.create(Connection)
 					connection.in = ports[1][0]
 					connection.out = input_ports[argi]
@@ -273,8 +282,6 @@
 
 				return [input_ports, output_ports]
 			}
-
-			return graph
 		}
 
 		function distinguishGraphs(graph, graph_init) {
@@ -294,6 +301,19 @@
 					graph_init.output_ports = graph_init.output_ports.concat(input_block.output_ports)
 					graph.getInputBlocks(graph.blocks[blocki])[0].block_init = input_block
 				}
+			})
+
+			graph_init.blocks.filter(b => b.operation == 'VAR').forEach(b => b.postfix = b.postfix + "_I")
+
+			graph_init.input_ports.map(p => p.block).forEach(function (block, blocki) {
+				block.operation = 'NUMBER'
+				block.input_ports = []
+				if (initial_values[block.id])
+					block.val = initial_values[block.id]
+				else
+					block.val = 0
+				graph.input_ports[blocki].block.block_init = block
+				graph_init.output_ports.push(block.output_ports[0])
 			})
 		}
 		
@@ -325,20 +345,6 @@
 		}
 
 		function setStartingUpdateRatesInit (graph_init) {
-			graph_init.input_ports.map(p => p.block).forEach(function (block) {
-				if (control_inputs.some(ctr => ctr == block.id))
-					block.input_ports.forEach(p => p.update_rate = 2)
-				else {
-					block.operation = 'NUMBER'
-					block.input_ports = []
-					if (initial_values[block.id])
-						block.val = initial_values[block.id]
-					else
-						block.val = 0
-				}
-			})
-			graph_init.input_ports = graph_init.input_ports.filter(p => p.update_rate == 2)
-
 			graph_init.blocks.filter(block => block.operation == 'NUMBER').forEach(
 				block => block.output_ports[0].update_rate = 0)
 			graph_init.blocks.filter(block => block.operation == 'SAMPLERATE').forEach(
@@ -416,8 +422,6 @@
 		
 	}
 
-	module.exports = {
-		"ASTToGraph": ASTToGraph
-	}
+	exports["ASTToGraph"] = ASTToGraph
 
 }());

@@ -77,9 +77,8 @@
 		}
 	}
 
-	module.exports = {
-		"schedule": schedule,
-		"scheduleInit": scheduleInit
-	}
+
+	exports["schedule"] = schedule
+	exports["scheduleInit"] = scheduleInit
 
 }())

@@ -67,6 +67,18 @@ block_def           : ids_list1 ASSIGN id LPAREN exprs_list0 RPAREN LBRACE block
                         }}
                     ;
 
+anonym_block_def    : ids_list1 ASSIGN LBRACE block_stmts1 RBRACE
+                        {{
+                            $$ = {
+                                name:    'ANONYM_BLOCK_DEF',
+                                id:      {name: 'ID', val: ''},
+                                inputs:  [],
+                                outputs: $1,
+                                body:    $4
+                            }
+                        }}
+                    ;
+
 ids_list1           : id
                         {{
                             $$ = [$1]
@@ -93,6 +105,14 @@ block_stmts1        : block_stmt block_stmts1
                     ;
 
 block_stmt          : assignment END
+                        {{
+                            $$ = [$1]
+                        }}
+                    | block_def END
+                        {{
+                            $$ = [$1]
+                        }}
+                    | anonym_block_def END
                         {{
                             $$ = [$1]
                         }}
