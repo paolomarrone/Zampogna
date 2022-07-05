@@ -86,6 +86,11 @@
 				{ name: "processor.js", str: doT.template(templates["js_processor"])(program) }
 			]
 		}
+		else if (target_lang == "d") {
+			return [
+				{ name: "d_processor.d", str: doT.template(templates["d_processor"])(program) }
+			]
+		}
 
 		function convertBlock(block) {
 			const input_blocks = graph.getInputBlocks(block)
@@ -113,7 +118,7 @@
 					return
 				case 'VAR_IN':
 					if (update_rate == 3) {
-						if (target_lang == 'cpp' || target_lang == 'js')
+						if (target_lang == 'cpp' || target_lang == 'js' || target_lang == 'd' )
 							code.add(block.label, "[i]")
 						else if (target_lang == 'MATLAB')
 							code.add(block.label, "(i)")
@@ -132,8 +137,8 @@
 					appendAssignment(code, input_blocks[0].block_init.output_ports[0].code, -1, null, true, false)
 					return
 				case 'NUMBER':
-					if (target_lang == 'cpp')
-						code.add(block.val + ((block.val.toString().includes('.') || block.val.toString().toLowerCase().includes('e')) ? 'f' : '.f'));
+					if (target_lang == 'cpp' || target_lang == 'd')
+						code.add(block.val + ((block.val.toString().includes('.') || block.val.toString().toLowerCase().includes('e')) ? 'f' : '.0f'));
 					else if (target_lang == 'MATLAB' || target_lang == 'js')
 						code.add(block.val)
 					return
@@ -205,8 +210,8 @@
 					code.add(input_blocks_code[0])
 					return
 				case 'NUMBER':
-					if (target_lang == 'cpp')
-						code.add(block.val + ((block.val.toString().includes('.') || block.val.toString().toLowerCase().includes('e')) ? 'f' : '.f'));
+					if (target_lang == 'cpp' || target_lang == 'd')
+						code.add(block.val + ((block.val.toString().includes('.') || block.val.toString().toLowerCase().includes('e')) ? 'f' : '.0f'));
 					else if (target_lang == 'MATLAB' || target_lang == 'js')
 						code.add(block.val)
 					return

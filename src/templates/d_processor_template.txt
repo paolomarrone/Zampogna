@@ -1,0 +1,87 @@
+struct {{=it.class_name}}
+{
+nothrow:
+public:
+@nogc:
+
+    {{~it.constant_rate:c}}enum float {{=c.left}} = {{=c.right}};
+    {{~}}
+
+    void setSampleRate(float sampleRate)
+    {
+        fs = sampleRate;
+        {{~it.sampling_rate:s}}{{?s.is_used_locally}}const float {{?}}{{=s.left}} = {{=s.right}};
+        {{~}}
+    }
+
+    void reset()
+    {
+        firstRun = 1;
+    }
+
+    void process({{=it.audio_inputs.concat(it.outputs).map(x => 'float *' + x).join(', ')}}, int nSamples)
+    {
+        if (firstRun) 
+        {
+            {{~it.control_inputs:c}}{{=c}}_CHANGED = 1;
+            {{~}}
+        }
+        else {{{~it.control_inputs:c}}
+            {{=c}}_CHANGED = {{=c}} != {{=c}}_z1;{{~}}
+        }
+        {{~it.controls_rate:c}}
+        if ({{=Array.from(c.set).map(e => e + "_CHANGED").join(' | ')}}) {{{~c.stmts: s}}
+            {{?s.is_used_locally}}const float {{?}}{{=s.left}} = {{=s.right}};{{~}}
+        }{{~}}
+        {{~it.control_inputs:c}}
+        {{=c}}_CHANGED = 0;{{~}}
+
+        if (firstRun) {{{~it.reset1:r}}
+            {{?r.is_used_locally}}const float {{?}}{{=r.left}} = {{=r.right}};{{~}}
+            {{~it.reset2:r}}
+            {{?r.is_used_locally}}const float {{?}}{{=r.left}} = {{=r.right}};{{~}}
+        }
+
+        for (int i = 0; i < nSamples; i++) {
+            {{~it.audio_rate: a}}
+            {{?a.is_used_locally}}const float {{?}}{{=a.left}} = {{=a.right}};{{~}}
+            
+            {{~it.delay_updates:u}}{{=u.left}} = {{=u.right}};
+            {{~}}
+            {{~it.output_updates:u}}
+            {{=u.left}}[i] = {{=u.right}};{{~}}
+        }
+
+        {{~it.control_inputs:c}}
+        {{=c}}_z1 = {{=c}};{{~}}
+        firstRun = 0;
+    }
+
+    {{~it.control_inputs:c}}
+    float get{{=c}}()
+    {
+        return {{=c}};
+    }
+    void set{{=c}}(float value)
+    {
+        {{=c}} = value;
+    }
+    {{~}}
+
+private:
+
+    {{~it.declarations1:d}}
+    float {{=d.left}};{{~}}
+    
+    {{~it.declarations2:d}}
+    float {{=d.left}} = {{=d.right}};{{~}}
+
+    {{~it.control_inputs:c}}
+    float {{=c}}_z1;
+    char {{=c}}_CHANGED;
+    {{~}}
+
+    float fs;
+    int firstRun;
+
+};
