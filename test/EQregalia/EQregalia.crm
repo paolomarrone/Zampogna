@@ -1,26 +1,26 @@
 pi = 3.14159265358979323846
 
-y = EQregalia(x, low, med, high) {
+y = EQregalia(x, low, high, peak) {
 	# the controls are ranged between 0 and 1 and they 
 	# need to be mapped in a [-20; 20] decibel range
 	decibel_range = 40
-	lowdb = low * decibel_range - decibel_range/2
-	meddb = med * decibel_range - decibel_range/2
-	highdb = high * decibel_range - decibel_range/2
+	lowdb  = low  * decibel_range - decibel_range * 0.5
+	highdb = high * decibel_range - decibel_range * 0.5
+	peakdb = peak * decibel_range - decibel_range * 0.5
 
 	t1 = lowshelffilter(x, lowdb)
 	
-	t2 = highshelffilter(t1, meddb)
+	t2 = highshelffilter(t1, highdb)
 
-	t3 = peakfilter(t2, highdb)
+	t3 = peakfilter(t2, peakdb)
 
 	y = t3
 }
 
-yL, yR = EQregaliaStereo(xL, xR, low, med, high) {
+yL, yR = EQregaliaStereo(xL, xR, low, high, peak) {
 	
-	yL = EQregalia (xL, low, med, high)
-	yR = EQregalia (xR, low, med, high)
+	yL = EQregalia (xL, low, high, peak)
+	yR = EQregalia (xR, low, high, peak)
 }
 
 y = lowshelffilter(x, gain) {

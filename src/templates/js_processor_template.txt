@@ -94,8 +94,34 @@ class PluginProcessor extends AudioWorkletProcessor {
 
 		var input = inputs[0];
 		var output = outputs[0];
-		let nSamples = Math.min(input.length >= 1 ? input[0].length : 0, output[0].length)
-		this.instance.process(input[0], output[0], nSamples);
+		let nSamples = Math.min(input.length >= 1 ? input[0].length : 0, output[0].length);
+
+		let processArguments = [];
+		if (input.length == {{=it.audio_inputs.length}})
+			processArguments = input;
+		else if (input.length > {{=it.audio_inputs.length}})
+			processArguments = input.slice(0, {{=it.audio_inputs.length}})
+		else {
+			processArguments = input;
+			const zeros = new Float32Array(nSamples);
+			for (let missings = 0; missings < {{=it.audio_inputs.length}} - input.length; missings++)
+				processArguments.push(zeros);
+		}
+
+		if (output.length == {{=it.outputs.length}})
+			processArguments = processArguments.concat(output);
+		else if (output.length > {{=it.outputs.length}})
+			processArguments = processArguments.concat(output.splice(0, {{=it.outputs.length}}));
+		else {
+			processArguments = processArguments.concat(output);
+			const zeros = new Float32Array(nSamples);
+			for (let missings = 0; missings < {{=it.outputs.length}} - output.length; missings++)
+				processArguments.push(zeros);
+		}
+
+		processArguments.push(nSamples);
+
+		this.instance.process.apply(this.instance, processArguments);
 
 		return true;
 	}
