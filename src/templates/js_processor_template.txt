@@ -98,11 +98,11 @@ class PluginProcessor extends AudioWorkletProcessor {
 
 		let processArguments = [];
 		if (input.length == {{=it.audio_inputs.length}})
-			processArguments = input;
+			processArguments = processArguments.concat(input);
 		else if (input.length > {{=it.audio_inputs.length}})
 			processArguments = input.slice(0, {{=it.audio_inputs.length}})
 		else {
-			processArguments = input;
+			processArguments = processArguments.concat(input);
 			const zeros = new Float32Array(nSamples);
 			for (let missings = 0; missings < {{=it.audio_inputs.length}} - input.length; missings++)
 				processArguments.push(zeros);
