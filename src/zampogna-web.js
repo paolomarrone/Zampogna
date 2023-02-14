@@ -156,6 +156,14 @@
 			analyze_anonym_block_signature(block);
 		})
 
+		block.body.filter(stmt => stmt.name == 'IF_THEN_ELSE').forEach(function (ifthenelse) {
+			ifthenelse.outputs.filter(o => !o.init).forEach(function (o) {
+				analyze_left_assignment(scope_block, o)
+			})
+			analyze_anonym_block_signature(ifthenelse.if)
+			analyze_anonym_block_signature(ifthenelse.else)
+		})
+
 		// Validate expr
 
 		block.body.filter(stmt => stmt.name == 'BLOCK_DEF').forEach(function (block) {
@@ -174,6 +182,12 @@
 
 		block.body.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(function (ass) {
 			analyze_right_assignment(scope_block, ass.expr, ass.outputs.length)
+		})
+
+		block.body.filter(stmt => stmt.name == 'IF_THEN_ELSE').forEach(function (ifthenelse) {
+			analyze_right_assignment(scope_block, ifthenelse.condition, 1)
+			analyze_block_body(scope_block, ifthenelse.if)
+			analyze_block_body(scope_block, ifthenelse.else)
 		})
 
 		for (let i in scope_block.elements) {
@@ -347,12 +361,12 @@
   }
 */
 var grammar = (function(){
-var o=function(k,v,o,l){for(o=o||{},l=k.length;l--;o[k[l]]=v);return o},$V0=[2,3],$V1=[1,6],$V2=[1,10],$V3=[1,11],$V4=[1,8,20,35],$V5=[1,26],$V6=[1,23],$V7=[1,22],$V8=[1,25],$V9=[1,28],$Va=[1,8,20,26,27,29,30,35],$Vb=[2,31],$Vc=[1,8,15,20,21,26,27,35],$Vd=[1,33],$Ve=[1,34],$Vf=[1,8,15,20,21,26,27,29,30,35],$Vg=[2,38],$Vh=[2,37],$Vi=[1,59],$Vj=[8,18,20,35];
+var o=function(k,v,o,l){for(o=o||{},l=k.length;l--;o[k[l]]=v);return o},$V0=[2,3],$V1=[1,6],$V2=[1,10],$V3=[1,11],$V4=[1,8,25,52],$V5=[1,31],$V6=[1,27],$V7=[1,26],$V8=[1,28],$V9=[1,30],$Va=[1,33],$Vb=[1,8,25,30,32,34,35,37,38,39,40,42,43,45,46,52],$Vc=[2,48],$Vd=[1,8,15,25,26,30,52],$Ve=[1,37],$Vf=[1,8,15,25,26,30,32,52],$Vg=[1,38],$Vh=[1,39],$Vi=[1,8,15,25,26,30,32,34,35,52],$Vj=[1,40],$Vk=[1,41],$Vl=[1,42],$Vm=[1,43],$Vn=[1,8,15,25,26,30,32,34,35,37,38,39,40,52],$Vo=[1,44],$Vp=[1,45],$Vq=[1,8,15,25,26,30,32,34,35,37,38,39,40,42,43,52],$Vr=[1,46],$Vs=[1,47],$Vt=[1,8,15,25,26,30,32,34,35,37,38,39,40,42,43,45,46,52],$Vu=[2,55],$Vv=[2,54],$Vw=[1,82],$Vx=[8,18,25,52],$Vy=[1,99],$Vz=[2,12],$VA=[16,24];
 var parser = {trace: function trace () { },
 yy: {},
-symbols_: {"error":2,"program":3,"program_stmts0":4,"program_stmt":5,"const":6,"block_def":7,"END":8,"assignment":9,"ids_list1":10,"ASSIGN":11,"id":12,"LPAREN":13,"exprs_list0":14,"RPAREN":15,"LBRACE":16,"block_stmts1":17,"RBRACE":18,"anonym_block_def":19,"INIT":20,"COMMA":21,"block_stmt":22,"expr":23,"additive_expr":24,"multiplicative_expr":25,"PLUS":26,"MINUS":27,"unary_expr":28,"TIMES":29,"DIV":30,"primary_expr":31,"number":32,"SAMPLERATE":33,"fb_call":34,"ID":35,"NUMBER":36,"exprs_list1":37,"$accept":0,"$end":1},
-terminals_: {2:"error",8:"END",11:"ASSIGN",13:"LPAREN",15:"RPAREN",16:"LBRACE",18:"RBRACE",20:"INIT",21:"COMMA",26:"PLUS",27:"MINUS",29:"TIMES",30:"DIV",33:"SAMPLERATE",35:"ID",36:"NUMBER"},
-productions_: [0,[3,1],[4,2],[4,0],[5,1],[5,1],[5,1],[6,1],[7,9],[19,5],[10,1],[10,2],[10,3],[17,2],[17,1],[22,2],[22,2],[22,2],[22,1],[9,3],[23,1],[24,1],[24,3],[24,3],[25,1],[25,3],[25,3],[28,1],[28,2],[28,2],[31,1],[31,1],[31,1],[31,3],[31,1],[12,1],[32,1],[34,4],[14,0],[14,1],[37,1],[37,3]],
+symbols_: {"error":2,"program":3,"program_stmts0":4,"program_stmt":5,"const":6,"block_def":7,"END":8,"assignment":9,"ids_list1":10,"ASSIGN":11,"id":12,"LPAREN":13,"exprs_list0":14,"RPAREN":15,"LBRACE":16,"block_stmts1":17,"RBRACE":18,"anonym_block_def":19,"if_then_else":20,"IF":21,"expr":22,"mayend":23,"ELSE":24,"INIT":25,"COMMA":26,"block_stmt":27,"or_expr":28,"and_expr":29,"OR":30,"equality_expr":31,"AND":32,"relational_expr":33,"EQUAL":34,"NOTEQUAL":35,"additive_expr":36,"LESS":37,"LESSEQUAL":38,"GREATER":39,"GREATEREQUAL":40,"multiplicative_expr":41,"PLUS":42,"MINUS":43,"unary_expr":44,"TIMES":45,"DIV":46,"primary_expr":47,"NOT":48,"number":49,"SAMPLERATE":50,"fb_call":51,"ID":52,"NUMBER":53,"exprs_list1":54,"$accept":0,"$end":1},
+terminals_: {2:"error",8:"END",11:"ASSIGN",13:"LPAREN",15:"RPAREN",16:"LBRACE",18:"RBRACE",21:"IF",24:"ELSE",25:"INIT",26:"COMMA",30:"OR",32:"AND",34:"EQUAL",35:"NOTEQUAL",37:"LESS",38:"LESSEQUAL",39:"GREATER",40:"GREATEREQUAL",42:"PLUS",43:"MINUS",45:"TIMES",46:"DIV",48:"NOT",50:"SAMPLERATE",52:"ID",53:"NUMBER"},
+productions_: [0,[3,1],[4,2],[4,0],[5,1],[5,1],[5,1],[6,1],[7,9],[19,5],[20,16],[23,2],[23,0],[10,1],[10,2],[10,3],[17,2],[17,1],[27,2],[27,2],[27,2],[27,2],[27,1],[9,3],[22,1],[28,1],[28,3],[29,1],[29,3],[31,1],[31,3],[31,3],[33,1],[33,3],[33,3],[33,3],[33,3],[36,1],[36,3],[36,3],[41,1],[41,3],[41,3],[44,1],[44,2],[44,2],[44,2],[47,1],[47,1],[47,1],[47,3],[47,1],[12,1],[49,1],[51,4],[14,0],[14,1],[54,1],[54,3]],
 performAction: function anonymous(yytext, yyleng, yylineno, yy, yystate /* action[1] */, $$ /* vstack */, _$ /* lstack */) {
 /* this == yyval */
 
@@ -377,17 +391,17 @@ case 3:
                             this.$ = [];
                         
 break;
-case 4: case 5: case 10: case 40:
+case 4: case 5: case 13: case 57:
 
                             this.$ = [$$[$0]]
                         
 break;
-case 6: case 18: case 38:
+case 6: case 22: case 55:
 
                             this.$ = []
                         
 break;
-case 7: case 14: case 20: case 21: case 24: case 27: case 29: case 30: case 31: case 34: case 39:
+case 7: case 17: case 24: case 25: case 27: case 29: case 32: case 37: case 40: case 43: case 45: case 47: case 48: case 51: case 56:
 
                             this.$ = $$[$0]
                         
@@ -414,28 +428,51 @@ case 9:
                             }
                         
 break;
-case 11:
+case 10:
+
+                            this.$ = {
+                                name:       'IF_THEN_ELSE',
+                                condition:  $$[$0-11],
+                                outputs:    $$[$0-15],
+                                if: {
+                                    name:       'ANONYM_BLOCK_DEF',
+                                    id:         {name: 'ID', val: ''},
+                                    inputs:     [],
+                                    outputs:    $$[$0-15],
+                                    body:       $$[$0-7]
+                                },
+                                else: {
+                                    name:       'ANONYM_BLOCK_DEF',
+                                    id:         {name: 'ID', val: ''},
+                                    inputs:     [],
+                                    outputs:    $$[$0-15],
+                                    body:       $$[$0-1]
+                                }
+                            }
+                        
+break;
+case 14:
 
                             $$[$0].init = true
                             this.$ = [$$[$0]]
                         
 break;
-case 12:
+case 15:
 
                             this.$ = [$$[$0-2]].concat($$[$0])
                         
 break;
-case 13:
+case 16:
 
                             this.$ = $$[$0-1].concat($$[$0])
                         
 break;
-case 15: case 16: case 17:
+case 18: case 19: case 20: case 21:
 
                             this.$ = [$$[$0-1]]
                         
 break;
-case 19:
+case 23:
 
                             this.$ = {
                                 name: 'ASSIGNMENT',
@@ -444,34 +481,10 @@ case 19:
                             }
                         
 break;
-case 22:
-
-                            this.$ = {
-                                name: 'PLUS_EXPR',
-                                args: [$$[$0-2], $$[$0]]
-                            }
-                        
-break;
-case 23:
-
-                            this.$ = {
-                                name: 'MINUS_EXPR',
-                                args: [$$[$0-2], $$[$0]]
-                            }
-                        
-break;
-case 25:
-
-                            this.$ = {
-                                name: 'TIMES_EXPR',
-                                args: [$$[$0-2], $$[$0]]
-                            }
-                        
-break;
 case 26:
 
                             this.$ = {
-                                name: 'DIV_EXPR',
+                                name: 'OR_EXPR',
                                 args: [$$[$0-2], $$[$0]]
                             }
                         
@@ -479,12 +492,108 @@ break;
 case 28:
 
                             this.$ = {
+                                name: 'AND_EXPR',
+                                args: [$$[$0-2], $$[$0]]
+                            }
+                        
+break;
+case 30:
+
+                            this.$ = {
+                                name: 'EQUAL_EXPR',
+                                args: [$$[$0-2], $$[$0]]
+                            }
+                        
+break;
+case 31:
+
+                            this.$ = {
+                                name: 'NOTEQUAL_EXPR',
+                                args: [$$[$0-2], $$[$0]]
+                            }
+                        
+break;
+case 33:
+
+                            this.$ = {
+                                name: 'LESS_EXPR',
+                                args: [$$[$0-2], $$[$0]]
+                            }
+                        
+break;
+case 34:
+
+                            this.$ = {
+                                name: 'LESSEQUAL_EXPR',
+                                args: [$$[$0-2], $$[$0]]
+                            }
+                        
+break;
+case 35:
+
+                            this.$ = {
+                                name: 'GREATER_EXPR',
+                                args: [$$[$0-2], $$[$0]]
+                            }
+                        
+break;
+case 36:
+
+                            this.$ = {
+                                name: 'GREATEREQUAL_EXPR',
+                                args: [$$[$0-2], $$[$0]]
+                            }
+                        
+break;
+case 38:
+
+                            this.$ = {
+                                name: 'PLUS_EXPR',
+                                args: [$$[$0-2], $$[$0]]
+                            }
+                        
+break;
+case 39:
+
+                            this.$ = {
+                                name: 'MINUS_EXPR',
+                                args: [$$[$0-2], $$[$0]]
+                            }
+                        
+break;
+case 41:
+
+                            this.$ = {
+                                name: 'TIMES_EXPR',
+                                args: [$$[$0-2], $$[$0]]
+                            }
+                        
+break;
+case 42:
+
+                            this.$ = {
+                                name: 'DIV_EXPR',
+                                args: [$$[$0-2], $$[$0]]
+                            }
+                        
+break;
+case 44:
+
+                            this.$ = {
                                 name: 'UMINUS_EXPR',
                                 args: [$$[$0]]
                             }
                         
 break;
-case 32:
+case 46:
+
+                            this.$ = {
+                                name: 'NOT_EXPR',
+                                args: [$$[$0]]
+                            }
+                        
+break;
+case 49:
 
                             this.$ = {
                                 name: 'SAMPLERATE',
@@ -492,22 +601,22 @@ case 32:
                             }
                         
 break;
-case 33:
+case 50:
 
                             this.$ = $$[$0-1]
                         
 break;
-case 35:
+case 52:
  
                             this.$ = { name: 'ID', val: yytext}; 
                         
 break;
-case 36:
+case 53:
  
                             this.$ = { name: 'NUMBER', val: parseFloat(yytext)}; 
                         
 break;
-case 37:
+case 54:
 
                             this.$ = {
                                 name: 'CALL_EXPR',
@@ -516,15 +625,15 @@ case 37:
                             }
                         
 break;
-case 41:
+case 58:
  
                             this.$ = [$$[$0-2]].concat($$[$0]) 
                         
 break;
 }
 },
-table: [{1:$V0,3:1,4:2,5:3,6:4,7:5,8:$V1,9:7,10:8,12:9,20:$V2,35:$V3},{1:[3]},{1:[2,1]},{1:$V0,4:12,5:3,6:4,7:5,8:$V1,9:7,10:8,12:9,20:$V2,35:$V3},o($V4,[2,4]),o($V4,[2,5]),o($V4,[2,6]),o($V4,[2,7]),{11:[1,13]},{11:[2,10],21:[1,14]},{12:15,35:$V3},o([1,8,11,13,15,20,21,26,27,29,30,35],[2,35]),{1:[2,2]},{12:16,13:$V5,23:17,24:18,25:19,26:$V6,27:$V7,28:20,31:21,32:24,33:$V8,34:27,35:$V3,36:$V9},{10:29,12:9,20:$V2,35:$V3},{11:[2,11]},o($Va,$Vb,{13:[1,30]}),o($V4,[2,19]),o([1,8,15,20,21,35],[2,20],{26:[1,31],27:[1,32]}),o($Vc,[2,21],{29:$Vd,30:$Ve}),o($Vf,[2,24]),o($Vf,[2,27]),{12:36,13:$V5,31:35,32:24,33:$V8,34:27,35:$V3,36:$V9},{12:36,13:$V5,31:37,32:24,33:$V8,34:27,35:$V3,36:$V9},o($Vf,[2,30]),o($Vf,[2,32]),{12:36,13:$V5,23:38,24:18,25:19,26:$V6,27:$V7,28:20,31:21,32:24,33:$V8,34:27,35:$V3,36:$V9},o($Vf,[2,34]),o($Vf,[2,36]),{11:[2,12]},{12:36,13:$V5,14:39,15:$Vg,23:41,24:18,25:19,26:$V6,27:$V7,28:20,31:21,32:24,33:$V8,34:27,35:$V3,36:$V9,37:40},{12:36,13:$V5,25:42,26:$V6,27:$V7,28:20,31:21,32:24,33:$V8,34:27,35:$V3,36:$V9},{12:36,13:$V5,25:43,26:$V6,27:$V7,28:20,31:21,32:24,33:$V8,34:27,35:$V3,36:$V9},{12:36,13:$V5,26:$V6,27:$V7,28:44,31:21,32:24,33:$V8,34:27,35:$V3,36:$V9},{12:36,13:$V5,26:$V6,27:$V7,28:45,31:21,32:24,33:$V8,34:27,35:$V3,36:$V9},o($Vf,[2,28]),o($Vf,$Vb,{13:[1,46]}),o($Vf,[2,29]),{15:[1,47]},{15:[1,48]},{15:[2,39]},{15:[2,40],21:[1,49]},o($Vc,[2,22],{29:$Vd,30:$Ve}),o($Vc,[2,23],{29:$Vd,30:$Ve}),o($Vf,[2,25]),o($Vf,[2,26]),{12:36,13:$V5,14:50,15:$Vg,23:41,24:18,25:19,26:$V6,27:$V7,28:20,31:21,32:24,33:$V8,34:27,35:$V3,36:$V9,37:40},o($Vf,[2,33]),o($Va,$Vh,{16:[1,51]}),{12:36,13:$V5,23:41,24:18,25:19,26:$V6,27:$V7,28:20,31:21,32:24,33:$V8,34:27,35:$V3,36:$V9,37:52},{15:[1,53]},{7:57,8:$Vi,9:56,10:60,12:9,17:54,19:58,20:$V2,22:55,35:$V3},{15:[2,41]},o($Vf,$Vh),{18:[1,61]},{7:57,8:$Vi,9:56,10:60,12:9,17:62,18:[2,14],19:58,20:$V2,22:55,35:$V3},{8:[1,63]},{8:[1,64]},{8:[1,65]},o($Vj,[2,18]),{11:[1,66]},o($V4,[2,8]),{18:[2,13]},o($Vj,[2,15]),o($Vj,[2,16]),o($Vj,[2,17]),{12:16,13:$V5,16:[1,67],23:17,24:18,25:19,26:$V6,27:$V7,28:20,31:21,32:24,33:$V8,34:27,35:$V3,36:$V9},{7:57,8:$Vi,9:56,10:60,12:9,17:68,19:58,20:$V2,22:55,35:$V3},{18:[1,69]},{8:[2,9]}],
-defaultActions: {2:[2,1],12:[2,2],15:[2,11],29:[2,12],40:[2,39],52:[2,41],62:[2,13],69:[2,9]},
+table: [{1:$V0,3:1,4:2,5:3,6:4,7:5,8:$V1,9:7,10:8,12:9,25:$V2,52:$V3},{1:[3]},{1:[2,1]},{1:$V0,4:12,5:3,6:4,7:5,8:$V1,9:7,10:8,12:9,25:$V2,52:$V3},o($V4,[2,4]),o($V4,[2,5]),o($V4,[2,6]),o($V4,[2,7]),{11:[1,13]},{11:[2,13],26:[1,14]},{12:15,52:$V3},o([1,8,11,13,15,25,26,30,32,34,35,37,38,39,40,42,43,45,46,52],[2,52]),{1:[2,2]},{12:16,13:$V5,22:17,28:18,29:19,31:20,33:21,36:22,41:23,42:$V6,43:$V7,44:24,47:25,48:$V8,49:29,50:$V9,51:32,52:$V3,53:$Va},{10:34,12:9,25:$V2,52:$V3},{11:[2,14]},o($Vb,$Vc,{13:[1,35]}),o($V4,[2,23]),o([1,8,15,25,26,52],[2,24],{30:[1,36]}),o($Vd,[2,25],{32:$Ve}),o($Vf,[2,27],{34:$Vg,35:$Vh}),o($Vi,[2,29],{37:$Vj,38:$Vk,39:$Vl,40:$Vm}),o($Vn,[2,32],{42:$Vo,43:$Vp}),o($Vq,[2,37],{45:$Vr,46:$Vs}),o($Vt,[2,40]),o($Vt,[2,43]),{12:49,13:$V5,47:48,49:29,50:$V9,51:32,52:$V3,53:$Va},{12:49,13:$V5,47:50,49:29,50:$V9,51:32,52:$V3,53:$Va},{12:49,13:$V5,47:51,49:29,50:$V9,51:32,52:$V3,53:$Va},o($Vt,[2,47]),o($Vt,[2,49]),{12:49,13:$V5,22:52,28:18,29:19,31:20,33:21,36:22,41:23,42:$V6,43:$V7,44:24,47:25,48:$V8,49:29,50:$V9,51:32,52:$V3,53:$Va},o($Vt,[2,51]),o($Vt,[2,53]),{11:[2,15]},{12:49,13:$V5,14:53,15:$Vu,22:55,28:18,29:19,31:20,33:21,36:22,41:23,42:$V6,43:$V7,44:24,47:25,48:$V8,49:29,50:$V9,51:32,52:$V3,53:$Va,54:54},{12:49,13:$V5,29:56,31:20,33:21,36:22,41:23,42:$V6,43:$V7,44:24,47:25,48:$V8,49:29,50:$V9,51:32,52:$V3,53:$Va},{12:49,13:$V5,31:57,33:21,36:22,41:23,42:$V6,43:$V7,44:24,47:25,48:$V8,49:29,50:$V9,51:32,52:$V3,53:$Va},{12:49,13:$V5,33:58,36:22,41:23,42:$V6,43:$V7,44:24,47:25,48:$V8,49:29,50:$V9,51:32,52:$V3,53:$Va},{12:49,13:$V5,33:59,36:22,41:23,42:$V6,43:$V7,44:24,47:25,48:$V8,49:29,50:$V9,51:32,52:$V3,53:$Va},{12:49,13:$V5,36:60,41:23,42:$V6,43:$V7,44:24,47:25,48:$V8,49:29,50:$V9,51:32,52:$V3,53:$Va},{12:49,13:$V5,36:61,41:23,42:$V6,43:$V7,44:24,47:25,48:$V8,49:29,50:$V9,51:32,52:$V3,53:$Va},{12:49,13:$V5,36:62,41:23,42:$V6,43:$V7,44:24,47:25,48:$V8,49:29,50:$V9,51:32,52:$V3,53:$Va},{12:49,13:$V5,36:63,41:23,42:$V6,43:$V7,44:24,47:25,48:$V8,49:29,50:$V9,51:32,52:$V3,53:$Va},{12:49,13:$V5,41:64,42:$V6,43:$V7,44:24,47:25,48:$V8,49:29,50:$V9,51:32,52:$V3,53:$Va},{12:49,13:$V5,41:65,42:$V6,43:$V7,44:24,47:25,48:$V8,49:29,50:$V9,51:32,52:$V3,53:$Va},{12:49,13:$V5,42:$V6,43:$V7,44:66,47:25,48:$V8,49:29,50:$V9,51:32,52:$V3,53:$Va},{12:49,13:$V5,42:$V6,43:$V7,44:67,47:25,48:$V8,49:29,50:$V9,51:32,52:$V3,53:$Va},o($Vt,[2,44]),o($Vt,$Vc,{13:[1,68]}),o($Vt,[2,45]),o($Vt,[2,46]),{15:[1,69]},{15:[1,70]},{15:[2,56]},{15:[2,57],26:[1,71]},o($Vd,[2,26],{32:$Ve}),o($Vf,[2,28],{34:$Vg,35:$Vh}),o($Vi,[2,30],{37:$Vj,38:$Vk,39:$Vl,40:$Vm}),o($Vi,[2,31],{37:$Vj,38:$Vk,39:$Vl,40:$Vm}),o($Vn,[2,33],{42:$Vo,43:$Vp}),o($Vn,[2,34],{42:$Vo,43:$Vp}),o($Vn,[2,35],{42:$Vo,43:$Vp}),o($Vn,[2,36],{42:$Vo,43:$Vp}),o($Vq,[2,38],{45:$Vr,46:$Vs}),o($Vq,[2,39],{45:$Vr,46:$Vs}),o($Vt,[2,41]),o($Vt,[2,42]),{12:49,13:$V5,14:72,15:$Vu,22:55,28:18,29:19,31:20,33:21,36:22,41:23,42:$V6,43:$V7,44:24,47:25,48:$V8,49:29,50:$V9,51:32,52:$V3,53:$Va,54:54},o($Vt,[2,50]),o($Vb,$Vv,{16:[1,73]}),{12:49,13:$V5,22:55,28:18,29:19,31:20,33:21,36:22,41:23,42:$V6,43:$V7,44:24,47:25,48:$V8,49:29,50:$V9,51:32,52:$V3,53:$Va,54:74},{15:[1,75]},{7:79,8:$Vw,9:78,10:83,12:9,17:76,19:80,20:81,25:$V2,27:77,52:$V3},{15:[2,58]},o($Vt,$Vv),{18:[1,84]},{7:79,8:$Vw,9:78,10:83,12:9,17:85,18:[2,17],19:80,20:81,25:$V2,27:77,52:$V3},{8:[1,86]},{8:[1,87]},{8:[1,88]},{8:[1,89]},o($Vx,[2,22]),{11:[1,90]},o($V4,[2,8]),{18:[2,16]},o($Vx,[2,18]),o($Vx,[2,19]),o($Vx,[2,20]),o($Vx,[2,21]),{12:16,13:$V5,16:[1,91],21:[1,92],22:17,28:18,29:19,31:20,33:21,36:22,41:23,42:$V6,43:$V7,44:24,47:25,48:$V8,49:29,50:$V9,51:32,52:$V3,53:$Va},{7:79,8:$Vw,9:78,10:83,12:9,17:93,19:80,20:81,25:$V2,27:77,52:$V3},{13:[1,94]},{18:[1,95]},{12:49,13:$V5,22:96,28:18,29:19,31:20,33:21,36:22,41:23,42:$V6,43:$V7,44:24,47:25,48:$V8,49:29,50:$V9,51:32,52:$V3,53:$Va},{8:[2,9]},{15:[1,97]},{8:$Vy,16:$Vz,23:98},{16:[1,100]},o($VA,$Vz,{23:101,8:$Vy}),{7:79,8:$Vw,9:78,10:83,12:9,17:102,19:80,20:81,25:$V2,27:77,52:$V3},o($VA,[2,11]),{18:[1,103]},{8:$Vy,23:104,24:$Vz},{24:[1,105]},{8:$Vy,16:$Vz,23:106},{16:[1,107]},{7:79,8:$Vw,9:78,10:83,12:9,17:108,19:80,20:81,25:$V2,27:77,52:$V3},{18:[1,109]},{8:[2,10]}],
+defaultActions: {2:[2,1],12:[2,2],15:[2,14],34:[2,15],54:[2,56],74:[2,58],85:[2,16],95:[2,9],109:[2,10]},
 parseError: function parseError (str, hash) {
     if (hash.recoverable) {
         this.trace(str);
@@ -1003,44 +1112,66 @@ case 0:/* inline comment */
 break;
 case 1:/* pause comment */
 break;
-case 2:return 11;
+case 2:return "GREATEREQUAL";
 break;
-case 3:return 16;
+case 3:return "LESSEQUAL";
 break;
-case 4:return 18;
+case 4:return "LESS";
 break;
-case 5:return 36;
+case 5:return "GREATER";
 break;
-case 6:return 33;
+case 6:return "EQUAL";
 break;
-case 7:return 35;
+case 7:return "NOTEQUAL";
 break;
-case 8:return 26;
+case 8:return "NOT";
 break;
-case 9:return 27;
+case 9:return "AND";
 break;
-case 10:return 29;
+case 10:return "OR";
 break;
-case 11:return 30;
+case 11:return 11;
 break;
-case 12:return 13;
+case 12:return 16;
 break;
-case 13:return 15;
+case 13:return 18;
 break;
-case 14:return 21;
+case 14:return 53;
 break;
-case 15:return 20;
+case 15:return 50;
 break;
-case 16:return 8;
+case 16:return 21
 break;
-case 17:return 8;
+case 17:return "ELSE"
 break;
-case 18:/* skip whitespace */
+case 18:return 52;
+break;
+case 19:return 42;
+break;
+case 20:return 43;
+break;
+case 21:return 45;
+break;
+case 22:return 46;
+break;
+case 23:return 13;
+break;
+case 24:return 15;
+break;
+case 25:return 26;
+break;
+case 26:return 25;
+break;
+case 27:return 8;
+break;
+case 28:return 8;
+break;
+case 29:/* skip whitespace */
 break;
 }
 },
-rules: [/^(?:#[^\n\r]*)/,/^(?:\.\.\.[^\n^\n]*[\n\r]+)/,/^(?:=)/,/^(?:\{)/,/^(?:\})/,/^(?:((0|[1-9][0-9]*)(\.[0-9]+)?([eE](\+|-)?[0-9]+)?))/,/^(?:fs\b)/,/^(?:([_a-zA-Z][_a-zA-Z0-9]*))/,/^(?:\+)/,/^(?:-)/,/^(?:\*)/,/^(?:\/)/,/^(?:\()/,/^(?:\))/,/^(?:,)/,/^(?:@)/,/^(?:[\n\r]+)/,/^(?:[;]+)/,/^(?:[ \t]+)/],
-conditions: {"INITIAL":{"rules":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18],"inclusive":true}}
+rules: [/^(?:#[^\n\r]*)/,/^(?:\.\.\.[^\n^\n]*[\n\r]+)/,/^(?:>=)/,/^(?:<=)/,/^(?:<)/,/^(?:>)/,/^(?:==)/,/^(?:!=)/,/^(?:!)/,/^(?:&&)/,/^(?:\|\|)/,/^(?:=)/,/^(?:\{)/,/^(?:\})/,/^(?:((0|[1-9][0-9]*)(\.[0-9]+)?([eE](\+|-)?[0-9]+)?))/,/^(?:fs\b)/,/^(?:if\b)/,/^(?:else\b)/,/^(?:([_a-zA-Z][_a-zA-Z0-9]*))/,/^(?:\+)/,/^(?:-)/,/^(?:\*)/,/^(?:\/)/,/^(?:\()/,/^(?:\))/,/^(?:,)/,/^(?:@)/,/^(?:[\n\r]+)/,/^(?:[;]+)/,/^(?:[ \t]+)/],
+conditions: {"INITIAL":{"rules":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29],"inclusive":true}}
 });
 return lexer;
 })();
@@ -1088,22 +1219,24 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 (function() {
 
-	var Graph = {
-		init: function () {
-			this.blocks = []
-			this.connections = []
-			this.input_ports = []  // external input
-			this.output_ports = [] // output toward outside
-		},
-		getOutputBlocks: function (block) {
-			return this.connections.filter(c => c.in.block == block).map(c => c.out.block)
-		},
-		getInputBlocks: function (block) {
-			return this.connections.filter(c => c.out.block == block).map(c => c.in.block)
-		},
-		crossDFS: function (callbackF) {
-			let self = this
-			this.output_ports.forEach(p => visitNode(p.block))
+	function Graph (id) {
+		let self = this
+		this.id = id
+		this.blocks = []
+		this.connections = []
+		this.input_ports = []  // external input
+		this.output_ports = [] // output toward outside
+		this.getOutputBlocks = function (block) {
+			let cs = self.connections.filter(c => c.in.block == block)
+			cs.sort((a, b) => block.output_ports.indexOf(a.in) < block.output_ports.indexOf(b.in) ? -1 : 1)
+			return cs.map(p => p.out.block)
+		}
+		this.getInputBlocks = function (block) {
+			return block.input_ports.map(p => self.connections.find(c => c.out == p)).filter(
+				c => c != undefined).map(c => c.in.block)
+		}
+		this.crossDFS = function (callbackF) {
+			self.output_ports.forEach(p => visitNode(p.block))
 			function visitNode(block) {
 				if (block.visited)
 					return
@@ -1112,53 +1245,91 @@ if (typeof module !== 'undefined' && require.main === module) {
 				self.getInputBlocks(block).forEach(b => visitNode(b))
 				callbackF(block)
 			}
-			this.blocks.forEach(b => delete b.visited)
+			self.blocks.forEach(b => delete b.visited)
+		}
+		this.toString = function () {
+			let s = "{\n\t" + id + ', ' + this.input_ports.length + ', ' + this.output_ports.length + "\n\tblocks: [\n"
+			s += this.blocks.map(b => '\t\t' + b.toString()).join('\n') + "\n\t],"
+			s += ' connections: [\n'
+			s += this.connections.map(c => '\t\t' + c.toString()).join('\n') + "\n\t]\n}"
+			return s;
 		}
 	}
 
-	var Block = {
-		init: function (nInputs = 0, nOutputs = 0, operation = "", id = "", postfix = "", val = NaN) {
-			let self = this
-			this.input_ports = new Array(nInputs).fill().map(function () { 
-				let port = Object.create(Port)
-				port.block = self
-				return port
-			})
-			this.output_ports = new Array(nOutputs).fill().map(function () { 
-				let port = Object.create(Port)
-				port.block = self
-				return port
-			})
-			this.operation = operation
-			this.id = id
-			this.postfix = postfix
-			this.val = val
-			this.control_dependencies = new Set()
-		},
-		get label() {
-			return "" + this.id + this.postfix
-		},
-		getUpdateRateMax: function () {
-			return this.input_ports.concat(this.output_ports).map(p=>p.update_rate).reduce(function
-				(p1, p2) { return  p1 > p2 ? p1 : p2})
-		},
-		propagateUpdateRate: function () {
-			let update_rate_max = this.getUpdateRateMax()
-			this.output_ports.forEach((p => p.update_rate = update_rate_max))
-		},
-		toString: function () {
-			return '{ ' + [this.operation, this.id, this.postfix, this.val, this.input_ports.length, this.output_ports.length, this.control_dependencies.size].join(', ') + ' }'
+	var blocksCounter = 0;
+
+	function Block (nInputs = 0, nOutputs = 0, operation = "", id = "", postfix = "", val = NaN, if_owners = []) {
+		let self = this
+		this.uniqueId = blocksCounter++
+		this.input_ports = new Array(nInputs).fill().map(() => new Port(self))
+		this.output_ports = new Array(nOutputs).fill().map(() => new Port(self))
+		this.operation = operation
+		this.id = id
+		this.postfix = postfix
+		this.val = val
+		this.control_dependencies = new Set()
+		this.if_owners = [...if_owners]
+		
+		this.label = function () {
+			return "" + self.id + self.postfix
+		}
+		this.getUpdateRateMax = function () {
+			return self.input_ports.concat(self.output_ports).map(p => p.update_rate).reduce(function
+				(p1, p2) { return  max(p1, p2)})
+		}
+		this.propagateUpdateRate = function () {
+			if (self.operation == "IF_THEN_ELSE") {
+				let cond_update_rate = self.input_ports[0].update_rate
+				for (let i = 0; i < self.output_ports.length; i++) {
+					let m = max(
+						self.input_ports[i + 1].update_rate, 
+						self.input_ports[i + 1 + self.output_ports.length].update_rate, 
+						cond_update_rate)
+					self.output_ports[i].update_rate = m
+				}
+			}
+			else {
+				let update_rate_max = self.getUpdateRateMax()
+				self.output_ports.forEach((p => p.update_rate = update_rate_max))
+			}
+		}
+		this.toString = function () {
+			return '{ ' + [self.operation, self.id, self.postfix, self.val, self.input_ports.length, self.output_ports.length, self.control_dependencies.size].join(', ') + ' }'
 		}
 	}
 
-	var Port = {
-		block: null,
-		update_rate: -1 // 0 = constants, 1 = fs, 2 = control, 3 = audio
+	function Port (block) {
+		this.block = block
+		this.update_rate = -1 // 0 = constants, 1 = fs, 2 = control, 3 = audio
+		this.getIndex = function () {
+			if (this.block.input_ports.includes(this))
+				return this.block.input_ports.indexOf(this)
+			else if (this.block.output_ports.includes(this))
+				return this.block.output_ports.indexOf(this)
+			else
+				throw new Error("Hanging port: " + this.block.toString())
+		}
+		this.toString = function () {
+			return "{ " + this.block.toString() + ", id: " + this.getIndex() + ", ur: " + this.update_rate + " }"
+		}
 	}
 
-	var Connection = {
-		in: null,
-		out: null
+	function Connection (in_port, out_port) {
+		if (!in_port || !out_port)
+			throw new Error("Undefined ports for the new Connection: " + in_port + ", " + out_port)
+		this.in  = in_port
+		this.out = out_port
+		this.toString = function () {
+			return this.in.toString() + "\t==>\t" + this.out.toString()
+		}
+	}
+
+	function max (x1, ...xn) {
+		let M = x1
+		for (a of xn)
+			if (a > M)
+				M = a
+		return M
 	}
 
 	function ASTToGraph (AST_root, initial_block, control_inputs, initial_values) {
@@ -1184,9 +1355,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 
 		function convertToGraph() {
-			let graph = Object.create(Graph)
-			graph.init()
-			graph.id = initial_block
+			let graph = new Graph(initial_block)
 
 			let named_blocks = {}
 			let named_vars 	= {}
@@ -1199,36 +1368,33 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 			let postfix = '_0'
 
-			let block_fs = Object.create(Block)
-			block_fs.init(0, 1, "SAMPLERATE", "fs", postfix, NaN, undefined)
+			let block_fs = new Block(0, 1, "SAMPLERATE", "fs", postfix, NaN, undefined)
 			named_vars[block_fs.id] = block_fs
 			graph.blocks.push(block_fs)
 
 			AST_root.stmts.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(stmt => stmt.outputs.forEach(function (output) {
-				let block_const = Object.create(Block)
-				block_const.init(1, 1, 'VAR', output.val, postfix, NaN, undefined)
+				let block_const = new Block(1, 1, 'VAR', output.val, postfix, NaN, undefined)
 				named_vars[block_const.id] = block_const
 				graph.blocks.push(block_const)
 			}))
 
 			AST_root.stmts.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(stmt => {
-				let ports = convertExpr(stmt.expr, {}, named_blocks, named_vars)
+				let ports = convertExpr(stmt.expr, {}, named_blocks, named_vars, [])
 				stmt.outputs.forEach((output, index) => {
 					let block_const = named_vars[output.val]
-					let connection = Object.create(Connection)
-					connection.in = ports[1][index]
-					connection.out = block_const.input_ports[0]
+					let connection = new Connection(ports[1][index], block_const.input_ports[0])
 					graph.connections.push(connection)
 				})
 			})
 
-			let ports = expandCompositeBlock(named_blocks[initial_block], ++expansions_count, {}, {...named_blocks}, {...named_vars})
+			let ports = expandCompositeBlock(named_blocks[initial_block], {}, {...named_blocks}, {...named_vars}, [])
 			graph.input_ports = ports[0]
 			graph.output_ports = ports[1]
 
 			return graph
 
-			function expandCompositeBlock (block, expansions_count, expansion_stack, named_blocks, named_vars) {
+			function expandCompositeBlock (block, expansion_stack, named_blocks, named_vars, if_owners) {
+				expansions_count++
 				if (block.id.val != "" && expansion_stack[block.id.val])
 					throw new Error("Recursive block expansion. Stack: " + Object.keys(expansion_stack) + "," + block.id.val)
 				expansion_stack[block.id.val] = true
@@ -1240,8 +1406,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 				let output_ports = []
 
 				block.inputs.forEach(function (input) {
-					let block_var = Object.create(Block)
-					block_var.init(1, 1, "VAR", input.val, postfix, NaN)
+					let block_var = new Block(1, 1, "VAR", input.val, postfix, NaN, if_owners)
 					named_vars[block_var.id] = block_var
 					graph.blocks.push(block_var)
 					input_ports.push(block_var.input_ports[0])
@@ -1249,10 +1414,13 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 				block.body.filter(stmt => stmt.name == 'BLOCK_DEF').forEach(block => named_blocks[block.id.val] = block)
 
-				block.body.filter(stmt => stmt.name == 'ASSIGNMENT' || stmt.name == 'ANONYM_BLOCK_DEF').forEach(
-					stmt => stmt.outputs.filter(output => !output.init).forEach(output => {
-						let block_var = Object.create(Block)
-						block_var.init(1, 1, "VAR", output.val, postfix, NaN)
+				block.body.filter(stmt => ['ASSIGNMENT', 'ANONYM_BLOCK_DEF', 'IF_THEN_ELSE'].includes(stmt.name)).forEach(
+					stmt => stmt.outputs.forEach((output, index) => {
+						if (output.init)
+							return
+						let block_var = new Block(1, 1, "VAR", output.val, postfix, NaN, if_owners)
+						if (stmt.name == 'IF_THEN_ELSE')
+							block_var.ifoutputindex = index
 						named_vars[block_var.id] = block_var
 						graph.blocks.push(block_var)
 					})
@@ -1262,19 +1430,19 @@ if (typeof module !== 'undefined' && require.main === module) {
 					output_ports.push(named_vars[o.val].output_ports[0])
 				})
 
-				block.body.filter(stmt => stmt.name == 'ASSIGNMENT' || stmt.name == 'ANONYM_BLOCK_DEF').forEach(function (stmt) {
+				block.body.filter(stmt => ['ASSIGNMENT', 'ANONYM_BLOCK_DEF', 'IF_THEN_ELSE'].includes(stmt.name)).forEach(function (stmt) {
 					let ports;
 					if (stmt.name == 'ASSIGNMENT')
-						ports = convertExpr(stmt.expr, {...expansion_stack}, {...named_blocks}, {...named_vars})
+						ports = convertExpr(stmt.expr, {...expansion_stack}, {...named_blocks}, {...named_vars}, if_owners)
 					else if (stmt.name == 'ANONYM_BLOCK_DEF')
-						ports = expandCompositeBlock(stmt, ++expansions_count, {...expansion_stack}, {...named_blocks}, {...named_vars})
+						ports = expandCompositeBlock(stmt, {...expansion_stack}, {...named_blocks}, {...named_vars}, if_owners)
+					else if (stmt.name == 'IF_THEN_ELSE')
+						ports = convertIfthenelse(stmt, expansion_stack, named_blocks, named_vars, if_owners)
 
 					stmt.outputs.forEach(function (output, index) {
 						if (!output.init) {
 							let block_var = named_vars[output.val]
-							let connection = Object.create(Connection)
-							connection.in  = ports[1][index]
-							connection.out = block_var.input_ports[0]
+							let connection = new Connection(ports[1][index], block_var.input_ports[0])
 							graph.connections.push(connection)
 						}
 					})
@@ -1288,8 +1456,8 @@ if (typeof module !== 'undefined' && require.main === module) {
 				return [input_ports, output_ports]
 			}
 
-			function convertExpr(expr_node, expansion_stack, named_blocks, named_vars) {
-				let block_expr = Object.create(Block)
+			function convertExpr(expr_node, expansion_stack, named_blocks, named_vars, if_owners) {
+				let block_expr;
 
 				let input_ports = []
 				let output_ports = []
@@ -1300,13 +1468,20 @@ if (typeof module !== 'undefined' && require.main === module) {
 					case 'TIMES_EXPR':
 					case 'DIV_EXPR':
 					case 'UMINUS_EXPR':
-						block_expr.init(expr_node.args.length, 1, expr_node.name, null, null, null)
+					case 'EQUAL_EXPR':
+					case 'NOTEQUAL_EXPR':
+					case 'LESS_EXPR':
+					case 'LESSEQUAL_EXPR':
+					case 'GREATER_EXPR':
+					case 'GREATEREQUAL_EXPR':
+					case 'NOT_EXPR':
+						block_expr = new Block(expr_node.args.length, 1, expr_node.name, undefined, undefined, undefined, if_owners)
 						graph.blocks.push(block_expr)
 						input_ports = block_expr.input_ports
 						output_ports = block_expr.output_ports
 						break
 					case 'NUMBER':
-						block_expr.init(0, 1, expr_node.name, null, null, expr_node.val)
+						block_expr = new Block(0, 1, expr_node.name, undefined, undefined, expr_node.val, if_owners)
 						graph.blocks.push(block_expr)
 						input_ports = block_expr.input_ports
 						output_ports = block_expr.output_ports
@@ -1319,20 +1494,20 @@ if (typeof module !== 'undefined' && require.main === module) {
 					case 'CALL_EXPR':
 						switch (expr_node.kind) {
 							case 'DELAY1_EXPR':
-								block_expr.init(1, 1, 'DELAY1_EXPR', null, null, NaN)
+								block_expr = new Block(1, 1, 'DELAY1_EXPR', undefined, undefined, NaN, if_owners)
 								graph.blocks.push(block_expr)
 								input_ports = block_expr.input_ports
 								output_ports = block_expr.output_ports
 								break
 							case 'FUNC_CALL':
-								block_expr.init(expr_node.args.length, 1, 'EXTERNAL_FUNC_CALL', expr_node.id.val, null, NaN)
+								block_expr = new Block(expr_node.args.length, 1, 'EXTERNAL_FUNC_CALL', expr_node.id.val, undefined, NaN, if_owners)
 								graph.blocks.push(block_expr)
 								input_ports = block_expr.input_ports
 								output_ports = block_expr.output_ports
 								break
 							case 'BLOCK_CALL':
-								let ports = expandCompositeBlock(named_blocks[expr_node.id.val], ++expansions_count, 
-									{...expansion_stack}, {...named_blocks}, {...named_vars})
+								let ports = expandCompositeBlock(named_blocks[expr_node.id.val], 
+									{...expansion_stack}, {...named_blocks}, {...named_vars}, if_owners)
 								input_ports = ports[0]
 								output_ports = ports[1]
 								break
@@ -1346,14 +1521,31 @@ if (typeof module !== 'undefined' && require.main === module) {
 				}
 
 				for (let argi = 0; argi < input_ports.length; argi++) {
-					let ports = convertExpr(expr_node.args[argi], expansion_stack, named_blocks, named_vars)
-					let connection = Object.create(Connection)
-					connection.in = ports[1][0]
-					connection.out = input_ports[argi]
+					let ports = convertExpr(expr_node.args[argi], expansion_stack, named_blocks, named_vars, if_owners)
+					let connection = new Connection(ports[1][0], input_ports[argi])
 					graph.connections.push(connection)
 				}
 
 				return [input_ports, output_ports]
+			}
+
+			function convertIfthenelse(stmt, expansion_stack, named_blocks, named_vars, if_owners) {
+				let block_ifthenelse = new Block(stmt.outputs.length * 2 + 1, stmt.outputs.length, 'IF_THEN_ELSE', undefined, undefined, NaN, if_owners)
+
+				let condition_ports = convertExpr(stmt.condition, expansion_stack, named_blocks, named_vars, if_owners)
+				// TODO: ? if branch bodies should not ovveride named_vars that are if output...
+				let if_ports = expandCompositeBlock(stmt.if, {...expansion_stack}, {...named_blocks}, {...named_vars}, 
+					if_owners.concat({ ifblock: block_ifthenelse, branch: 0 }))
+				let else_ports = expandCompositeBlock(stmt.else, {...expansion_stack}, {...named_blocks}, {...named_vars},
+					if_owners.concat({ ifblock: block_ifthenelse, branch: 1 }))
+
+				let incoming_ports = condition_ports[1].concat(if_ports[1]).concat(else_ports[1])
+				for (let p = 0; p < incoming_ports.length; p++) {
+					let connection = new Connection(incoming_ports[p], block_ifthenelse.input_ports[p])
+					graph.connections.push(connection)
+				}
+				graph.blocks.push(block_ifthenelse)
+				return [[], block_ifthenelse.output_ports]
 			}
 		}
 
@@ -1391,14 +1583,56 @@ if (typeof module !== 'undefined' && require.main === module) {
 		}
 		
 		function removeUnreachableNodes (graph) {
-			let newGraph = Object.create(Graph)
-			newGraph.init()
-			newGraph.id = graph.id
-			newGraph.input_ports = graph.input_ports
-			newGraph.output_ports = graph.output_ports
-			graph.crossDFS(block => newGraph.blocks.push(block))
-			newGraph.connections = graph.connections.filter(c => newGraph.blocks.some(b => b == c.out.block))
+			let newGraph = new Graph(graph.id)
+			
+			graph.output_ports.forEach(p => visitNode(p.block))
+			function visitNode(block, i) {
+				if (block.operation == 'IF_THEN_ELSE') {
+					if (!block.visited) 
+						block.visited = []
+					if (block.visited.includes(i))
+						return
+					block.visited.push(i)
+
+					let inbs = graph.getInputBlocks(block)
+					if (block.visited.length == 1) {
+						visitNode(inbs[0], NaN)
+						newGraph.blocks.push(block)
+					}
+					visitNode(inbs[i + 1], NaN)
+					visitNode(inbs[i + 1 + block.output_ports.length], NaN)
+				}
+				else {
+					if (block.visited)
+						return
+					block.visited = true
+				
+					graph.getInputBlocks(block).forEach(b => visitNode(b, block.ifoutputindex))
+					newGraph.blocks.push(block)
+				}
+			}
+
+			graph.blocks.filter(b => b.visited && b.operation == "IF_THEN_ELSE").forEach(b => {
+				for (let i = b.output_ports.length - 1; i >= 0; i--) {
+					if (!b.visited.includes(i)) {
+						b.input_ports.splice(i + 1 + b.output_ports.length, 1)
+						b.input_ports.splice(i + 1, 1)
+						b.output_ports.splice(i, 1)
+					}
+				}
+			})
+
+			newGraph.connections = graph.connections.filter(c => 
+				  	newGraph.blocks.some(b => b == c.out.block && b.input_ports.concat(b.output_ports).includes(c.out))
+				&& 	newGraph.blocks.some(b => b == c.in.block  && b.input_ports.concat(b.output_ports).includes(c.in))
+			)
 			newGraph.connections = Array.from(new Set(newGraph.connections))
+
+			graph.blocks.forEach(b => delete b.visited)
+
+			newGraph.input_ports = graph.input_ports.filter(p => newGraph.blocks.includes(p.block))
+			newGraph.output_ports = graph.output_ports
+
 			return newGraph
 		}
 
@@ -1479,7 +1713,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 			function propagateControlDependencies () {
 				graph.input_ports.filter(p => p.update_rate == 2).forEach(function (p) {
-					visitBlock(p.block, p.block.label)
+					visitBlock(p.block, p.block.label())
 					graph.blocks.forEach(b => delete b.visited)
 				})
 
@@ -1516,12 +1750,19 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 (function() {
 
+	function getIndexer (target_lang, index) {
+		if (['cpp', 'd', 'js'].includes(target_lang))
+			return "[" + index + "]"
+		else if (target_lang == 'MATLAB')
+			return "(" + index + ")"
+	}
+
 	function convert(doT, templates, target_lang, graph, graph_init, schedule, schedule_init) {
 		
 		let program = {
 			class_name: 	graph.id,
-			control_inputs: graph.input_ports.filter(p => p.update_rate == 2).map(p => p.block.label),
-			audio_inputs: 	graph.input_ports.filter(p => p.update_rate == 3).map(p => p.block.label),
+			control_inputs: graph.input_ports.filter(p => p.update_rate == 2).map(p => p.block.label()),
+			audio_inputs: 	graph.input_ports.filter(p => p.update_rate == 3).map(p => p.block.label()),
 			outputs: 		[],
 
 			declarations1: 	[],
@@ -1555,15 +1796,15 @@ if (typeof module !== 'undefined' && require.main === module) {
 		schedule_init.forEach(block => convertBlockInit(block))
 
 		for (let outi = 0; outi < graph.output_ports.length; outi++) {
-			program.outputs[outi] = graph.output_ports[outi].block.label + '__out__'
-			appendAssignment(program.outputs[outi], graph.output_ports[outi].code, 5, null)
+			program.outputs[outi] = graph.output_ports[outi].block.label() + '__out__';
+			appendAssignment(program.outputs[outi] + getIndexer(target_lang, 'i'), graph.output_ports[outi].code, 5, null)
 		}
 
 		groupControls()
 
 		program.declarations2 = program.declarations2.concat(
 			graph.input_ports.filter(p => p.update_rate == 2).map(p => p.block).map(function (block) {
-				return { left: block.output_ports[0].code, right: block.block_init.output_ports[0].code }
+				return new MagicString(block.output_ports[0].code, " = ", block.block_init.output_ports[0].code)
 			})
 		)
 
@@ -1607,44 +1848,72 @@ if (typeof module !== 'undefined' && require.main === module) {
 			is_used_locally = output_blocks.every(b => b.output_ports[0].update_rate == update_rate)
 			if (update_rate == 2 && is_used_locally)
 				is_used_locally = output_blocks.every(b => checkSetEquality(b.control_dependencies, block.control_dependencies))
+			if (is_used_locally && block.if_owners.length > 0) {
+				let bb = block.if_owners.at(-1)
+				is_used_locally = output_blocks.every(b => b.if_owners.some(i => i.ifblock == bb.ifblock && i.branch == bb.branch))
+				if (output_blocks.some(b => b.operation == "DELAY1_EXPR"))
+					is_used_locally = false;
+			}
 
+
+				
+			if (block.ifoutputindex != undefined && !isNaN(block.ifoutputindex)) {
+				code.add(id_prefix, block.label())
+				return
+			}
 			switch (block.operation) {
 				case 'VAR':
-					if (block.output_ports[0].toBeCached || output_blocks.length > 1) {
-						code.add(id_prefix, block.label)
-						appendAssignment(code, input_blocks_code[0], update_rate, block.control_dependencies, true, is_used_locally)
+					if (input_blocks[0].operation == 'NUMBER')
+						code.add(input_blocks_code[0])
+					else if (block.output_ports[0].toBeCached || output_blocks.length > 1) {
+						code.add(id_prefix, block.label())
+						appendAssignment(code, input_blocks_code[0], update_rate, block.control_dependencies, true, is_used_locally, block.if_owners)
 					}
 					else
 						code.add(input_blocks_code[0])
 					return
 				case 'VAR_IN':
 					if (update_rate == 3) {
-						if (target_lang == 'cpp' || target_lang == 'js' || target_lang == 'd' )
-							code.add(block.label, "[i]")
-						else if (target_lang == 'MATLAB')
-							code.add(block.label, "(i)")
+						code.add(block.label(), getIndexer(target_lang, 'i'))
 					}
 					else if (update_rate == 2)
-						code.add(id_prefix, block.label)
+						code.add(id_prefix, block.label())
 					return
 				case 'VAR_OUT':
-					code.add(id_prefix, block.label)
-					appendAssignment(code, input_blocks_code[0], update_rate, block.control_dependencies, true, is_used_locally)
+					code.add(id_prefix, block.label())
+					appendAssignment(code, input_blocks_code[0], update_rate, block.control_dependencies, true, is_used_locally, block.if_owners)
 					return
 				case 'DELAY1_EXPR':
-					const id = '__delayed__' + extra_vars_n++
+					const id = '_delayed_' + extra_vars_n++
 					code.add(id_prefix, id)
-					appendAssignment(code, input_blocks_code[0], 4, block.control_dependencies, false, null)
-					appendAssignment(code, input_blocks[0].block_init.output_ports[0].code, -1, null, true, false)
+					appendAssignment(code, input_blocks_code[0], 4, block.control_dependencies, false, false, block.if_owners)
+					appendAssignment(code, input_blocks[0].block_init.output_ports[0].code, -1, null, true, false, block.if_owners)
 					return
 				case 'NUMBER':
-					if (target_lang == 'cpp' || target_lang == 'd')
+					if (['cpp', 'd'].includes(target_lang))
 						code.add(block.val + ((block.val.toString().includes('.') || block.val.toString().toLowerCase().includes('e')) ? 'f' : '.0f'));
-					else if (target_lang == 'MATLAB' || target_lang == 'js')
+					else if (['MATLAB', 'js'].includes(target_lang))
 						code.add(block.val)
 					return
 				case 'SAMPLERATE':
 					code.add(id_prefix, 'fs')
+					return
+				case 'IF_THEN_ELSE':
+					if (['cpp', 'd', 'js'].includes(target_lang)) {
+						code.add("if (", input_blocks_code[0], ') {\n')
+						code.add('__branch0__') // 3
+						code.add("\n} else {\n")
+						code.add('__branch1__') // 5
+						code.add("\n}\n")
+					}
+					else if (target_lang == 'MATLAB') {
+						code.add("if (", input_blocks_code[0], ')\n')
+						code.add('__branch0__') // 3
+						code.add("\nelse\n")
+						code.add('__branch1__') // 5
+						code.add("\nendif\n")
+					}
+					appendIfStatement(block, code, input_blocks[0].output_ports[0].update_rate, block.if_owners, output_blocks, input_blocks, block.control_dependencies)
 					return
 				case 'UMINUS_EXPR':
 					auxcode.add('-(', input_blocks_code[0], ')')
@@ -1662,16 +1931,49 @@ if (typeof module !== 'undefined' && require.main === module) {
 					auxcode.add('(', input_blocks_code[0], ' / ', input_blocks_code[1], ')')
 					break
 				case 'EXTERNAL_FUNC_CALL':
-					auxcode.add(block.id, '(', input_blocks_code.join(', '), ')')
+					auxcode.add(block.id, '(')
+					for (let ii = 0; ii < input_blocks_code.length; ii++) {
+						auxcode.add(input_blocks_code[ii])
+						if (ii != input_blocks_code.length - 1)
+							auxcode.add(', ')
+					}
+					auxcode.add(')')
+					break
+				case 'OR_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' || ', input_blocks_code[1], ')')
+					break
+				case 'AND_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' && ', input_blocks_code[1], ')')
+					break
+				case 'EQUAL_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' == ', input_blocks_code[1], ')')
+					break
+				case 'NOTEQUAL_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' != ', input_blocks_code[1], ')')
+					break
+				case 'LESS_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' < ', input_blocks_code[1], ')')
+					break
+				case 'LESSEQUAL_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' <= ', input_blocks_code[1], ')')
+					break
+				case 'GREATER_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' > ', input_blocks_code[1], ')')
+					break
+				case 'GREATEREQUAL_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' >= ', input_blocks_code[1], ')')
+					break
+				case 'NOT_EXPR':
+					auxcode.add('!(', input_blocks_code[0], ')')
 					break
 
 				default:
 					throw new Error("Unexpected block operation: " + block.operation)
 			}
 
-			if (block.output_ports[0].toBeCached) {
-				code.add(id_prefix, program.class_name + '__extra__' + extra_vars_n++)
-				appendAssignment(code, auxcode, update_rate, block.control_dependencies, true, is_used_locally)
+			if (block.output_ports[0].toBeCached || output_blocks.length > 1) {
+				code.add(id_prefix, program.class_name + '_extra_' + extra_vars_n++)
+				appendAssignment(code, auxcode, update_rate, block.control_dependencies, true, is_used_locally, block.if_owners)
 			}
 			else
 				code.add(auxcode)
@@ -1694,8 +1996,10 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 			switch (block.operation) {
 				case 'VAR':
-					if (block.output_ports[0].toBeCached || output_blocks.length > 1) {
-						code.add(id_prefix, block.label)
+					if (input_blocks[0].operation == 'NUMBER')
+						code.add(input_blocks_code[0])
+					else if (block.output_ports[0].toBeCached || output_blocks.length > 1) {
+						code.add(id_prefix, block.label())
 						appendAssignment(code, input_blocks_code[0], level, block.control_dependencies, true, is_used_locally)
 					}
 					else
@@ -1711,9 +2015,9 @@ if (typeof module !== 'undefined' && require.main === module) {
 					code.add(input_blocks_code[0])
 					return
 				case 'NUMBER':
-					if (target_lang == 'cpp' || target_lang == 'd')
+					if (['cpp', 'd'].includes(target_lang))
 						code.add(block.val + ((block.val.toString().includes('.') || block.val.toString().toLowerCase().includes('e')) ? 'f' : '.0f'));
-					else if (target_lang == 'MATLAB' || target_lang == 'js')
+					else if (['MATLAB', 'js'].includes(target_lang))
 						code.add(block.val)
 					return
 				case 'SAMPLERATE':
@@ -1735,7 +2039,40 @@ if (typeof module !== 'undefined' && require.main === module) {
 					auxcode.add('(', input_blocks_code[0], ' / ', input_blocks_code[1], ')')
 					break
 				case 'EXTERNAL_FUNC_CALL':
-					auxcode.add(block.id, '(', input_blocks_code.join(', '), ')')
+					auxcode.add(block.id, '(')
+					for (let ii = 0; ii < input_blocks_code.length; ii++) {
+						auxcode.add(input_blocks_code[ii])
+						if (ii != input_blocks_code.length - 1)
+							auxcode.add(', ')
+					}
+					auxcode.add(')')
+					break;
+				case 'OR_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' || ', input_blocks_code[1], ')')
+					break
+				case 'AND_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' && ', input_blocks_code[1], ')')
+					break
+				case 'EQUAL_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' == ', input_blocks_code[1], ')')
+					break
+				case 'NOTEQUAL_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' != ', input_blocks_code[1], ')')
+					break
+				case 'LESS_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' < ', input_blocks_code[1], ')')
+					break
+				case 'LESSEQUAL_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' <= ', input_blocks_code[1], ')')
+					break
+				case 'GREATER_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' > ', input_blocks_code[1], ')')
+					break
+				case 'GREATEREQUAL_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' >= ', input_blocks_code[1], ')')
+					break
+				case 'NOT_EXPR':
+					auxcode.add('!(', input_blocks_code[0], ')')
 					break
 
 				default:
@@ -1743,21 +2080,25 @@ if (typeof module !== 'undefined' && require.main === module) {
 			}
 
 			if (block.output_ports[0].toBeCached) {
-				code.add(id_prefix, program.class_name + '__extraI__' + extra_vars_n++)
+				code.add(id_prefix, program.class_name + '_extraI_' + extra_vars_n++)
 				appendAssignment(code, auxcode, level, block.control_dependencies, true, is_used_locally)
 			}
 			else
 				code.add(auxcode)
 		}
 
-		function appendAssignment(left, right, level, control_dependencies, to_be_declared, is_used_locally) {
-			let stmt = {left: left, right: right}
+		function appendAssignment(left, right, level, control_dependencies, to_be_declared, is_used_locally, if_owners) {
+			let stmt = new MagicString(left, ' = ', right)
+			stmt.if_owners = if_owners
+
 
 			if (to_be_declared && level != 0) {
-				if (is_used_locally) 
+				if (is_used_locally) {
 					stmt.is_used_locally = true
-				else
-					program.declarations1.push(stmt)
+				}
+				else {
+					program.declarations1.push(left)
+				}
 			}
 
 			switch (level) {
@@ -1789,12 +2130,66 @@ if (typeof module !== 'undefined' && require.main === module) {
 			}
 		}
 
+		function appendIfStatement(block, code, cond_level, if_owners, output_blocks, input_blocks, control_dependencies) {
+
+			if (block.output_ports.length != output_blocks.length)
+				throw new Error("Something is wrong")
+
+			const levels = ["constant_rate", "sampling_rate", "controls_rate", "audio_rate"]
+
+			for (let lvl = cond_level; lvl < levels.length; lvl++) {
+				let out_i = []
+				for (let i = 0; i < block.output_ports.length; i++) {
+					let ur = block.output_ports[i].update_rate
+					if (ur == lvl || (lvl == cond_level && ur <= lvl)) {
+						out_i.push(i)
+					}
+				}
+				if (out_i.length == 0)
+					continue
+
+				let stmts = program[levels[lvl]].filter(s => s.if_owners.at(-1) && s.if_owners.at(-1).ifblock == block)
+				let b0 = stmts.filter(s => s.if_owners.at(-1).branch == 0)
+				let b1 = stmts.filter(s => s.if_owners.at(-1).branch == 1)
+
+				for (let i of out_i) {
+					b0.push(new MagicString(
+						output_blocks[i].output_ports[0].code, 
+						' = ', 
+						input_blocks[i + 1].output_ports[0].code,
+					))
+
+					b1.push(new MagicString(
+						output_blocks[i].output_ports[0].code,
+						' = ',
+						input_blocks[i + 1 + block.output_ports.length].output_ports[0].code
+					))
+				}
+
+				b0.forEach(s => s.add(';\n'))
+				b1.forEach(s => s.add(';\n'))
+
+				let newcode = new MagicString(...code.s)
+
+				newcode.s.splice(newcode.s.indexOf('__branch0__'), 1, ...b0)
+				newcode.s.splice(newcode.s.indexOf('__branch1__'), 1, ...b1)
+
+				newcode.control_dependencies = control_dependencies
+				newcode.if_owners = if_owners
+				
+				program[levels[lvl]] = program[levels[lvl]].filter(s => !stmts.includes(s))
+				program[levels[lvl]].push(newcode)
+
+			}
+		}
+
 		function groupControls() {
 			var Group = function (set) {
+				let self = this
 				this.label = Array.from(set).join('_')
 				this.set = set
 				this.cardinality = set.size
-				this.equals = (s) => checkSetEquality(this.set, s)
+				this.equals = (s) => checkSetEquality(self.set, s)
 				this.stmts = []
 			}
 			let groups = []
@@ -1816,8 +2211,12 @@ if (typeof module !== 'undefined' && require.main === module) {
 	function MagicString(...init) {
 		this.s = []
 		this.add = function(...x) {
-			for (let k of x)
+			for (let k of x) {
+				if (k == undefined) {
+					throw new Error(k)
+				}
 				this.s.push(k);
+			}
 			return this
 		}
 		this.toString = function(){
@@ -1826,7 +2225,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 				str += p.toString()
 			return str
 		}
-		for (i of init)
+		for (let i of init)
 			this.add(i)	
 	}
 
@@ -1958,14 +2357,14 @@ if (typeof module !== 'undefined' && require.main === module) {
 				"output_generation":require("./output_generation"),
 				"doT": 				require("dot"),
 				"templates":{
-					"matlab": 			String(Buffer("ZnVuY3Rpb24gW3t7PWl0Lm91dHB1dHMuam9pbignLCAnKX19XSA9IHt7PWl0LmNsYXNzX25hbWV9fSh7ez1pdC5hdWRpb19pbnB1dHMuam9pbignLCAnKX19e3s/aXQuYXVkaW9faW5wdXRzLmxlbmd0aCA+IDB9fSx7ez99fSBmc3t7P2l0LmNvbnRyb2xfaW5wdXRzLmxlbmd0aCA+IDB9fSx7ez99fSB7ez1pdC5jb250cm9sX2lucHV0cy5qb2luKCcsICcpfX0pCgogICUgY29uc3RhbnRzCgogIHt7fml0LmNvbnN0YW50X3JhdGU6Y319e3s9Yy5sZWZ0fX0gPSB7ez1jLnJpZ2h0fX07CiAge3t+fX0KCgogICUgZnMKCiAge3t+aXQuc2FtcGxpbmdfcmF0ZTpzfX17ez1zLmxlZnR9fSA9IHt7PXMucmlnaHR9fTsKICB7e359fQoKCiAgJSBjb250cm9sbGkvY29lZmZpY2llbnRpCgogIHt7fml0LmNvbnRyb2xzX3JhdGU6Y319IAogICUge3s9Yy5sYWJlbH19CiAge3t+Yy5zdG10czogc319CiAge3s9cy5sZWZ0fX0gPSB7ez1zLnJpZ2h0fX07e3t+fX0KICB7e359fQogIAoKICAKICAlIGluaXQgZGVsYXkKCiAge3t+aXQucmVzZXQxOnJ9fXt7PXIubGVmdH19ID0ge3s9ci5yaWdodH19OwogIHt7fn19CiAge3t+aXQucmVzZXQyOnJ9fXt7PXIubGVmdH19ID0ge3s9ci5yaWdodH19OwogIHt7fn19CiAgCiAgCiAgZm9yIGkgPSAxOmxlbmd0aCh7ez1pdC5hdWRpb19pbnB1dHNbMF19fSkKCiAgICAlIGF1ZGlvIHJhdGUKCiAgICB7e35pdC5hdWRpb19yYXRlOiBhfX0KICAgIHt7PWEubGVmdH19ID0ge3s9YS5yaWdodH19O3t7fn19CgogICAgJSBkZWxheSB1cGRhdGVzCiAgICAKICAgIHt7fml0LmRlbGF5X3VwZGF0ZXM6dX19e3s9dS5sZWZ0fX0gPSB7ez11LnJpZ2h0fX07CiAgICB7e359fQoKICAgICUgb3V0cHV0CgogICAge3t+aXQub3V0cHV0X3VwZGF0ZXM6dX19CiAgICB7ez11LmxlZnR9fShpKSA9IHt7PXUucmlnaHR9fTt7e359fQogICAgCiAgZW5kZm9yCgplbmRmdW5jdGlvbgo=","base64")),
-					"vst2_main_h": 		String(Buffer("Y2xhc3Mge3s9aXQuY2xhc3NfbmFtZX19CnsKcHVibGljOgoJdm9pZCBzZXRTYW1wbGVSYXRlKGZsb2F0IHNhbXBsZVJhdGUpOwoJdm9pZCByZXNldCgpOwoJdm9pZCBwcm9jZXNzKHt7PWl0LmF1ZGlvX2lucHV0cy5jb25jYXQoaXQub3V0cHV0cykubWFwKHggPT4gJ2Zsb2F0IConICsgeCkuam9pbignLCAnKX19LCBpbnQgblNhbXBsZXMpOwp7e35pdC5jb250cm9sX2lucHV0czpjfX0KCWZsb2F0IGdldHt7PWN9fSgpOwoJdm9pZCBzZXR7ez1jfX0oZmxvYXQgdmFsdWUpO3t7fn19Cgpwcml2YXRlOgoKCXt7fml0LmRlY2xhcmF0aW9uczE6ZH19CglmbG9hdCB7ez1kLmxlZnR9fTt7e359fQoJCgl7e35pdC5kZWNsYXJhdGlvbnMyOmR9fQoJZmxvYXQge3s9ZC5sZWZ0fX0gPSB7ez1kLnJpZ2h0fX07e3t+fX0KCgl7e35pdC5jb250cm9sX2lucHV0czpjfX0KCWZsb2F0IHt7PWN9fV96MTsKCWNoYXIge3s9Y319X0NIQU5HRUQ7Cgl7e359fQoKCWZsb2F0IGZzOwoJY2hhciBmaXJzdFJ1bjsKCn07Cg==","base64")),
-					"vst2_main_cpp": 	String(Buffer("I2luY2x1ZGUgInZzdDJfe3s9aXQuY2xhc3NfbmFtZX19LmgiCgoKe3t+aXQuY29uc3RhbnRfcmF0ZTpjfX1zdGF0aWMgY29uc3QgZmxvYXQge3s9Yy5sZWZ0fX0gPSB7ez1jLnJpZ2h0fX07Cnt7fn19Cgp2b2lkIHt7PWl0LmNsYXNzX25hbWV9fTo6cmVzZXQoKQp7CglmaXJzdFJ1biA9IDE7Cn0KCnZvaWQge3s9aXQuY2xhc3NfbmFtZX19OjpzZXRTYW1wbGVSYXRlKGZsb2F0IHNhbXBsZVJhdGUpCnsKCWZzID0gc2FtcGxlUmF0ZTsKCXt7fml0LnNhbXBsaW5nX3JhdGU6c319e3s/cy5pc191c2VkX2xvY2FsbHl9fWNvbnN0IGZsb2F0IHt7P319e3s9cy5sZWZ0fX0gPSB7ez1zLnJpZ2h0fX07Cgl7e359fQp9Cgp2b2lkIHt7PWl0LmNsYXNzX25hbWV9fTo6cHJvY2Vzcyh7ez1pdC5hdWRpb19pbnB1dHMuY29uY2F0KGl0Lm91dHB1dHMpLm1hcCh4ID0+ICdmbG9hdCAqJyArIHgpLmpvaW4oJywgJyl9fSwgaW50IG5TYW1wbGVzKQp7CglpZiAoZmlyc3RSdW4pIHt7e35pdC5jb250cm9sX2lucHV0czpjfX0KCQl7ez1jfX1fQ0hBTkdFRCA9IDE7e3t+fX0KCX0KCWVsc2Uge3t7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQoJCXt7PWN9fV9DSEFOR0VEID0ge3s9Y319ICE9IHt7PWN9fV96MTt7e359fQoJfQoJe3t+aXQuY29udHJvbHNfcmF0ZTpjfX0KCWlmICh7ez1BcnJheS5mcm9tKGMuc2V0KS5tYXAoZSA9PiBlICsgIl9DSEFOR0VEIikuam9pbignIHwgJyl9fSkge3t7fmMuc3RtdHM6IHN9fQoJCXt7P3MuaXNfdXNlZF9sb2NhbGx5fX1jb25zdCBmbG9hdCB7ez99fXt7PXMubGVmdH19ID0ge3s9cy5yaWdodH19O3t7fn19Cgl9e3t+fX0KCXt7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQoJe3s9Y319X0NIQU5HRUQgPSAwO3t7fn19CgoJaWYgKGZpcnN0UnVuKSB7e3t+aXQucmVzZXQxOnJ9fQoJCXt7P3IuaXNfdXNlZF9sb2NhbGx5fX1jb25zdCBmbG9hdCB7ez99fXt7PXIubGVmdH19ID0ge3s9ci5yaWdodH19O3t7fn19CgkJe3t+aXQucmVzZXQyOnJ9fQoJCXt7P3IuaXNfdXNlZF9sb2NhbGx5fX1jb25zdCBmbG9hdCB7ez99fXt7PXIubGVmdH19ID0ge3s9ci5yaWdodH19O3t7fn19Cgl9CgoJZm9yIChpbnQgaSA9IDA7IGkgPCBuU2FtcGxlczsgaSsrKSB7CgkJe3t+aXQuYXVkaW9fcmF0ZTogYX19CgkJe3s/YS5pc191c2VkX2xvY2FsbHl9fWNvbnN0IGZsb2F0IHt7P319e3s9YS5sZWZ0fX0gPSB7ez1hLnJpZ2h0fX07e3t+fX0KCQkKCQl7e35pdC5kZWxheV91cGRhdGVzOnV9fXt7PXUubGVmdH19ID0ge3s9dS5yaWdodH19OwoJCXt7fn19CgkJe3t+aXQub3V0cHV0X3VwZGF0ZXM6dX19CgkJe3s9dS5sZWZ0fX1baV0gPSB7ez11LnJpZ2h0fX07e3t+fX0KCX0KCgl7e35pdC5jb250cm9sX2lucHV0czpjfX0KCXt7PWN9fV96MSA9IHt7PWN9fTt7e359fQoJZmlyc3RSdW4gPSAwOwp9Cgp7e35pdC5jb250cm9sX2lucHV0czogY319CmZsb2F0IHt7PWl0LmNsYXNzX25hbWV9fTo6Z2V0e3s9Y319KCkgewoJcmV0dXJuIHt7PWN9fTsKfQp2b2lkIHt7PWl0LmNsYXNzX25hbWV9fTo6c2V0e3s9Y319KGZsb2F0IHZhbHVlKSB7Cgl7ez1jfX0gPSB2YWx1ZTsKfQp7e359fQ==","base64")),
+					"matlab": 			String(Buffer("ZnVuY3Rpb24gW3t7PWl0Lm91dHB1dHMuam9pbignLCAnKX19XSA9IHt7PWl0LmNsYXNzX25hbWV9fSh7ez1pdC5hdWRpb19pbnB1dHMuam9pbignLCAnKX19e3s/aXQuYXVkaW9faW5wdXRzLmxlbmd0aCA+IDB9fSx7ez8/fX1uU2FtcGxlcyx7ez99fSBmc3t7P2l0LmNvbnRyb2xfaW5wdXRzLmxlbmd0aCA+IDB9fSx7ez99fSB7ez1pdC5jb250cm9sX2lucHV0cy5qb2luKCcsICcpfX0pCgogICUgY29uc3RhbnRzCgogIHt7fml0LmNvbnN0YW50X3JhdGU6Y319e3s9Y319OwogIHt7fn19CgogICUgZnMKCiAge3t+aXQuc2FtcGxpbmdfcmF0ZTpzfX17ez1zfX07CiAge3t+fX0KCgogICUgY29udHJvbGxpL2NvZWZmaWNpZW50aQoKICB7e35pdC5jb250cm9sc19yYXRlOmN9fSAKICAlIHt7PWMubGFiZWx9fQogIHt7fmMuc3RtdHM6IHN9fQogIHt7PXN9fTt7e359fQogIHt7fn19CiAgCgogIAogICUgaW5pdCBkZWxheQoKICB7e35pdC5yZXNldDE6cn19e3s9cn19OwogIHt7fn19CiAge3t+aXQucmVzZXQyOnJ9fXt7PXJ9fTsKICB7e359fQogIAogIAogIGZvciBpID0gMTp7ez9pdC5hdWRpb19pbnB1dHMubGVuZ3RoID4gMH19bGVuZ3RoKHt7PWl0LmF1ZGlvX2lucHV0c1swXX19KXt7Pz99fW5TYW1wbGVze3s/fX0KCiAgICAlIGF1ZGlvIHJhdGUKCiAgICB7e35pdC5hdWRpb19yYXRlOiBhfX0KICAgIHt7PWF9fTt7e359fQoKICAgICUgZGVsYXkgdXBkYXRlcwogICAgCiAgICB7e35pdC5kZWxheV91cGRhdGVzOnV9fXt7PXV9fTsKICAgIHt7fn19CgogICAgJSBvdXRwdXQKCiAgICB7e35pdC5vdXRwdXRfdXBkYXRlczp1fX0KICAgIHt7PXV9fTt7e359fQogICAgCiAgZW5kZm9yCgplbmRmdW5jdGlvbgo=","base64")),
+					"vst2_main_h": 		String(Buffer("Y2xhc3Mge3s9aXQuY2xhc3NfbmFtZX19CnsKcHVibGljOgoJdm9pZCBzZXRTYW1wbGVSYXRlKGZsb2F0IHNhbXBsZVJhdGUpOwoJdm9pZCByZXNldCgpOwoJdm9pZCBwcm9jZXNzKHt7PWl0LmF1ZGlvX2lucHV0cy5jb25jYXQoaXQub3V0cHV0cykubWFwKHggPT4gJ2Zsb2F0IConICsgeCkuam9pbignLCAnKX19LCBpbnQgblNhbXBsZXMpOwp7e35pdC5jb250cm9sX2lucHV0czpjfX0KCWZsb2F0IGdldHt7PWN9fSgpOwoJdm9pZCBzZXR7ez1jfX0oZmxvYXQgdmFsdWUpO3t7fn19Cgpwcml2YXRlOgoKCXt7fml0LmRlY2xhcmF0aW9uczE6ZH19CglmbG9hdCB7ez1kfX0gPSAwLmY7e3t+fX0KCQoJe3t+aXQuZGVjbGFyYXRpb25zMjpkfX0KCWZsb2F0IHt7PWR9fTt7e359fQoKCXt7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQoJZmxvYXQge3s9Y319X3oxOwoJY2hhciB7ez1jfX1fQ0hBTkdFRDsKCXt7fn19CgoJZmxvYXQgZnM7CgljaGFyIGZpcnN0UnVuOwoKfTsK","base64")),
+					"vst2_main_cpp": 	String(Buffer("I2luY2x1ZGUgInZzdDJfe3s9aXQuY2xhc3NfbmFtZX19LmgiCgoKe3t+aXQuY29uc3RhbnRfcmF0ZTpjfX1zdGF0aWMgY29uc3QgZmxvYXQge3s9Y319Owp7e359fQoKdm9pZCB7ez1pdC5jbGFzc19uYW1lfX06OnJlc2V0KCkKewoJZmlyc3RSdW4gPSAxOwp9Cgp2b2lkIHt7PWl0LmNsYXNzX25hbWV9fTo6c2V0U2FtcGxlUmF0ZShmbG9hdCBzYW1wbGVSYXRlKQp7CglmcyA9IHNhbXBsZVJhdGU7Cgl7e35pdC5zYW1wbGluZ19yYXRlOnN9fXt7P3MuaXNfdXNlZF9sb2NhbGx5fX1jb25zdCBmbG9hdCB7ez99fXt7PXN9fTsKCXt7fn19Cn0KCnZvaWQge3s9aXQuY2xhc3NfbmFtZX19Ojpwcm9jZXNzKHt7PWl0LmF1ZGlvX2lucHV0cy5jb25jYXQoaXQub3V0cHV0cykubWFwKHggPT4gJ2Zsb2F0IConICsgeCkuam9pbignLCAnKX19LCBpbnQgblNhbXBsZXMpCnsKCWlmIChmaXJzdFJ1bikge3t7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQoJCXt7PWN9fV9DSEFOR0VEID0gMTt7e359fQoJfQoJZWxzZSB7e3t+aXQuY29udHJvbF9pbnB1dHM6Y319CgkJe3s9Y319X0NIQU5HRUQgPSB7ez1jfX0gIT0ge3s9Y319X3oxO3t7fn19Cgl9Cgl7e35pdC5jb250cm9sc19yYXRlOmN9fQoJaWYgKHt7PUFycmF5LmZyb20oYy5zZXQpLm1hcChlID0+IGUgKyAiX0NIQU5HRUQiKS5qb2luKCcgfCAnKX19KSB7e3t+Yy5zdG10czogc319CgkJe3s/cy5pc191c2VkX2xvY2FsbHl9fWNvbnN0IGZsb2F0IHt7P319e3s9c319O3t7fn19Cgl9e3t+fX0KCXt7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQoJe3s9Y319X0NIQU5HRUQgPSAwO3t7fn19CgoJaWYgKGZpcnN0UnVuKSB7e3t+aXQucmVzZXQxOnJ9fQoJCXt7P3IuaXNfdXNlZF9sb2NhbGx5fX1jb25zdCBmbG9hdCB7ez99fXt7PXJ9fTt7e359fQoJCXt7fml0LnJlc2V0MjpyfX0KCQl7ez9yLmlzX3VzZWRfbG9jYWxseX19Y29uc3QgZmxvYXQge3s/fX17ez1yfX07e3t+fX0KCX0KCglmb3IgKGludCBpID0gMDsgaSA8IG5TYW1wbGVzOyBpKyspIHsKCQl7e35pdC5hdWRpb19yYXRlOiBhfX0KCQl7ez9hLmlzX3VzZWRfbG9jYWxseX19Y29uc3QgZmxvYXQge3s/fX17ez1hfX07e3t+fX0KCQkKCQl7e35pdC5kZWxheV91cGRhdGVzOnV9fXt7PXV9fTsKCQl7e359fQoJCXt7fml0Lm91dHB1dF91cGRhdGVzOnV9fQoJCXt7PXV9fTt7e359fQoJfQoKCXt7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQoJe3s9Y319X3oxID0ge3s9Y319O3t7fn19CglmaXJzdFJ1biA9IDA7Cn0KCnt7fml0LmNvbnRyb2xfaW5wdXRzOiBjfX0KZmxvYXQge3s9aXQuY2xhc3NfbmFtZX19OjpnZXR7ez1jfX0oKSB7CglyZXR1cm4ge3s9Y319Owp9CnZvaWQge3s9aXQuY2xhc3NfbmFtZX19OjpzZXR7ez1jfX0oZmxvYXQgdmFsdWUpIHsKCXt7PWN9fSA9IHZhbHVlOwp9Cnt7fn19","base64")),
 					"vst2_effect_h": 	String(Buffer("I2lmbmRlZiBfRUZGRUNUX0gKI2RlZmluZSBfRUZGRUNUX0gKCiNpbmNsdWRlICJhdWRpb2VmZmVjdHguaCIKI2luY2x1ZGUgInZzdDJfe3s9aXQuY2xhc3NfbmFtZX19LmgiCgpjbGFzcyBFZmZlY3QgOiBwdWJsaWMgQXVkaW9FZmZlY3RYCnsKcHVibGljOgoJRWZmZWN0KGF1ZGlvTWFzdGVyQ2FsbGJhY2sgYXVkaW9NYXN0ZXIpOwoJfkVmZmVjdCgpOwoKCXZpcnR1YWwgdm9pZCBzZXRTYW1wbGVSYXRlKGZsb2F0IHNhbXBsZVJhdGUpOwoJdmlydHVhbCB2b2lkIHByb2Nlc3MoZmxvYXQgKippbnB1dHMsIGZsb2F0ICoqb3V0cHV0cywgVnN0SW50MzIgc2FtcGxlRnJhbWVzKTsKCXZpcnR1YWwgdm9pZCBwcm9jZXNzUmVwbGFjaW5nKGZsb2F0ICoqaW5wdXRzLCBmbG9hdCAqKm91dHB1dHMsIFZzdEludDMyIHNhbXBsZUZyYW1lcyk7Cgl2aXJ0dWFsIHZvaWQgc2V0UHJvZ3JhbU5hbWUoY2hhciAqbmFtZSk7Cgl2aXJ0dWFsIHZvaWQgZ2V0UHJvZ3JhbU5hbWUoY2hhciAqbmFtZSk7Cgl2aXJ0dWFsIGJvb2wgZ2V0UHJvZ3JhbU5hbWVJbmRleGVkKFZzdEludDMyIGNhdGVnb3J5LCBWc3RJbnQzMiBpbmRleCwgY2hhciogbmFtZSk7Cgl2aXJ0dWFsIHZvaWQgc2V0UGFyYW1ldGVyKFZzdEludDMyIGluZGV4LCBmbG9hdCB2YWx1ZSk7Cgl2aXJ0dWFsIGZsb2F0IGdldFBhcmFtZXRlcihWc3RJbnQzMiBpbmRleCk7Cgl2aXJ0dWFsIHZvaWQgZ2V0UGFyYW1ldGVyTGFiZWwoVnN0SW50MzIgaW5kZXgsIGNoYXIgKmxhYmVsKTsKCXZpcnR1YWwgdm9pZCBnZXRQYXJhbWV0ZXJEaXNwbGF5KFZzdEludDMyIGluZGV4LCBjaGFyICp0ZXh0KTsKCXZpcnR1YWwgdm9pZCBnZXRQYXJhbWV0ZXJOYW1lKFZzdEludDMyIGluZGV4LCBjaGFyICp0ZXh0KTsKCgl2aXJ0dWFsIGJvb2wgZ2V0RWZmZWN0TmFtZShjaGFyICpuYW1lKTsKCXZpcnR1YWwgYm9vbCBnZXRWZW5kb3JTdHJpbmcoY2hhciAqdGV4dCk7Cgl2aXJ0dWFsIGJvb2wgZ2V0UHJvZHVjdFN0cmluZyhjaGFyICp0ZXh0KTsKCXZpcnR1YWwgVnN0SW50MzIgZ2V0VmVuZG9yVmVyc2lvbigpIHsgcmV0dXJuIDEwMDA7IH0KCnByaXZhdGU6CgljaGFyIHByb2dyYW1OYW1lWzMyXTsKCgl7ez1pdC5jbGFzc19uYW1lfX0gaW5zdGFuY2U7Cn07CgojZW5kaWYK","base64")),
 					"vst2_effect_cpp": 	String(Buffer("I2luY2x1ZGUgInZzdDJfZWZmZWN0LmgiCgojaW5jbHVkZSA8Y3N0ZGxpYj4KI2luY2x1ZGUgPGNzdGRpbz4KI2luY2x1ZGUgPGNtYXRoPgojaW5jbHVkZSA8YWxnb3JpdGhtPgoKQXVkaW9FZmZlY3QgKmNyZWF0ZUVmZmVjdEluc3RhbmNlKGF1ZGlvTWFzdGVyQ2FsbGJhY2sgYXVkaW9NYXN0ZXIpIHsgcmV0dXJuIG5ldyBFZmZlY3QoYXVkaW9NYXN0ZXIpOyB9CgpFZmZlY3Q6OkVmZmVjdChhdWRpb01hc3RlckNhbGxiYWNrIGF1ZGlvTWFzdGVyKSA6IEF1ZGlvRWZmZWN0WChhdWRpb01hc3RlciwgMSwge3s9aXQuY29udHJvbF9pbnB1dHMubGVuZ3RofX0pIHsKCXNldE51bUlucHV0cyh7ez1pdC5hdWRpb19pbnB1dHMubGVuZ3RofX0pOwoJc2V0TnVtT3V0cHV0cyh7ez1pdC5vdXRwdXRzLmxlbmd0aH19KTsKCXNldFVuaXF1ZUlEKCdmeGZ4Jyk7CglERUNMQVJFX1ZTVF9ERVBSRUNBVEVEKGNhbk1vbm8pICgpOwoJY2FuUHJvY2Vzc1JlcGxhY2luZygpOwoJc3RyY3B5KHByb2dyYW1OYW1lLCAiRWZmZWN0Iik7CgoJaW5zdGFuY2UgPSB7ez1pdC5jbGFzc19uYW1lfX0oKTsKfQoKRWZmZWN0Ojp+RWZmZWN0KCkge30KCmJvb2wgRWZmZWN0OjpnZXRQcm9kdWN0U3RyaW5nKGNoYXIqIHRleHQpIHsgc3RyY3B5KHRleHQsICJFZmZlY3QiKTsgcmV0dXJuIHRydWU7IH0KYm9vbCBFZmZlY3Q6OmdldFZlbmRvclN0cmluZyhjaGFyKiB0ZXh0KSB7IHN0cmNweSh0ZXh0LCAiQ2lhcmFtZWxsYSIpOyByZXR1cm4gdHJ1ZTsgfQpib29sIEVmZmVjdDo6Z2V0RWZmZWN0TmFtZShjaGFyKiBuYW1lKSB7IHN0cmNweShuYW1lLCAiRWZmZWN0Iik7IHJldHVybiB0cnVlOyB9Cgp2b2lkIEVmZmVjdDo6c2V0UHJvZ3JhbU5hbWUoY2hhciAqbmFtZSkgeyBzdHJjcHkocHJvZ3JhbU5hbWUsIG5hbWUpOyB9CnZvaWQgRWZmZWN0OjpnZXRQcm9ncmFtTmFtZShjaGFyICpuYW1lKSB7IHN0cmNweShuYW1lLCBwcm9ncmFtTmFtZSk7IH0KCmJvb2wgRWZmZWN0OjpnZXRQcm9ncmFtTmFtZUluZGV4ZWQoVnN0SW50MzIgY2F0ZWdvcnksIFZzdEludDMyIGluZGV4LCBjaGFyKiBuYW1lKSB7CglpZiAoaW5kZXggPT0gMCkgewoJCXN0cmNweShuYW1lLCBwcm9ncmFtTmFtZSk7CgkJcmV0dXJuIHRydWU7Cgl9CglyZXR1cm4gZmFsc2U7Cn0KCnZvaWQgRWZmZWN0OjpzZXRQYXJhbWV0ZXIoVnN0SW50MzIgaW5kZXgsIGZsb2F0IHZhbHVlKSB7Cglzd2l0Y2ggKGluZGV4KSB7Cgl7e35pdC5jb250cm9sX2lucHV0czpjfX0KCWNhc2Uge3s9aXQuY29udHJvbF9pbnB1dHMuaW5kZXhPZihjKX19OgoJCWluc3RhbmNlLnNldHt7PWN9fSh2YWx1ZSk7CgkJYnJlYWs7e3t+fX0KCX0KfQoKZmxvYXQgRWZmZWN0OjpnZXRQYXJhbWV0ZXIoVnN0SW50MzIgaW5kZXgpIHsKCWZsb2F0IHYgPSAwLmY7Cglzd2l0Y2ggKGluZGV4KSB7Cgl7e35pdC5jb250cm9sX2lucHV0czpjfX0KCWNhc2Uge3s9aXQuY29udHJvbF9pbnB1dHMuaW5kZXhPZihjKX19OgoJCXYgPSBpbnN0YW5jZS5nZXR7ez1jfX0oKTsKCQlicmVhazt7e359fQoJfQoJcmV0dXJuIHY7Cn0KCnZvaWQgRWZmZWN0OjpnZXRQYXJhbWV0ZXJOYW1lKFZzdEludDMyIGluZGV4LCBjaGFyICp0ZXh0KSB7Cgljb25zdCBjaGFyICpuYW1lc1tdID0geyB7ez1pdC5jb250cm9sX2lucHV0cy5tYXAoYyA9PiAnXCInICtjKydcIicpfX19OwoJc3RyY3B5KHRleHQsIG5hbWVzW2luZGV4XSk7Cn0KCnZvaWQgRWZmZWN0OjpnZXRQYXJhbWV0ZXJEaXNwbGF5KFZzdEludDMyIGluZGV4LCBjaGFyICp0ZXh0KSB7Cgl0ZXh0WzBdID0gJ1wwJzsKfQoKdm9pZCBFZmZlY3Q6OmdldFBhcmFtZXRlckxhYmVsKFZzdEludDMyIGluZGV4LCBjaGFyICp0ZXh0KSAgewoJdGV4dFswXSA9ICdcMCc7Cn0KCnZvaWQgRWZmZWN0OjpzZXRTYW1wbGVSYXRlKGZsb2F0IHNhbXBsZVJhdGUpIHsKCWluc3RhbmNlLnNldFNhbXBsZVJhdGUoc2FtcGxlUmF0ZSk7CglpbnN0YW5jZS5yZXNldCgpOwp9Cgp2b2lkIEVmZmVjdDo6cHJvY2VzcyhmbG9hdCAqKmlucHV0cywgZmxvYXQgKipvdXRwdXRzLCBWc3RJbnQzMiBzYW1wbGVGcmFtZXMpIHsKCWluc3RhbmNlLnByb2Nlc3Moe3s9aXQuYXVkaW9faW5wdXRzLm1hcChpID0+ICdpbnB1dHNbJytpdC5hdWRpb19pbnB1dHMuaW5kZXhPZihpKSsnXScpfX0sIHt7PWl0Lm91dHB1dHMubWFwKGkgPT4gJ291dHB1dHNbJytpdC5vdXRwdXRzLmluZGV4T2YoaSkrJ10nKX19LCBzYW1wbGVGcmFtZXMpOwp9Cgp2b2lkIEVmZmVjdDo6cHJvY2Vzc1JlcGxhY2luZyhmbG9hdCAqKmlucHV0cywgZmxvYXQgKipvdXRwdXRzLCBWc3RJbnQzMiBzYW1wbGVGcmFtZXMpIHsKCWluc3RhbmNlLnByb2Nlc3Moe3s9aXQuYXVkaW9faW5wdXRzLm1hcChpID0+ICdpbnB1dHNbJytpdC5hdWRpb19pbnB1dHMuaW5kZXhPZihpKSsnXScpfX0sIHt7PWl0Lm91dHB1dHMubWFwKGkgPT4gJ291dHB1dHNbJytpdC5vdXRwdXRzLmluZGV4T2YoaSkrJ10nKX19LCBzYW1wbGVGcmFtZXMpOwp9","base64")),
 					"js_html": 			String(Buffer("PCFET0NUWVBFIGh0bWw+CjxodG1sPgo8aGVhZD4KPHRpdGxlPlBsdWdpbjwvdGl0bGU+CjxzY3JpcHQgdHlwZT0idGV4dC9qYXZhc2NyaXB0Ij4KCnZhciBub2RlOwp2YXIgY3R4Owp2YXIgaW5wdXROb2RlOwoKdmFyIGJlZ2luID0gYXN5bmMgZnVuY3Rpb24gKCkgewoJY3R4ID0gbmV3IEF1ZGlvQ29udGV4dCgpOwoKCWF3YWl0IGN0eC5hdWRpb1dvcmtsZXQuYWRkTW9kdWxlKCJwcm9jZXNzb3IuanMiKTsKCglub2RlID0gbmV3IEF1ZGlvV29ya2xldE5vZGUoY3R4LCAiUGx1Z2luUHJvY2Vzc29yIiwgeyBvdXRwdXRDaGFubmVsQ291bnQ6IFsxXSB9KTsKCglub2RlLmNvbm5lY3QoY3R4LmRlc3RpbmF0aW9uKTsKCgl2YXIgc3RyZWFtID0gYXdhaXQgbmF2aWdhdG9yLm1lZGlhRGV2aWNlcy5nZXRVc2VyTWVkaWEoeyBhdWRpbzogeyBhdXRvR2FpbkNvbnRyb2w6IGZhbHNlLCBlY2hvQ2FuY2VsbGF0aW9uOiBmYWxzZSwgbm9pc2VTdXBwcmVzc2lvbjogZmFsc2UsIGxhdGVuY3k6IDAuMDA1IH0gfSk7CglpbnB1dE5vZGUgPSBjdHguY3JlYXRlTWVkaWFTdHJlYW1Tb3VyY2Uoc3RyZWFtKTsKCglpbnB1dE5vZGUuY29ubmVjdChub2RlKTsKCiAge3t+aXQuY29udHJvbF9pbnB1dHM6Y319CiAgZG9jdW1lbnQuZ2V0RWxlbWVudEJ5SWQoInt7PWN9fSIpLm9uaW5wdXQgPSBoYW5kbGVJbnB1dDsge3t+fX0KICAKfTsKCmZ1bmN0aW9uIGhhbmRsZUlucHV0KGUpIHsKCW5vZGUucG9ydC5wb3N0TWVzc2FnZSh7dHlwZTogInBhcmFtQ2hhbmdlIiwgaWQ6IGUudGFyZ2V0LmlkLCB2YWx1ZTogZS50YXJnZXQudmFsdWV9KQp9Owo8L3NjcmlwdD4KPC9oZWFkPgo8Ym9keT4KICA8aDE+e3s9aXQuY2xhc3NfbmFtZX19PC9oMT4KICAKICB7e35pdC5jb250cm9sX2lucHV0czpjfX0KICA8bGFiZWwgZm9yPSJ7ez1jfX0iPnt7PWN9fTwvbGFiZWw+CiAgPGlucHV0IHR5cGU9InJhbmdlIiBpZD0ie3s9Y319IiBuYW1lPSJ7ez1jfX0iIG1pbj0iMCIgbWF4PSIxIiB2YWx1ZT0iMC41IiBzdGVwPSJhbnkiPjxicj57e359fQoKICA8YnV0dG9uIG9uY2xpY2s9ImJlZ2luKCkiPlN0YXJ0PC9idXR0b24+CjwvYm9keT4KPC9odG1sPgo=","base64")),
-					"js_processor": 	String(Buffer("dmFyIFBsdWdpbiA9IHsKCWluaXQ6IGZ1bmN0aW9uICgpIHsKCQl0aGlzLmZzID0gMDsKCQl0aGlzLmZpcnN0UnVuID0gMTsKCgkJe3t+aXQuY29uc3RhbnRfcmF0ZTpjfX17ez1jLmxlZnR9fSA9IHt7PWMucmlnaHR9fTsKCQl7e359fQoKCQl0aGlzLnBhcmFtcyA9IFt7ez1pdC5jb250cm9sX2lucHV0cy5tYXAoYyA9PiAnIicgKyBjICsgJyInKS5qb2luKCIsICIpfX1dOwoKCQl7e35pdC5kZWNsYXJhdGlvbnMxOmR9fQoJCXt7PWQubGVmdH19ID0gMDt7e359fQoKCQl7e35pdC5kZWNsYXJhdGlvbnMyOmR9fQoJCXt7PWQubGVmdH19ID0ge3s9ZC5yaWdodH19O3t7fn19CgoJCXt7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQoJCXRoaXMue3s9Y319X3oxID0gMDsKCQl0aGlzLnt7PWN9fV9DSEFOR0VEID0gdHJ1ZTsKCQl7e359fQoJfSwKCglyZXNldDogZnVuY3Rpb24gKCkgewoJCXRoaXMuZmlyc3RSdW4gPSAxCgl9LAoKCXNldFNhbXBsZVJhdGU6IGZ1bmN0aW9uIChzYW1wbGVSYXRlKSB7CgkJdGhpcy5mcyA9IHNhbXBsZVJhdGU7CgkJe3t+aXQuc2FtcGxpbmdfcmF0ZTpzfX17ez1zLmxlZnR9fSA9IHt7PXMucmlnaHR9fTsKCQl7e359fQoJfSwKCglwcm9jZXNzOiBmdW5jdGlvbiAoe3s9aXQuYXVkaW9faW5wdXRzLmNvbmNhdChpdC5vdXRwdXRzKS5qb2luKCcsICcpfX0sIG5TYW1wbGVzKSB7CgkJaWYgKHRoaXMuZmlyc3RSdW4pIHt7e35pdC5jb250cm9sX2lucHV0czpjfX0KCQkJdGhpcy57ez1jfX1fQ0hBTkdFRCA9IHRydWU7e3t+fX0KCQl9CgkJZWxzZSB7e3t+aXQuY29udHJvbF9pbnB1dHM6Y319CgkJCXRoaXMue3s9Y319X0NIQU5HRUQgPSB0aGlzLnt7PWN9fSAhPSB0aGlzLnt7PWN9fV96MTt7e359fQoJCX0KCgkJe3t+aXQuY29udHJvbHNfcmF0ZTpjfX0KCQlpZiAoe3s9QXJyYXkuZnJvbShjLnNldCkubWFwKGUgPT4gInRoaXMuIiArIGUgKyAiX0NIQU5HRUQiKS5qb2luKCcgfCAnKX19KSB7e3t+Yy5zdG10czogc319CgkJCXt7PXMubGVmdH19ID0ge3s9cy5yaWdodH19O3t7fn19CgkJfXt7fn19CgkJe3t+aXQuY29udHJvbF9pbnB1dHM6Y319CgkJdGhpcy57ez1jfX1fQ0hBTkdFRCA9IGZhbHNlO3t7fn19CgoJCWlmICh0aGlzLmZpcnN0UnVuKSB7IHt7fml0LnJlc2V0MTpyfX0KCQkJe3s9ci5sZWZ0fX0gPSB7ez1yLnJpZ2h0fX07e3t+fX0KCQkJe3t+aXQucmVzZXQyOnJ9fQoJCQl7ez1yLmxlZnR9fSA9IHt7PXIucmlnaHR9fTt7e359fQoJCX0KCgkJZm9yIChsZXQgaSA9IDA7IGkgPCBuU2FtcGxlczsgaSsrKSB7CgkJCXt7fml0LmF1ZGlvX3JhdGU6IGF9fQoJCQl7ez1hLmxlZnR9fSA9IHt7PWEucmlnaHR9fTt7e359fQoJCQkKCQkJe3t+aXQuZGVsYXlfdXBkYXRlczp1fX17ez11LmxlZnR9fSA9IHt7PXUucmlnaHR9fTsKCQkJe3t+fX0KCQkJe3t+aXQub3V0cHV0X3VwZGF0ZXM6dX19CgkJCXt7PXUubGVmdH19W2ldID0ge3s9dS5yaWdodH19O3t7fn19CgkJfQoKCQl7e35pdC5jb250cm9sX2lucHV0czpjfX0KCQl0aGlzLnt7PWN9fV96MSA9IHRoaXMue3s9Y319O3t7fn19CgkJdGhpcy5maXJzdFJ1biA9IDA7Cgl9Cn0KCi8vIFN0YXRpYyBwYXJ0CmNsYXNzIFBsdWdpblByb2Nlc3NvciBleHRlbmRzIEF1ZGlvV29ya2xldFByb2Nlc3NvciB7Cgljb25zdHJ1Y3RvciAoKSB7CgoJCXN1cGVyKCk7CgkJdGhpcy5pbnN0YW5jZSA9IE9iamVjdC5jcmVhdGUoUGx1Z2luKTsKCQl0aGlzLmluc3RhbmNlLmluaXQoKTsKCQl0aGlzLmluc3RhbmNlLnNldFNhbXBsZVJhdGUoc2FtcGxlUmF0ZSk7CgkJdGhpcy5pbnN0YW5jZS5yZXNldCgpOwoKCQl0aGlzLnBvcnQub25tZXNzYWdlID0gKGUpID0+IHsKCQkJaWYgKGUuZGF0YS50eXBlID09ICJjaGFuZ2VJbnN0YW5jZSIpIHsKCQkJCWV2YWwoZS5kYXRhLnZhbHVlKQoJCQkJdGhpcy5pbnN0YW5jZSA9IE9iamVjdC5jcmVhdGUoUGx1Z2luKTsKCQkJCXRoaXMuaW5zdGFuY2UuaW5pdCgpOwoJCQkJdGhpcy5pbnN0YW5jZS5zZXRTYW1wbGVSYXRlKHNhbXBsZVJhdGUpOwoJCQkJdGhpcy5pbnN0YW5jZS5yZXNldCgpOwoJCQl9CgkJCWVsc2UgaWYgKGUuZGF0YS50eXBlID09ICJwYXJhbUNoYW5nZSIpIHsKCQkJCXRoaXMuaW5zdGFuY2VbZS5kYXRhLmlkXSA9IGUuZGF0YS52YWx1ZQoJCQl9CgkJfQoJfQoJcHJvY2VzcyAoaW5wdXRzLCBvdXRwdXRzLCBwYXJhbWV0ZXJzKSB7CgoJCXZhciBpbnB1dCA9IGlucHV0c1swXTsKCQl2YXIgb3V0cHV0ID0gb3V0cHV0c1swXTsKCQlsZXQgblNhbXBsZXMgPSBNYXRoLm1pbihpbnB1dC5sZW5ndGggPj0gMSA/IGlucHV0WzBdLmxlbmd0aCA6IDAsIG91dHB1dFswXS5sZW5ndGgpOwoKCQlsZXQgcHJvY2Vzc0FyZ3VtZW50cyA9IFtdOwoJCWlmIChpbnB1dC5sZW5ndGggPT0ge3s9aXQuYXVkaW9faW5wdXRzLmxlbmd0aH19KQoJCQlwcm9jZXNzQXJndW1lbnRzID0gcHJvY2Vzc0FyZ3VtZW50cy5jb25jYXQoaW5wdXQpOwoJCWVsc2UgaWYgKGlucHV0Lmxlbmd0aCA+IHt7PWl0LmF1ZGlvX2lucHV0cy5sZW5ndGh9fSkKCQkJcHJvY2Vzc0FyZ3VtZW50cyA9IGlucHV0LnNsaWNlKDAsIHt7PWl0LmF1ZGlvX2lucHV0cy5sZW5ndGh9fSkKCQllbHNlIHsKCQkJcHJvY2Vzc0FyZ3VtZW50cyA9IHByb2Nlc3NBcmd1bWVudHMuY29uY2F0KGlucHV0KTsKCQkJY29uc3QgemVyb3MgPSBuZXcgRmxvYXQzMkFycmF5KG5TYW1wbGVzKTsKCQkJZm9yIChsZXQgbWlzc2luZ3MgPSAwOyBtaXNzaW5ncyA8IHt7PWl0LmF1ZGlvX2lucHV0cy5sZW5ndGh9fSAtIGlucHV0Lmxlbmd0aDsgbWlzc2luZ3MrKykKCQkJCXByb2Nlc3NBcmd1bWVudHMucHVzaCh6ZXJvcyk7CgkJfQoKCQlpZiAob3V0cHV0Lmxlbmd0aCA9PSB7ez1pdC5vdXRwdXRzLmxlbmd0aH19KQoJCQlwcm9jZXNzQXJndW1lbnRzID0gcHJvY2Vzc0FyZ3VtZW50cy5jb25jYXQob3V0cHV0KTsKCQllbHNlIGlmIChvdXRwdXQubGVuZ3RoID4ge3s9aXQub3V0cHV0cy5sZW5ndGh9fSkKCQkJcHJvY2Vzc0FyZ3VtZW50cyA9IHByb2Nlc3NBcmd1bWVudHMuY29uY2F0KG91dHB1dC5zcGxpY2UoMCwge3s9aXQub3V0cHV0cy5sZW5ndGh9fSkpOwoJCWVsc2UgewoJCQlwcm9jZXNzQXJndW1lbnRzID0gcHJvY2Vzc0FyZ3VtZW50cy5jb25jYXQob3V0cHV0KTsKCQkJY29uc3QgemVyb3MgPSBuZXcgRmxvYXQzMkFycmF5KG5TYW1wbGVzKTsKCQkJZm9yIChsZXQgbWlzc2luZ3MgPSAwOyBtaXNzaW5ncyA8IHt7PWl0Lm91dHB1dHMubGVuZ3RofX0gLSBvdXRwdXQubGVuZ3RoOyBtaXNzaW5ncysrKQoJCQkJcHJvY2Vzc0FyZ3VtZW50cy5wdXNoKHplcm9zKTsKCQl9CgoJCXByb2Nlc3NBcmd1bWVudHMucHVzaChuU2FtcGxlcyk7CgoJCXRoaXMuaW5zdGFuY2UucHJvY2Vzcy5hcHBseSh0aGlzLmluc3RhbmNlLCBwcm9jZXNzQXJndW1lbnRzKTsKCgkJcmV0dXJuIHRydWU7Cgl9CgoJc3RhdGljIGdldCBwYXJhbWV0ZXJEZXNjcmlwdG9ycygpIHsKCQlyZXR1cm4gW107Cgl9Cn0KCnJlZ2lzdGVyUHJvY2Vzc29yKCJQbHVnaW5Qcm9jZXNzb3IiLCBQbHVnaW5Qcm9jZXNzb3IpOwo=","base64")),
-					"d_processor":		String(Buffer("c3RydWN0IHt7PWl0LmNsYXNzX25hbWV9fQp7Cm5vdGhyb3c6CnB1YmxpYzoKQG5vZ2M6CgogICAge3t+aXQuY29uc3RhbnRfcmF0ZTpjfX1lbnVtIGZsb2F0IHt7PWMubGVmdH19ID0ge3s9Yy5yaWdodH19OwogICAge3t+fX0KCiAgICB2b2lkIHNldFNhbXBsZVJhdGUoZmxvYXQgc2FtcGxlUmF0ZSkKICAgIHsKICAgICAgICBmcyA9IHNhbXBsZVJhdGU7CiAgICAgICAge3t+aXQuc2FtcGxpbmdfcmF0ZTpzfX17ez9zLmlzX3VzZWRfbG9jYWxseX19Y29uc3QgZmxvYXQge3s/fX17ez1zLmxlZnR9fSA9IHt7PXMucmlnaHR9fTsKICAgICAgICB7e359fQogICAgfQoKICAgIHZvaWQgcmVzZXQoKQogICAgewogICAgICAgIGZpcnN0UnVuID0gMTsKICAgIH0KCiAgICB2b2lkIHByb2Nlc3Moe3s9aXQuYXVkaW9faW5wdXRzLmNvbmNhdChpdC5vdXRwdXRzKS5tYXAoeCA9PiAnZmxvYXQgKicgKyB4KS5qb2luKCcsICcpfX0sIGludCBuU2FtcGxlcykKICAgIHsKICAgICAgICBpZiAoZmlyc3RSdW4pIAogICAgICAgIHsKICAgICAgICAgICAge3t+aXQuY29udHJvbF9pbnB1dHM6Y319e3s9Y319X0NIQU5HRUQgPSAxOwogICAgICAgICAgICB7e359fQogICAgICAgIH0KICAgICAgICBlbHNlIHt7e35pdC5jb250cm9sX2lucHV0czpjfX0KICAgICAgICAgICAge3s9Y319X0NIQU5HRUQgPSB7ez1jfX0gIT0ge3s9Y319X3oxO3t7fn19CiAgICAgICAgfQogICAgICAgIHt7fml0LmNvbnRyb2xzX3JhdGU6Y319CiAgICAgICAgaWYgKHt7PUFycmF5LmZyb20oYy5zZXQpLm1hcChlID0+IGUgKyAiX0NIQU5HRUQiKS5qb2luKCcgfCAnKX19KSB7e3t+Yy5zdG10czogc319CiAgICAgICAgICAgIHt7P3MuaXNfdXNlZF9sb2NhbGx5fX1jb25zdCBmbG9hdCB7ez99fXt7PXMubGVmdH19ID0ge3s9cy5yaWdodH19O3t7fn19CiAgICAgICAgfXt7fn19CiAgICAgICAge3t+aXQuY29udHJvbF9pbnB1dHM6Y319CiAgICAgICAge3s9Y319X0NIQU5HRUQgPSAwO3t7fn19CgogICAgICAgIGlmIChmaXJzdFJ1bikge3t7fml0LnJlc2V0MTpyfX0KICAgICAgICAgICAge3s/ci5pc191c2VkX2xvY2FsbHl9fWNvbnN0IGZsb2F0IHt7P319e3s9ci5sZWZ0fX0gPSB7ez1yLnJpZ2h0fX07e3t+fX0KICAgICAgICAgICAge3t+aXQucmVzZXQyOnJ9fQogICAgICAgICAgICB7ez9yLmlzX3VzZWRfbG9jYWxseX19Y29uc3QgZmxvYXQge3s/fX17ez1yLmxlZnR9fSA9IHt7PXIucmlnaHR9fTt7e359fQogICAgICAgIH0KCiAgICAgICAgZm9yIChpbnQgaSA9IDA7IGkgPCBuU2FtcGxlczsgaSsrKSB7CiAgICAgICAgICAgIHt7fml0LmF1ZGlvX3JhdGU6IGF9fQogICAgICAgICAgICB7ez9hLmlzX3VzZWRfbG9jYWxseX19Y29uc3QgZmxvYXQge3s/fX17ez1hLmxlZnR9fSA9IHt7PWEucmlnaHR9fTt7e359fQogICAgICAgICAgICAKICAgICAgICAgICAge3t+aXQuZGVsYXlfdXBkYXRlczp1fX17ez11LmxlZnR9fSA9IHt7PXUucmlnaHR9fTsKICAgICAgICAgICAge3t+fX0KICAgICAgICAgICAge3t+aXQub3V0cHV0X3VwZGF0ZXM6dX19CiAgICAgICAgICAgIHt7PXUubGVmdH19W2ldID0ge3s9dS5yaWdodH19O3t7fn19CiAgICAgICAgfQoKICAgICAgICB7e35pdC5jb250cm9sX2lucHV0czpjfX0KICAgICAgICB7ez1jfX1fejEgPSB7ez1jfX07e3t+fX0KICAgICAgICBmaXJzdFJ1biA9IDA7CiAgICB9CgogICAge3t+aXQuY29udHJvbF9pbnB1dHM6Y319CiAgICBmbG9hdCBnZXR7ez1jfX0oKQogICAgewogICAgICAgIHJldHVybiB7ez1jfX07CiAgICB9CiAgICB2b2lkIHNldHt7PWN9fShmbG9hdCB2YWx1ZSkKICAgIHsKICAgICAgICB7ez1jfX0gPSB2YWx1ZTsKICAgIH0KICAgIHt7fn19Cgpwcml2YXRlOgoKICAgIHt7fml0LmRlY2xhcmF0aW9uczE6ZH19CiAgICBmbG9hdCB7ez1kLmxlZnR9fTt7e359fQogICAgCiAgICB7e35pdC5kZWNsYXJhdGlvbnMyOmR9fQogICAgZmxvYXQge3s9ZC5sZWZ0fX0gPSB7ez1kLnJpZ2h0fX07e3t+fX0KCiAgICB7e35pdC5jb250cm9sX2lucHV0czpjfX0KICAgIGZsb2F0IHt7PWN9fV96MTsKICAgIGNoYXIge3s9Y319X0NIQU5HRUQ7CiAgICB7e359fQoKICAgIGZsb2F0IGZzOwogICAgaW50IGZpcnN0UnVuOwoKfTsK","base64"))
+					"js_processor": 	String(Buffer("dmFyIFBsdWdpbiA9IHsKCWluaXQ6IGZ1bmN0aW9uICgpIHsKCQl0aGlzLmZzID0gMDsKCQl0aGlzLmZpcnN0UnVuID0gMTsKCgkJe3t+aXQuY29uc3RhbnRfcmF0ZTpjfX17ez1jfX07CgkJe3t+fX0KCgkJdGhpcy5wYXJhbXMgPSBbe3s9aXQuY29udHJvbF9pbnB1dHMubWFwKGMgPT4gJyInICsgYyArICciJykuam9pbigiLCAiKX19XTsKCgkJe3t+aXQuZGVjbGFyYXRpb25zMTpkfX0KCQl7ez1kfX0gPSAwO3t7fn19CgoJCXt7fml0LmRlY2xhcmF0aW9uczI6ZH19CgkJe3s9ZH19O3t7fn19CgoJCXt7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQoJCXRoaXMue3s9Y319X3oxID0gMDsKCQl0aGlzLnt7PWN9fV9DSEFOR0VEID0gdHJ1ZTsKCQl7e359fQoJfSwKCglyZXNldDogZnVuY3Rpb24gKCkgewoJCXRoaXMuZmlyc3RSdW4gPSAxCgl9LAoKCXNldFNhbXBsZVJhdGU6IGZ1bmN0aW9uIChzYW1wbGVSYXRlKSB7CgkJdGhpcy5mcyA9IHNhbXBsZVJhdGU7CgkJe3t+aXQuc2FtcGxpbmdfcmF0ZTpzfX17ez1zfX07CgkJe3t+fX0KCX0sCgoJcHJvY2VzczogZnVuY3Rpb24gKHt7PWl0LmF1ZGlvX2lucHV0cy5jb25jYXQoaXQub3V0cHV0cykuam9pbignLCAnKX19LCBuU2FtcGxlcykgewoJCWlmICh0aGlzLmZpcnN0UnVuKSB7e3t+aXQuY29udHJvbF9pbnB1dHM6Y319CgkJCXRoaXMue3s9Y319X0NIQU5HRUQgPSB0cnVlO3t7fn19CgkJfQoJCWVsc2Uge3t7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQoJCQl0aGlzLnt7PWN9fV9DSEFOR0VEID0gdGhpcy57ez1jfX0gIT0gdGhpcy57ez1jfX1fejE7e3t+fX0KCQl9CgoJCXt7fml0LmNvbnRyb2xzX3JhdGU6Y319CgkJaWYgKHt7PUFycmF5LmZyb20oYy5zZXQpLm1hcChlID0+ICJ0aGlzLiIgKyBlICsgIl9DSEFOR0VEIikuam9pbignIHwgJyl9fSkge3t7fmMuc3RtdHM6IHN9fQoJCQl7ez1zfX07e3t+fX0KCQl9e3t+fX0KCQl7e35pdC5jb250cm9sX2lucHV0czpjfX0KCQl0aGlzLnt7PWN9fV9DSEFOR0VEID0gZmFsc2U7e3t+fX0KCgkJaWYgKHRoaXMuZmlyc3RSdW4pIHsge3t+aXQucmVzZXQxOnJ9fQoJCQl7ez1yfX07e3t+fX0KCQkJe3t+aXQucmVzZXQyOnJ9fQoJCQl7ez1yfX07e3t+fX0KCQl9CgoJCWZvciAobGV0IGkgPSAwOyBpIDwgblNhbXBsZXM7IGkrKykgewoJCQl7e35pdC5hdWRpb19yYXRlOiBhfX0KCQkJe3s9YX19O3t7fn19CgkJCQoJCQl7e35pdC5kZWxheV91cGRhdGVzOnV9fXt7PXV9fTsKCQkJe3t+fX0KCQkJe3t+aXQub3V0cHV0X3VwZGF0ZXM6dX19CgkJCXt7PXV9fTt7e359fQoJCX0KCgkJe3t+aXQuY29udHJvbF9pbnB1dHM6Y319CgkJdGhpcy57ez1jfX1fejEgPSB0aGlzLnt7PWN9fTt7e359fQoJCXRoaXMuZmlyc3RSdW4gPSAwOwoJfQp9CgovLyBTdGF0aWMgcGFydApjbGFzcyBQbHVnaW5Qcm9jZXNzb3IgZXh0ZW5kcyBBdWRpb1dvcmtsZXRQcm9jZXNzb3IgewoJY29uc3RydWN0b3IgKCkgewoKCQlzdXBlcigpOwoJCXRoaXMuaW5zdGFuY2UgPSBPYmplY3QuY3JlYXRlKFBsdWdpbik7CgkJdGhpcy5pbnN0YW5jZS5pbml0KCk7CgkJdGhpcy5pbnN0YW5jZS5zZXRTYW1wbGVSYXRlKHNhbXBsZVJhdGUpOwoJCXRoaXMuaW5zdGFuY2UucmVzZXQoKTsKCgkJdGhpcy5wb3J0Lm9ubWVzc2FnZSA9IChlKSA9PiB7CgkJCWlmIChlLmRhdGEudHlwZSA9PSAiY2hhbmdlSW5zdGFuY2UiKSB7CgkJCQlldmFsKGUuZGF0YS52YWx1ZSkKCQkJCXRoaXMuaW5zdGFuY2UgPSBPYmplY3QuY3JlYXRlKFBsdWdpbik7CgkJCQl0aGlzLmluc3RhbmNlLmluaXQoKTsKCQkJCXRoaXMuaW5zdGFuY2Uuc2V0U2FtcGxlUmF0ZShzYW1wbGVSYXRlKTsKCQkJCXRoaXMuaW5zdGFuY2UucmVzZXQoKTsKCQkJfQoJCQllbHNlIGlmIChlLmRhdGEudHlwZSA9PSAicGFyYW1DaGFuZ2UiKSB7CgkJCQl0aGlzLmluc3RhbmNlW2UuZGF0YS5pZF0gPSBlLmRhdGEudmFsdWUKCQkJfQoJCX0KCX0KCXByb2Nlc3MgKGlucHV0cywgb3V0cHV0cywgcGFyYW1ldGVycykgewoKCQl2YXIgaW5wdXQgPSBpbnB1dHNbMF07CgkJdmFyIG91dHB1dCA9IG91dHB1dHNbMF07CgkJbGV0IG5TYW1wbGVzID0gTWF0aC5taW4oaW5wdXQubGVuZ3RoID49IDEgPyBpbnB1dFswXS5sZW5ndGggOiAwLCBvdXRwdXRbMF0ubGVuZ3RoKQoJCQoKCgkJdGhpcy5pbnN0YW5jZS5wcm9jZXNzKHt7PWl0LmF1ZGlvX2lucHV0cy5tYXAoKGlpLCBpKSA9PiAiaW5wdXRbIiArIGkgKyAiXSIpfX17ez9pdC5hdWRpb19pbnB1dHMubGVuZ3RoID4gMH19LCB7ez99fSB7ez1pdC5vdXRwdXRzLm1hcCgoaWksIGkpID0+ICJvdXRwdXRbIiArIGkgKyAiXSIpfX0sIG5TYW1wbGVzKTsKCgkJcmV0dXJuIHRydWU7Cgl9CgoJc3RhdGljIGdldCBwYXJhbWV0ZXJEZXNjcmlwdG9ycygpIHsKCQlyZXR1cm4gW107Cgl9Cn0KCnJlZ2lzdGVyUHJvY2Vzc29yKCJQbHVnaW5Qcm9jZXNzb3IiLCBQbHVnaW5Qcm9jZXNzb3IpOwo=","base64")),
+					"d_processor":		String(Buffer("c3RydWN0IHt7PWl0LmNsYXNzX25hbWV9fQp7Cm5vdGhyb3c6CnB1YmxpYzoKQG5vZ2M6CgogICAge3t+aXQuY29uc3RhbnRfcmF0ZTpjfX1lbnVtIGZsb2F0IHt7PWN9fTsKICAgIHt7fn19CgogICAgdm9pZCBzZXRTYW1wbGVSYXRlKGZsb2F0IHNhbXBsZVJhdGUpCiAgICB7CiAgICAgICAgZnMgPSBzYW1wbGVSYXRlOwogICAgICAgIHt7fml0LnNhbXBsaW5nX3JhdGU6c319e3s/cy5pc191c2VkX2xvY2FsbHl9fWNvbnN0IGZsb2F0IHt7P319e3s9c319OwogICAgICAgIHt7fn19CiAgICB9CgogICAgdm9pZCByZXNldCgpCiAgICB7CiAgICAgICAgZmlyc3RSdW4gPSAxOwogICAgfQoKICAgIHZvaWQgcHJvY2Vzcyh7ez1pdC5hdWRpb19pbnB1dHMuY29uY2F0KGl0Lm91dHB1dHMpLm1hcCh4ID0+ICdmbG9hdCAqJyArIHgpLmpvaW4oJywgJyl9fSwgaW50IG5TYW1wbGVzKQogICAgewogICAgICAgIGlmIChmaXJzdFJ1bikgCiAgICAgICAgewogICAgICAgICAgICB7e35pdC5jb250cm9sX2lucHV0czpjfX17ez1jfX1fQ0hBTkdFRCA9IDE7CiAgICAgICAgICAgIHt7fn19CiAgICAgICAgfQogICAgICAgIGVsc2Uge3t7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQogICAgICAgICAgICB7ez1jfX1fQ0hBTkdFRCA9IHt7PWN9fSAhPSB7ez1jfX1fejE7e3t+fX0KICAgICAgICB9CiAgICAgICAge3t+aXQuY29udHJvbHNfcmF0ZTpjfX0KICAgICAgICBpZiAoe3s9QXJyYXkuZnJvbShjLnNldCkubWFwKGUgPT4gZSArICJfQ0hBTkdFRCIpLmpvaW4oJyB8ICcpfX0pIHt7e35jLnN0bXRzOiBzfX0KICAgICAgICAgICAge3s/cy5pc191c2VkX2xvY2FsbHl9fWNvbnN0IGZsb2F0IHt7P319e3s9c319O3t7fn19CiAgICAgICAgfXt7fn19CiAgICAgICAge3t+aXQuY29udHJvbF9pbnB1dHM6Y319CiAgICAgICAge3s9Y319X0NIQU5HRUQgPSAwO3t7fn19CgogICAgICAgIGlmIChmaXJzdFJ1bikge3t7fml0LnJlc2V0MTpyfX0KICAgICAgICAgICAge3s/ci5pc191c2VkX2xvY2FsbHl9fWNvbnN0IGZsb2F0IHt7P319e3s9cn19O3t7fn19CiAgICAgICAgICAgIHt7fml0LnJlc2V0MjpyfX0KICAgICAgICAgICAge3s/ci5pc191c2VkX2xvY2FsbHl9fWNvbnN0IGZsb2F0IHt7P319e3s9cn19O3t7fn19CiAgICAgICAgfQoKICAgICAgICBmb3IgKGludCBpID0gMDsgaSA8IG5TYW1wbGVzOyBpKyspIHsKICAgICAgICAgICAge3t+aXQuYXVkaW9fcmF0ZTogYX19CiAgICAgICAgICAgIHt7P2EuaXNfdXNlZF9sb2NhbGx5fX1jb25zdCBmbG9hdCB7ez99fXt7PWF9fTt7e359fQoKICAgICAgICAgICAge3t+aXQuZGVsYXlfdXBkYXRlczp1fX17ez11fX07CiAgICAgICAgICAgIHt7fn19CiAgICAgICAgICAgIHt7fml0Lm91dHB1dF91cGRhdGVzOnV9fQogICAgICAgICAgICB7ez11fX07e3t+fX0KICAgICAgICB9CgogICAgICAgIHt7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQogICAgICAgIHt7PWN9fV96MSA9IHt7PWN9fTt7e359fQogICAgICAgIGZpcnN0UnVuID0gMDsKICAgIH0KCiAgICB7e35pdC5jb250cm9sX2lucHV0czpjfX0KICAgIGZsb2F0IGdldHt7PWN9fSgpCiAgICB7CiAgICAgICAgcmV0dXJuIHt7PWN9fTsKICAgIH0KICAgIHZvaWQgc2V0e3s9Y319KGZsb2F0IHZhbHVlKQogICAgewogICAgICAgIHt7PWN9fSA9IHZhbHVlOwogICAgfQogICAge3t+fX0KCnByaXZhdGU6CgogICAge3t+aXQuZGVjbGFyYXRpb25zMTpkfX0KICAgIGZsb2F0IHt7PWR9fSA9IDAuMGY7e3t+fX0KCiAgICB7e35pdC5kZWNsYXJhdGlvbnMyOmR9fQogICAgZmxvYXQge3s9ZH19O3t7fn19CgogICAge3t+aXQuY29udHJvbF9pbnB1dHM6Y319CiAgICBmbG9hdCB7ez1jfX1fejE7CiAgICBjaGFyIHt7PWN9fV9DSEFOR0VEOwogICAge3t+fX0KCiAgICBmbG9hdCBmczsKICAgIGludCBmaXJzdFJ1bjsKCn07","base64"))
 				}
 			}
 		}

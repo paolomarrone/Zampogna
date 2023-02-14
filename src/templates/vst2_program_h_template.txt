@@ -11,10 +11,10 @@ public:
 private:
 
 	{{~it.declarations1:d}}
-	float {{=d.left}};{{~}}
+	float {{=d}} = 0.f;{{~}}
 	
 	{{~it.declarations2:d}}
-	float {{=d.left}} = {{=d.right}};{{~}}
+	float {{=d}};{{~}}
 
 	{{~it.control_inputs:c}}
 	float {{=c}}_z1;

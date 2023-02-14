@@ -155,6 +155,14 @@
 			analyze_anonym_block_signature(block);
 		})
 
+		block.body.filter(stmt => stmt.name == 'IF_THEN_ELSE').forEach(function (ifthenelse) {
+			ifthenelse.outputs.filter(o => !o.init).forEach(function (o) {
+				analyze_left_assignment(scope_block, o)
+			})
+			analyze_anonym_block_signature(ifthenelse.if)
+			analyze_anonym_block_signature(ifthenelse.else)
+		})
+
 		// Validate expr
 
 		block.body.filter(stmt => stmt.name == 'BLOCK_DEF').forEach(function (block) {
@@ -173,6 +181,12 @@
 
 		block.body.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(function (ass) {
 			analyze_right_assignment(scope_block, ass.expr, ass.outputs.length)
+		})
+
+		block.body.filter(stmt => stmt.name == 'IF_THEN_ELSE').forEach(function (ifthenelse) {
+			analyze_right_assignment(scope_block, ifthenelse.condition, 1)
+			analyze_block_body(scope_block, ifthenelse.if)
+			analyze_block_body(scope_block, ifthenelse.else)
 		})
 
 		for (let i in scope_block.elements) {

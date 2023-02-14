@@ -79,6 +79,34 @@ anonym_block_def    : ids_list1 ASSIGN LBRACE block_stmts1 RBRACE
                         }}
                     ;
 
+if_then_else        : ids_list1 ASSIGN IF LPAREN expr RPAREN mayend LBRACE block_stmts1 RBRACE mayend ELSE mayend LBRACE block_stmts1 RBRACE
+                        {{
+                            $$ = {
+                                name:       'IF_THEN_ELSE',
+                                condition:  $5,
+                                outputs:    $1,
+                                if: {
+                                    name:       'ANONYM_BLOCK_DEF',
+                                    id:         {name: 'ID', val: ''},
+                                    inputs:     [],
+                                    outputs:    $1,
+                                    body:       $9
+                                },
+                                else: {
+                                    name:       'ANONYM_BLOCK_DEF',
+                                    id:         {name: 'ID', val: ''},
+                                    inputs:     [],
+                                    outputs:    $1,
+                                    body:       $15
+                                }
+                            }
+                        }}
+                    ;
+
+mayend              : END mayend
+                    |
+                    ;
+
 ids_list1           : id
                         {{
                             $$ = [$1]
@@ -116,6 +144,10 @@ block_stmt          : assignment END
                         {{
                             $$ = [$1]
                         }}
+                    | if_then_else END
+                        {{
+                            $$ = [$1]
+                        }}
                     | END
                         {{
                             $$ = []
@@ -132,9 +164,89 @@ assignment          : ids_list1 ASSIGN expr
                         }}
                     ;
 
-expr                : additive_expr
+expr                : or_expr
                         {{
                             $$ = $1
+                        }}
+                    ;
+
+or_expr             : and_expr
+                        {{
+                            $$ = $1
+                        }}
+                    | or_expr OR and_expr
+                        {{
+                            $$ = {
+                                name: 'OR_EXPR',
+                                args: [$1, $3]
+                            }
+                        }}
+                    ;
+
+and_expr            : equality_expr
+                        {{
+                            $$ = $1
+                        }}
+                    | and_expr AND equality_expr
+                        {{
+                            $$ = {
+                                name: 'AND_EXPR',
+                                args: [$1, $3]
+                            }
+                        }}
+                    ;
+
+equality_expr       : relational_expr
+                        {{
+                            $$ = $1
+                        }}
+                    | equality_expr EQUAL relational_expr
+                        {{
+                            $$ = {
+                                name: 'EQUAL_EXPR',
+                                args: [$1, $3]
+                            }
+                        }}
+                    | equality_expr NOTEQUAL relational_expr
+                        {{
+                            $$ = {
+                                name: 'NOTEQUAL_EXPR',
+                                args: [$1, $3]
+                            }
+                        }}
+                    ;
+
+relational_expr     : additive_expr
+                        {{
+                            $$ = $1
+                        }}
+                    | relational_expr LESS additive_expr
+                        {{
+                            $$ = {
+                                name: 'LESS_EXPR',
+                                args: [$1, $3]
+                            }
+                        }}
+                    | relational_expr LESSEQUAL additive_expr
+                        {{
+                            $$ = {
+                                name: 'LESSEQUAL_EXPR',
+                                args: [$1, $3]
+                            }
+                        }}
+                    | relational_expr GREATER additive_expr
+                        {{
+                            $$ = {
+                                name: 'GREATER_EXPR',
+                                args: [$1, $3]
+                            }
+                        }}
+                    | relational_expr GREATEREQUAL additive_expr
+                        {{
+                            $$ = {
+                                name: 'GREATEREQUAL_EXPR',
+                                args: [$1, $3]
+                            }
                         }}
                     ;
 
@@ -192,6 +304,13 @@ unary_expr          : primary_expr
                     | PLUS primary_expr
                         {{
                             $$ = $2
+                        }}
+                    | NOT primary_expr
+                        {{
+                            $$ = {
+                                name: 'NOT_EXPR',
+                                args: [$2]
+                            }
                         }}
                     ;
 

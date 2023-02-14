@@ -22,8 +22,7 @@ var begin = async function () {
 
 	inputNode.connect(node);
 
-  {{~it.control_inputs:c}}
-  document.getElementById("{{=c}}").oninput = handleInput; {{~}}
+  
   
 };
 
@@ -33,11 +32,9 @@ function handleInput(e) {
 </script>
 </head>
 <body>
-  <h1>{{=it.class_name}}</h1>
+  <h1>decimator</h1>
   
-  {{~it.control_inputs:c}}
-  <label for="{{=c}}">{{=c}}</label>
-  <input type="range" id="{{=c}}" name="{{=c}}" min="0" max="1" value="0.5" step="any"><br>{{~}}
+  
 
   <button onclick="begin()">Start</button>
 </body>

@@ -15,22 +15,24 @@
 
 (function() {
 
-	var Graph = {
-		init: function () {
-			this.blocks = []
-			this.connections = []
-			this.input_ports = []  // external input
-			this.output_ports = [] // output toward outside
-		},
-		getOutputBlocks: function (block) {
-			return this.connections.filter(c => c.in.block == block).map(c => c.out.block)
-		},
-		getInputBlocks: function (block) {
-			return this.connections.filter(c => c.out.block == block).map(c => c.in.block)
-		},
-		crossDFS: function (callbackF) {
-			let self = this
-			this.output_ports.forEach(p => visitNode(p.block))
+	function Graph (id) {
+		let self = this
+		this.id = id
+		this.blocks = []
+		this.connections = []
+		this.input_ports = []  // external input
+		this.output_ports = [] // output toward outside
+		this.getOutputBlocks = function (block) {
+			let cs = self.connections.filter(c => c.in.block == block)
+			cs.sort((a, b) => block.output_ports.indexOf(a.in) < block.output_ports.indexOf(b.in) ? -1 : 1)
+			return cs.map(p => p.out.block)
+		}
+		this.getInputBlocks = function (block) {
+			return block.input_ports.map(p => self.connections.find(c => c.out == p)).filter(
+				c => c != undefined).map(c => c.in.block)
+		}
+		this.crossDFS = function (callbackF) {
+			self.output_ports.forEach(p => visitNode(p.block))
 			function visitNode(block) {
 				if (block.visited)
 					return
@@ -39,53 +41,91 @@
 				self.getInputBlocks(block).forEach(b => visitNode(b))
 				callbackF(block)
 			}
-			this.blocks.forEach(b => delete b.visited)
+			self.blocks.forEach(b => delete b.visited)
+		}
+		this.toString = function () {
+			let s = "{\n\t" + id + ', ' + this.input_ports.length + ', ' + this.output_ports.length + "\n\tblocks: [\n"
+			s += this.blocks.map(b => '\t\t' + b.toString()).join('\n') + "\n\t],"
+			s += ' connections: [\n'
+			s += this.connections.map(c => '\t\t' + c.toString()).join('\n') + "\n\t]\n}"
+			return s;
 		}
 	}
 
-	var Block = {
-		init: function (nInputs = 0, nOutputs = 0, operation = "", id = "", postfix = "", val = NaN) {
-			let self = this
-			this.input_ports = new Array(nInputs).fill().map(function () { 
-				let port = Object.create(Port)
-				port.block = self
-				return port
-			})
-			this.output_ports = new Array(nOutputs).fill().map(function () { 
-				let port = Object.create(Port)
-				port.block = self
-				return port
-			})
-			this.operation = operation
-			this.id = id
-			this.postfix = postfix
-			this.val = val
-			this.control_dependencies = new Set()
-		},
-		get label() {
-			return "" + this.id + this.postfix
-		},
-		getUpdateRateMax: function () {
-			return this.input_ports.concat(this.output_ports).map(p=>p.update_rate).reduce(function
-				(p1, p2) { return  p1 > p2 ? p1 : p2})
-		},
-		propagateUpdateRate: function () {
-			let update_rate_max = this.getUpdateRateMax()
-			this.output_ports.forEach((p => p.update_rate = update_rate_max))
-		},
-		toString: function () {
-			return '{ ' + [this.operation, this.id, this.postfix, this.val, this.input_ports.length, this.output_ports.length, this.control_dependencies.size].join(', ') + ' }'
+	var blocksCounter = 0;
+
+	function Block (nInputs = 0, nOutputs = 0, operation = "", id = "", postfix = "", val = NaN, if_owners = []) {
+		let self = this
+		this.uniqueId = blocksCounter++
+		this.input_ports = new Array(nInputs).fill().map(() => new Port(self))
+		this.output_ports = new Array(nOutputs).fill().map(() => new Port(self))
+		this.operation = operation
+		this.id = id
+		this.postfix = postfix
+		this.val = val
+		this.control_dependencies = new Set()
+		this.if_owners = [...if_owners]
+		
+		this.label = function () {
+			return "" + self.id + self.postfix
+		}
+		this.getUpdateRateMax = function () {
+			return self.input_ports.concat(self.output_ports).map(p => p.update_rate).reduce(function
+				(p1, p2) { return  max(p1, p2)})
+		}
+		this.propagateUpdateRate = function () {
+			if (self.operation == "IF_THEN_ELSE") {
+				let cond_update_rate = self.input_ports[0].update_rate
+				for (let i = 0; i < self.output_ports.length; i++) {
+					let m = max(
+						self.input_ports[i + 1].update_rate, 
+						self.input_ports[i + 1 + self.output_ports.length].update_rate, 
+						cond_update_rate)
+					self.output_ports[i].update_rate = m
+				}
+			}
+			else {
+				let update_rate_max = self.getUpdateRateMax()
+				self.output_ports.forEach((p => p.update_rate = update_rate_max))
+			}
+		}
+		this.toString = function () {
+			return '{ ' + [self.operation, self.id, self.postfix, self.val, self.input_ports.length, self.output_ports.length, self.control_dependencies.size].join(', ') + ' }'
 		}
 	}
 
-	var Port = {
-		block: null,
-		update_rate: -1 // 0 = constants, 1 = fs, 2 = control, 3 = audio
+	function Port (block) {
+		this.block = block
+		this.update_rate = -1 // 0 = constants, 1 = fs, 2 = control, 3 = audio
+		this.getIndex = function () {
+			if (this.block.input_ports.includes(this))
+				return this.block.input_ports.indexOf(this)
+			else if (this.block.output_ports.includes(this))
+				return this.block.output_ports.indexOf(this)
+			else
+				throw new Error("Hanging port: " + this.block.toString())
+		}
+		this.toString = function () {
+			return "{ " + this.block.toString() + ", id: " + this.getIndex() + ", ur: " + this.update_rate + " }"
+		}
 	}
 
-	var Connection = {
-		in: null,
-		out: null
+	function Connection (in_port, out_port) {
+		if (!in_port || !out_port)
+			throw new Error("Undefined ports for the new Connection: " + in_port + ", " + out_port)
+		this.in  = in_port
+		this.out = out_port
+		this.toString = function () {
+			return this.in.toString() + "\t==>\t" + this.out.toString()
+		}
+	}
+
+	function max (x1, ...xn) {
+		let M = x1
+		for (a of xn)
+			if (a > M)
+				M = a
+		return M
 	}
 
 	function ASTToGraph (AST_root, initial_block, control_inputs, initial_values) {
@@ -111,9 +151,7 @@
 
 
 		function convertToGraph() {
-			let graph = Object.create(Graph)
-			graph.init()
-			graph.id = initial_block
+			let graph = new Graph(initial_block)
 
 			let named_blocks = {}
 			let named_vars 	= {}
@@ -126,36 +164,33 @@
 
 			let postfix = '_0'
 
-			let block_fs = Object.create(Block)
-			block_fs.init(0, 1, "SAMPLERATE", "fs", postfix, NaN, undefined)
+			let block_fs = new Block(0, 1, "SAMPLERATE", "fs", postfix, NaN, undefined)
 			named_vars[block_fs.id] = block_fs
 			graph.blocks.push(block_fs)
 
 			AST_root.stmts.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(stmt => stmt.outputs.forEach(function (output) {
-				let block_const = Object.create(Block)
-				block_const.init(1, 1, 'VAR', output.val, postfix, NaN, undefined)
+				let block_const = new Block(1, 1, 'VAR', output.val, postfix, NaN, undefined)
 				named_vars[block_const.id] = block_const
 				graph.blocks.push(block_const)
 			}))
 
 			AST_root.stmts.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(stmt => {
-				let ports = convertExpr(stmt.expr, {}, named_blocks, named_vars)
+				let ports = convertExpr(stmt.expr, {}, named_blocks, named_vars, [])
 				stmt.outputs.forEach((output, index) => {
 					let block_const = named_vars[output.val]
-					let connection = Object.create(Connection)
-					connection.in = ports[1][index]
-					connection.out = block_const.input_ports[0]
+					let connection = new Connection(ports[1][index], block_const.input_ports[0])
 					graph.connections.push(connection)
 				})
 			})
 
-			let ports = expandCompositeBlock(named_blocks[initial_block], ++expansions_count, {}, {...named_blocks}, {...named_vars})
+			let ports = expandCompositeBlock(named_blocks[initial_block], {}, {...named_blocks}, {...named_vars}, [])
 			graph.input_ports = ports[0]
 			graph.output_ports = ports[1]
 
 			return graph
 
-			function expandCompositeBlock (block, expansions_count, expansion_stack, named_blocks, named_vars) {
+			function expandCompositeBlock (block, expansion_stack, named_blocks, named_vars, if_owners) {
+				expansions_count++
 				if (block.id.val != "" && expansion_stack[block.id.val])
 					throw new Error("Recursive block expansion. Stack: " + Object.keys(expansion_stack) + "," + block.id.val)
 				expansion_stack[block.id.val] = true
@@ -167,8 +202,7 @@
 				let output_ports = []
 
 				block.inputs.forEach(function (input) {
-					let block_var = Object.create(Block)
-					block_var.init(1, 1, "VAR", input.val, postfix, NaN)
+					let block_var = new Block(1, 1, "VAR", input.val, postfix, NaN, if_owners)
 					named_vars[block_var.id] = block_var
 					graph.blocks.push(block_var)
 					input_ports.push(block_var.input_ports[0])
@@ -176,10 +210,13 @@
 
 				block.body.filter(stmt => stmt.name == 'BLOCK_DEF').forEach(block => named_blocks[block.id.val] = block)
 
-				block.body.filter(stmt => stmt.name == 'ASSIGNMENT' || stmt.name == 'ANONYM_BLOCK_DEF').forEach(
-					stmt => stmt.outputs.filter(output => !output.init).forEach(output => {
-						let block_var = Object.create(Block)
-						block_var.init(1, 1, "VAR", output.val, postfix, NaN)
+				block.body.filter(stmt => ['ASSIGNMENT', 'ANONYM_BLOCK_DEF', 'IF_THEN_ELSE'].includes(stmt.name)).forEach(
+					stmt => stmt.outputs.forEach((output, index) => {
+						if (output.init)
+							return
+						let block_var = new Block(1, 1, "VAR", output.val, postfix, NaN, if_owners)
+						if (stmt.name == 'IF_THEN_ELSE')
+							block_var.ifoutputindex = index
 						named_vars[block_var.id] = block_var
 						graph.blocks.push(block_var)
 					})
@@ -189,19 +226,19 @@
 					output_ports.push(named_vars[o.val].output_ports[0])
 				})
 
-				block.body.filter(stmt => stmt.name == 'ASSIGNMENT' || stmt.name == 'ANONYM_BLOCK_DEF').forEach(function (stmt) {
+				block.body.filter(stmt => ['ASSIGNMENT', 'ANONYM_BLOCK_DEF', 'IF_THEN_ELSE'].includes(stmt.name)).forEach(function (stmt) {
 					let ports;
 					if (stmt.name == 'ASSIGNMENT')
-						ports = convertExpr(stmt.expr, {...expansion_stack}, {...named_blocks}, {...named_vars})
+						ports = convertExpr(stmt.expr, {...expansion_stack}, {...named_blocks}, {...named_vars}, if_owners)
 					else if (stmt.name == 'ANONYM_BLOCK_DEF')
-						ports = expandCompositeBlock(stmt, ++expansions_count, {...expansion_stack}, {...named_blocks}, {...named_vars})
+						ports = expandCompositeBlock(stmt, {...expansion_stack}, {...named_blocks}, {...named_vars}, if_owners)
+					else if (stmt.name == 'IF_THEN_ELSE')
+						ports = convertIfthenelse(stmt, expansion_stack, named_blocks, named_vars, if_owners)
 
 					stmt.outputs.forEach(function (output, index) {
 						if (!output.init) {
 							let block_var = named_vars[output.val]
-							let connection = Object.create(Connection)
-							connection.in  = ports[1][index]
-							connection.out = block_var.input_ports[0]
+							let connection = new Connection(ports[1][index], block_var.input_ports[0])
 							graph.connections.push(connection)
 						}
 					})
@@ -215,8 +252,8 @@
 				return [input_ports, output_ports]
 			}
 
-			function convertExpr(expr_node, expansion_stack, named_blocks, named_vars) {
-				let block_expr = Object.create(Block)
+			function convertExpr(expr_node, expansion_stack, named_blocks, named_vars, if_owners) {
+				let block_expr;
 
 				let input_ports = []
 				let output_ports = []
@@ -227,13 +264,20 @@
 					case 'TIMES_EXPR':
 					case 'DIV_EXPR':
 					case 'UMINUS_EXPR':
-						block_expr.init(expr_node.args.length, 1, expr_node.name, null, null, null)
+					case 'EQUAL_EXPR':
+					case 'NOTEQUAL_EXPR':
+					case 'LESS_EXPR':
+					case 'LESSEQUAL_EXPR':
+					case 'GREATER_EXPR':
+					case 'GREATEREQUAL_EXPR':
+					case 'NOT_EXPR':
+						block_expr = new Block(expr_node.args.length, 1, expr_node.name, undefined, undefined, undefined, if_owners)
 						graph.blocks.push(block_expr)
 						input_ports = block_expr.input_ports
 						output_ports = block_expr.output_ports
 						break
 					case 'NUMBER':
-						block_expr.init(0, 1, expr_node.name, null, null, expr_node.val)
+						block_expr = new Block(0, 1, expr_node.name, undefined, undefined, expr_node.val, if_owners)
 						graph.blocks.push(block_expr)
 						input_ports = block_expr.input_ports
 						output_ports = block_expr.output_ports
@@ -246,20 +290,20 @@
 					case 'CALL_EXPR':
 						switch (expr_node.kind) {
 							case 'DELAY1_EXPR':
-								block_expr.init(1, 1, 'DELAY1_EXPR', null, null, NaN)
+								block_expr = new Block(1, 1, 'DELAY1_EXPR', undefined, undefined, NaN, if_owners)
 								graph.blocks.push(block_expr)
 								input_ports = block_expr.input_ports
 								output_ports = block_expr.output_ports
 								break
 							case 'FUNC_CALL':
-								block_expr.init(expr_node.args.length, 1, 'EXTERNAL_FUNC_CALL', expr_node.id.val, null, NaN)
+								block_expr = new Block(expr_node.args.length, 1, 'EXTERNAL_FUNC_CALL', expr_node.id.val, undefined, NaN, if_owners)
 								graph.blocks.push(block_expr)
 								input_ports = block_expr.input_ports
 								output_ports = block_expr.output_ports
 								break
 							case 'BLOCK_CALL':
-								let ports = expandCompositeBlock(named_blocks[expr_node.id.val], ++expansions_count, 
-									{...expansion_stack}, {...named_blocks}, {...named_vars})
+								let ports = expandCompositeBlock(named_blocks[expr_node.id.val], 
+									{...expansion_stack}, {...named_blocks}, {...named_vars}, if_owners)
 								input_ports = ports[0]
 								output_ports = ports[1]
 								break
@@ -273,14 +317,31 @@
 				}
 
 				for (let argi = 0; argi < input_ports.length; argi++) {
-					let ports = convertExpr(expr_node.args[argi], expansion_stack, named_blocks, named_vars)
-					let connection = Object.create(Connection)
-					connection.in = ports[1][0]
-					connection.out = input_ports[argi]
+					let ports = convertExpr(expr_node.args[argi], expansion_stack, named_blocks, named_vars, if_owners)
+					let connection = new Connection(ports[1][0], input_ports[argi])
 					graph.connections.push(connection)
 				}
 
 				return [input_ports, output_ports]
+			}
+
+			function convertIfthenelse(stmt, expansion_stack, named_blocks, named_vars, if_owners) {
+				let block_ifthenelse = new Block(stmt.outputs.length * 2 + 1, stmt.outputs.length, 'IF_THEN_ELSE', undefined, undefined, NaN, if_owners)
+
+				let condition_ports = convertExpr(stmt.condition, expansion_stack, named_blocks, named_vars, if_owners)
+				// TODO: ? if branch bodies should not ovveride named_vars that are if output...
+				let if_ports = expandCompositeBlock(stmt.if, {...expansion_stack}, {...named_blocks}, {...named_vars}, 
+					if_owners.concat({ ifblock: block_ifthenelse, branch: 0 }))
+				let else_ports = expandCompositeBlock(stmt.else, {...expansion_stack}, {...named_blocks}, {...named_vars},
+					if_owners.concat({ ifblock: block_ifthenelse, branch: 1 }))
+
+				let incoming_ports = condition_ports[1].concat(if_ports[1]).concat(else_ports[1])
+				for (let p = 0; p < incoming_ports.length; p++) {
+					let connection = new Connection(incoming_ports[p], block_ifthenelse.input_ports[p])
+					graph.connections.push(connection)
+				}
+				graph.blocks.push(block_ifthenelse)
+				return [[], block_ifthenelse.output_ports]
 			}
 		}
 
@@ -318,14 +379,56 @@
 		}
 		
 		function removeUnreachableNodes (graph) {
-			let newGraph = Object.create(Graph)
-			newGraph.init()
-			newGraph.id = graph.id
-			newGraph.input_ports = graph.input_ports
-			newGraph.output_ports = graph.output_ports
-			graph.crossDFS(block => newGraph.blocks.push(block))
-			newGraph.connections = graph.connections.filter(c => newGraph.blocks.some(b => b == c.out.block))
+			let newGraph = new Graph(graph.id)
+			
+			graph.output_ports.forEach(p => visitNode(p.block))
+			function visitNode(block, i) {
+				if (block.operation == 'IF_THEN_ELSE') {
+					if (!block.visited) 
+						block.visited = []
+					if (block.visited.includes(i))
+						return
+					block.visited.push(i)
+
+					let inbs = graph.getInputBlocks(block)
+					if (block.visited.length == 1) {
+						visitNode(inbs[0], NaN)
+						newGraph.blocks.push(block)
+					}
+					visitNode(inbs[i + 1], NaN)
+					visitNode(inbs[i + 1 + block.output_ports.length], NaN)
+				}
+				else {
+					if (block.visited)
+						return
+					block.visited = true
+				
+					graph.getInputBlocks(block).forEach(b => visitNode(b, block.ifoutputindex))
+					newGraph.blocks.push(block)
+				}
+			}
+
+			graph.blocks.filter(b => b.visited && b.operation == "IF_THEN_ELSE").forEach(b => {
+				for (let i = b.output_ports.length - 1; i >= 0; i--) {
+					if (!b.visited.includes(i)) {
+						b.input_ports.splice(i + 1 + b.output_ports.length, 1)
+						b.input_ports.splice(i + 1, 1)
+						b.output_ports.splice(i, 1)
+					}
+				}
+			})
+
+			newGraph.connections = graph.connections.filter(c => 
+				  	newGraph.blocks.some(b => b == c.out.block && b.input_ports.concat(b.output_ports).includes(c.out))
+				&& 	newGraph.blocks.some(b => b == c.in.block  && b.input_ports.concat(b.output_ports).includes(c.in))
+			)
 			newGraph.connections = Array.from(new Set(newGraph.connections))
+
+			graph.blocks.forEach(b => delete b.visited)
+
+			newGraph.input_ports = graph.input_ports.filter(p => newGraph.blocks.includes(p.block))
+			newGraph.output_ports = graph.output_ports
+
 			return newGraph
 		}
 
@@ -406,7 +509,7 @@
 
 			function propagateControlDependencies () {
 				graph.input_ports.filter(p => p.update_rate == 2).forEach(function (p) {
-					visitBlock(p.block, p.block.label)
+					visitBlock(p.block, p.block.label())
 					graph.blocks.forEach(b => delete b.visited)
 				})
 

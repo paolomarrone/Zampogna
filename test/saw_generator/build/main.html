@@ -22,8 +22,9 @@ var begin = async function () {
 
 	inputNode.connect(node);
 
-  {{~it.control_inputs:c}}
-  document.getElementById("{{=c}}").oninput = handleInput; {{~}}
+  
+  document.getElementById("enable").oninput = handleInput; 
+  document.getElementById("frequency").oninput = handleInput; 
   
 };
 
@@ -33,11 +34,13 @@ function handleInput(e) {
 </script>
 </head>
 <body>
-  <h1>{{=it.class_name}}</h1>
+  <h1>saw_generator</h1>
   
-  {{~it.control_inputs:c}}
-  <label for="{{=c}}">{{=c}}</label>
-  <input type="range" id="{{=c}}" name="{{=c}}" min="0" max="1" value="0.5" step="any"><br>{{~}}
+  
+  <label for="enable">enable</label>
+  <input type="range" id="enable" name="enable" min="0" max="1" value="0.5" step="any"><br>
+  <label for="frequency">frequency</label>
+  <input type="range" id="frequency" name="frequency" min="0" max="1" value="0.5" step="any"><br>
 
   <button onclick="begin()">Start</button>
 </body>

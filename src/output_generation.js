@@ -15,12 +15,19 @@
 
 (function() {
 
+	function getIndexer (target_lang, index) {
+		if (['cpp', 'd', 'js'].includes(target_lang))
+			return "[" + index + "]"
+		else if (target_lang == 'MATLAB')
+			return "(" + index + ")"
+	}
+
 	function convert(doT, templates, target_lang, graph, graph_init, schedule, schedule_init) {
 		
 		let program = {
 			class_name: 	graph.id,
-			control_inputs: graph.input_ports.filter(p => p.update_rate == 2).map(p => p.block.label),
-			audio_inputs: 	graph.input_ports.filter(p => p.update_rate == 3).map(p => p.block.label),
+			control_inputs: graph.input_ports.filter(p => p.update_rate == 2).map(p => p.block.label()),
+			audio_inputs: 	graph.input_ports.filter(p => p.update_rate == 3).map(p => p.block.label()),
 			outputs: 		[],
 
 			declarations1: 	[],
@@ -54,15 +61,15 @@
 		schedule_init.forEach(block => convertBlockInit(block))
 
 		for (let outi = 0; outi < graph.output_ports.length; outi++) {
-			program.outputs[outi] = graph.output_ports[outi].block.label + '__out__'
-			appendAssignment(program.outputs[outi], graph.output_ports[outi].code, 5, null)
+			program.outputs[outi] = graph.output_ports[outi].block.label() + '__out__';
+			appendAssignment(program.outputs[outi] + getIndexer(target_lang, 'i'), graph.output_ports[outi].code, 5, null)
 		}
 
 		groupControls()
 
 		program.declarations2 = program.declarations2.concat(
 			graph.input_ports.filter(p => p.update_rate == 2).map(p => p.block).map(function (block) {
-				return { left: block.output_ports[0].code, right: block.block_init.output_ports[0].code }
+				return new MagicString(block.output_ports[0].code, " = ", block.block_init.output_ports[0].code)
 			})
 		)
 
@@ -106,44 +113,72 @@
 			is_used_locally = output_blocks.every(b => b.output_ports[0].update_rate == update_rate)
 			if (update_rate == 2 && is_used_locally)
 				is_used_locally = output_blocks.every(b => checkSetEquality(b.control_dependencies, block.control_dependencies))
+			if (is_used_locally && block.if_owners.length > 0) {
+				let bb = block.if_owners.at(-1)
+				is_used_locally = output_blocks.every(b => b.if_owners.some(i => i.ifblock == bb.ifblock && i.branch == bb.branch))
+				if (output_blocks.some(b => b.operation == "DELAY1_EXPR"))
+					is_used_locally = false;
+			}
 
+
+				
+			if (block.ifoutputindex != undefined && !isNaN(block.ifoutputindex)) {
+				code.add(id_prefix, block.label())
+				return
+			}
 			switch (block.operation) {
 				case 'VAR':
-					if (block.output_ports[0].toBeCached || output_blocks.length > 1) {
-						code.add(id_prefix, block.label)
-						appendAssignment(code, input_blocks_code[0], update_rate, block.control_dependencies, true, is_used_locally)
+					if (input_blocks[0].operation == 'NUMBER')
+						code.add(input_blocks_code[0])
+					else if (block.output_ports[0].toBeCached || output_blocks.length > 1) {
+						code.add(id_prefix, block.label())
+						appendAssignment(code, input_blocks_code[0], update_rate, block.control_dependencies, true, is_used_locally, block.if_owners)
 					}
 					else
 						code.add(input_blocks_code[0])
 					return
 				case 'VAR_IN':
 					if (update_rate == 3) {
-						if (target_lang == 'cpp' || target_lang == 'js' || target_lang == 'd' )
-							code.add(block.label, "[i]")
-						else if (target_lang == 'MATLAB')
-							code.add(block.label, "(i)")
+						code.add(block.label(), getIndexer(target_lang, 'i'))
 					}
 					else if (update_rate == 2)
-						code.add(id_prefix, block.label)
+						code.add(id_prefix, block.label())
 					return
 				case 'VAR_OUT':
-					code.add(id_prefix, block.label)
-					appendAssignment(code, input_blocks_code[0], update_rate, block.control_dependencies, true, is_used_locally)
+					code.add(id_prefix, block.label())
+					appendAssignment(code, input_blocks_code[0], update_rate, block.control_dependencies, true, is_used_locally, block.if_owners)
 					return
 				case 'DELAY1_EXPR':
-					const id = '__delayed__' + extra_vars_n++
+					const id = '_delayed_' + extra_vars_n++
 					code.add(id_prefix, id)
-					appendAssignment(code, input_blocks_code[0], 4, block.control_dependencies, false, null)
-					appendAssignment(code, input_blocks[0].block_init.output_ports[0].code, -1, null, true, false)
+					appendAssignment(code, input_blocks_code[0], 4, block.control_dependencies, false, false, block.if_owners)
+					appendAssignment(code, input_blocks[0].block_init.output_ports[0].code, -1, null, true, false, block.if_owners)
 					return
 				case 'NUMBER':
-					if (target_lang == 'cpp' || target_lang == 'd')
+					if (['cpp', 'd'].includes(target_lang))
 						code.add(block.val + ((block.val.toString().includes('.') || block.val.toString().toLowerCase().includes('e')) ? 'f' : '.0f'));
-					else if (target_lang == 'MATLAB' || target_lang == 'js')
+					else if (['MATLAB', 'js'].includes(target_lang))
 						code.add(block.val)
 					return
 				case 'SAMPLERATE':
 					code.add(id_prefix, 'fs')
+					return
+				case 'IF_THEN_ELSE':
+					if (['cpp', 'd', 'js'].includes(target_lang)) {
+						code.add("if (", input_blocks_code[0], ') {\n')
+						code.add('__branch0__') // 3
+						code.add("\n} else {\n")
+						code.add('__branch1__') // 5
+						code.add("\n}\n")
+					}
+					else if (target_lang == 'MATLAB') {
+						code.add("if (", input_blocks_code[0], ')\n')
+						code.add('__branch0__') // 3
+						code.add("\nelse\n")
+						code.add('__branch1__') // 5
+						code.add("\nendif\n")
+					}
+					appendIfStatement(block, code, input_blocks[0].output_ports[0].update_rate, block.if_owners, output_blocks, input_blocks, block.control_dependencies)
 					return
 				case 'UMINUS_EXPR':
 					auxcode.add('-(', input_blocks_code[0], ')')
@@ -161,16 +196,49 @@
 					auxcode.add('(', input_blocks_code[0], ' / ', input_blocks_code[1], ')')
 					break
 				case 'EXTERNAL_FUNC_CALL':
-					auxcode.add(block.id, '(', input_blocks_code.join(', '), ')')
+					auxcode.add(block.id, '(')
+					for (let ii = 0; ii < input_blocks_code.length; ii++) {
+						auxcode.add(input_blocks_code[ii])
+						if (ii != input_blocks_code.length - 1)
+							auxcode.add(', ')
+					}
+					auxcode.add(')')
+					break
+				case 'OR_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' || ', input_blocks_code[1], ')')
+					break
+				case 'AND_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' && ', input_blocks_code[1], ')')
+					break
+				case 'EQUAL_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' == ', input_blocks_code[1], ')')
+					break
+				case 'NOTEQUAL_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' != ', input_blocks_code[1], ')')
+					break
+				case 'LESS_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' < ', input_blocks_code[1], ')')
+					break
+				case 'LESSEQUAL_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' <= ', input_blocks_code[1], ')')
+					break
+				case 'GREATER_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' > ', input_blocks_code[1], ')')
+					break
+				case 'GREATEREQUAL_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' >= ', input_blocks_code[1], ')')
+					break
+				case 'NOT_EXPR':
+					auxcode.add('!(', input_blocks_code[0], ')')
 					break
 
 				default:
 					throw new Error("Unexpected block operation: " + block.operation)
 			}
 
-			if (block.output_ports[0].toBeCached) {
-				code.add(id_prefix, program.class_name + '__extra__' + extra_vars_n++)
-				appendAssignment(code, auxcode, update_rate, block.control_dependencies, true, is_used_locally)
+			if (block.output_ports[0].toBeCached || output_blocks.length > 1) {
+				code.add(id_prefix, program.class_name + '_extra_' + extra_vars_n++)
+				appendAssignment(code, auxcode, update_rate, block.control_dependencies, true, is_used_locally, block.if_owners)
 			}
 			else
 				code.add(auxcode)
@@ -193,8 +261,10 @@
 
 			switch (block.operation) {
 				case 'VAR':
-					if (block.output_ports[0].toBeCached || output_blocks.length > 1) {
-						code.add(id_prefix, block.label)
+					if (input_blocks[0].operation == 'NUMBER')
+						code.add(input_blocks_code[0])
+					else if (block.output_ports[0].toBeCached || output_blocks.length > 1) {
+						code.add(id_prefix, block.label())
 						appendAssignment(code, input_blocks_code[0], level, block.control_dependencies, true, is_used_locally)
 					}
 					else
@@ -210,9 +280,9 @@
 					code.add(input_blocks_code[0])
 					return
 				case 'NUMBER':
-					if (target_lang == 'cpp' || target_lang == 'd')
+					if (['cpp', 'd'].includes(target_lang))
 						code.add(block.val + ((block.val.toString().includes('.') || block.val.toString().toLowerCase().includes('e')) ? 'f' : '.0f'));
-					else if (target_lang == 'MATLAB' || target_lang == 'js')
+					else if (['MATLAB', 'js'].includes(target_lang))
 						code.add(block.val)
 					return
 				case 'SAMPLERATE':
@@ -234,7 +304,40 @@
 					auxcode.add('(', input_blocks_code[0], ' / ', input_blocks_code[1], ')')
 					break
 				case 'EXTERNAL_FUNC_CALL':
-					auxcode.add(block.id, '(', input_blocks_code.join(', '), ')')
+					auxcode.add(block.id, '(')
+					for (let ii = 0; ii < input_blocks_code.length; ii++) {
+						auxcode.add(input_blocks_code[ii])
+						if (ii != input_blocks_code.length - 1)
+							auxcode.add(', ')
+					}
+					auxcode.add(')')
+					break;
+				case 'OR_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' || ', input_blocks_code[1], ')')
+					break
+				case 'AND_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' && ', input_blocks_code[1], ')')
+					break
+				case 'EQUAL_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' == ', input_blocks_code[1], ')')
+					break
+				case 'NOTEQUAL_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' != ', input_blocks_code[1], ')')
+					break
+				case 'LESS_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' < ', input_blocks_code[1], ')')
+					break
+				case 'LESSEQUAL_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' <= ', input_blocks_code[1], ')')
+					break
+				case 'GREATER_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' > ', input_blocks_code[1], ')')
+					break
+				case 'GREATEREQUAL_EXPR':
+					auxcode.add('(', input_blocks_code[0], ' >= ', input_blocks_code[1], ')')
+					break
+				case 'NOT_EXPR':
+					auxcode.add('!(', input_blocks_code[0], ')')
 					break
 
 				default:
@@ -242,21 +345,25 @@
 			}
 
 			if (block.output_ports[0].toBeCached) {
-				code.add(id_prefix, program.class_name + '__extraI__' + extra_vars_n++)
+				code.add(id_prefix, program.class_name + '_extraI_' + extra_vars_n++)
 				appendAssignment(code, auxcode, level, block.control_dependencies, true, is_used_locally)
 			}
 			else
 				code.add(auxcode)
 		}
 
-		function appendAssignment(left, right, level, control_dependencies, to_be_declared, is_used_locally) {
-			let stmt = {left: left, right: right}
+		function appendAssignment(left, right, level, control_dependencies, to_be_declared, is_used_locally, if_owners) {
+			let stmt = new MagicString(left, ' = ', right)
+			stmt.if_owners = if_owners
+
 
 			if (to_be_declared && level != 0) {
-				if (is_used_locally) 
+				if (is_used_locally) {
 					stmt.is_used_locally = true
-				else
-					program.declarations1.push(stmt)
+				}
+				else {
+					program.declarations1.push(left)
+				}
 			}
 
 			switch (level) {
@@ -288,12 +395,66 @@
 			}
 		}
 
+		function appendIfStatement(block, code, cond_level, if_owners, output_blocks, input_blocks, control_dependencies) {
+
+			if (block.output_ports.length != output_blocks.length)
+				throw new Error("Something is wrong")
+
+			const levels = ["constant_rate", "sampling_rate", "controls_rate", "audio_rate"]
+
+			for (let lvl = cond_level; lvl < levels.length; lvl++) {
+				let out_i = []
+				for (let i = 0; i < block.output_ports.length; i++) {
+					let ur = block.output_ports[i].update_rate
+					if (ur == lvl || (lvl == cond_level && ur <= lvl)) {
+						out_i.push(i)
+					}
+				}
+				if (out_i.length == 0)
+					continue
+
+				let stmts = program[levels[lvl]].filter(s => s.if_owners.at(-1) && s.if_owners.at(-1).ifblock == block)
+				let b0 = stmts.filter(s => s.if_owners.at(-1).branch == 0)
+				let b1 = stmts.filter(s => s.if_owners.at(-1).branch == 1)
+
+				for (let i of out_i) {
+					b0.push(new MagicString(
+						output_blocks[i].output_ports[0].code, 
+						' = ', 
+						input_blocks[i + 1].output_ports[0].code,
+					))
+
+					b1.push(new MagicString(
+						output_blocks[i].output_ports[0].code,
+						' = ',
+						input_blocks[i + 1 + block.output_ports.length].output_ports[0].code
+					))
+				}
+
+				b0.forEach(s => s.add(';\n'))
+				b1.forEach(s => s.add(';\n'))
+
+				let newcode = new MagicString(...code.s)
+
+				newcode.s.splice(newcode.s.indexOf('__branch0__'), 1, ...b0)
+				newcode.s.splice(newcode.s.indexOf('__branch1__'), 1, ...b1)
+
+				newcode.control_dependencies = control_dependencies
+				newcode.if_owners = if_owners
+				
+				program[levels[lvl]] = program[levels[lvl]].filter(s => !stmts.includes(s))
+				program[levels[lvl]].push(newcode)
+
+			}
+		}
+
 		function groupControls() {
 			var Group = function (set) {
+				let self = this
 				this.label = Array.from(set).join('_')
 				this.set = set
 				this.cardinality = set.size
-				this.equals = (s) => checkSetEquality(this.set, s)
+				this.equals = (s) => checkSetEquality(self.set, s)
 				this.stmts = []
 			}
 			let groups = []
@@ -315,8 +476,12 @@
 	function MagicString(...init) {
 		this.s = []
 		this.add = function(...x) {
-			for (let k of x)
+			for (let k of x) {
+				if (k == undefined) {
+					throw new Error(k)
+				}
 				this.s.push(k);
+			}
 			return this
 		}
 		this.toString = function(){
@@ -325,7 +490,7 @@
 				str += p.toString()
 			return str
 		}
-		for (i of init)
+		for (let i of init)
 			this.add(i)	
 	}
 

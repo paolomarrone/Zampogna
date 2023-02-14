@@ -21,16 +21,30 @@ id                          [_a-zA-Z][_a-zA-Z0-9]*
 %%
 "#"[^\n\r]*					/* inline comment */
 "..."[^\n^\n]*[\n\r]+		/* pause comment */
+
+">="            			return "GREATEREQUAL";
+"<="            			return "LESSEQUAL";
+"<"            				return "LESS";
+">"             			return "GREATER";
+"=="            			return "EQUAL";
+"!="            			return "NOTEQUAL";
+"!"             			return "NOT";
+"&&"            			return "AND";
+"||"            			return "OR";
+
 "="                         return 'ASSIGN';
 "{"                         return 'LBRACE';
 "}"                         return 'RBRACE';
 {float}						return 'NUMBER';
 "fs"						return 'SAMPLERATE';
+"if"						return 'IF'
+"else"						return "ELSE"
 {id}                        return 'ID';
 "+"                         return 'PLUS';
 "-"                         return 'MINUS';
 "*"                         return 'TIMES';
 "/"							return 'DIV';
+
 "("                         return 'LPAREN';
 ")"                         return 'RPAREN';
 ","							return 'COMMA';

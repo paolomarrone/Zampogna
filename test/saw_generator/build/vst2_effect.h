@@ -2,7 +2,7 @@
 #define _EFFECT_H
 
 #include "audioeffectx.h"
-#include "vst2_{{=it.class_name}}.h"
+#include "vst2_saw_generator.h"
 
 class Effect : public AudioEffectX
 {
@@ -30,7 +30,7 @@ public:
 private:
 	char programName[32];
 
-	{{=it.class_name}} instance;
+	saw_generator instance;
 };
 
 #endif

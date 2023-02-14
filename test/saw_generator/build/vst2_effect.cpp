@@ -7,15 +7,15 @@
 
 AudioEffect *createEffectInstance(audioMasterCallback audioMaster) { return new Effect(audioMaster); }
 
-Effect::Effect(audioMasterCallback audioMaster) : AudioEffectX(audioMaster, 1, {{=it.control_inputs.length}}) {
-	setNumInputs({{=it.audio_inputs.length}});
-	setNumOutputs({{=it.outputs.length}});
+Effect::Effect(audioMasterCallback audioMaster) : AudioEffectX(audioMaster, 1, 2) {
+	setNumInputs(0);
+	setNumOutputs(1);
 	setUniqueID('fxfx');
 	DECLARE_VST_DEPRECATED(canMono) ();
 	canProcessReplacing();
 	strcpy(programName, "Effect");
 
-	instance = {{=it.class_name}}();
+	instance = saw_generator();
 }
 
 Effect::~Effect() {}
@@ -37,26 +37,32 @@ bool Effect::getProgramNameIndexed(VstInt32 category, VstInt32 index, char* name
 
 void Effect::setParameter(VstInt32 index, float value) {
 	switch (index) {
-	{{~it.control_inputs:c}}
-	case {{=it.control_inputs.indexOf(c)}}:
-		instance.set{{=c}}(value);
-		break;{{~}}
+	
+	case 0:
+		instance.setenable(value);
+		break;
+	case 1:
+		instance.setfrequency(value);
+		break;
 	}
 }
 
 float Effect::getParameter(VstInt32 index) {
 	float v = 0.f;
 	switch (index) {
-	{{~it.control_inputs:c}}
-	case {{=it.control_inputs.indexOf(c)}}:
-		v = instance.get{{=c}}();
-		break;{{~}}
+	
+	case 0:
+		v = instance.getenable();
+		break;
+	case 1:
+		v = instance.getfrequency();
+		break;
 	}
 	return v;
 }
 
 void Effect::getParameterName(VstInt32 index, char *text) {
-	const char *names[] = { {{=it.control_inputs.map(c => '\"' +c+'\"')}}};
+	const char *names[] = { "enable","frequency"};
 	strcpy(text, names[index]);
 }
 
@@ -74,9 +80,9 @@ void Effect::setSampleRate(float sampleRate) {
 }
 
 void Effect::process(float **inputs, float **outputs, VstInt32 sampleFrames) {
-	instance.process({{=it.audio_inputs.map(i => 'inputs['+it.audio_inputs.indexOf(i)+']')}}, {{=it.outputs.map(i => 'outputs['+it.outputs.indexOf(i)+']')}}, sampleFrames);
+	instance.process(, outputs[0], sampleFrames);
 }
 
 void Effect::processReplacing(float **inputs, float **outputs, VstInt32 sampleFrames) {
-	instance.process({{=it.audio_inputs.map(i => 'inputs['+it.audio_inputs.indexOf(i)+']')}}, {{=it.outputs.map(i => 'outputs['+it.outputs.indexOf(i)+']')}}, sampleFrames);
+	instance.process(, outputs[0], sampleFrames);
 }

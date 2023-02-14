@@ -1,0 +1,12 @@
+y = decimator(x) {
+	y, s = if (delay1(s)) {
+		y = x
+		s = 0
+	} else {
+		y = delay1(t)
+		s = 1
+	}
+	t = y
+	@s = 1
+	@y = 0
+}

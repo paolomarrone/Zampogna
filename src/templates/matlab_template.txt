@@ -1,14 +1,13 @@
-function [{{=it.outputs.join(', ')}}] = {{=it.class_name}}({{=it.audio_inputs.join(', ')}}{{?it.audio_inputs.length > 0}},{{?}} fs{{?it.control_inputs.length > 0}},{{?}} {{=it.control_inputs.join(', ')}})
+function [{{=it.outputs.join(', ')}}] = {{=it.class_name}}({{=it.audio_inputs.join(', ')}}{{?it.audio_inputs.length > 0}},{{??}}nSamples,{{?}} fs{{?it.control_inputs.length > 0}},{{?}} {{=it.control_inputs.join(', ')}})
 
   % constants
 
-  {{~it.constant_rate:c}}{{=c.left}} = {{=c.right}};
+  {{~it.constant_rate:c}}{{=c}};
   {{~}}
-
 
   % fs
 
-  {{~it.sampling_rate:s}}{{=s.left}} = {{=s.right}};
+  {{~it.sampling_rate:s}}{{=s}};
   {{~}}
 
 
@@ -17,35 +16,35 @@ function [{{=it.outputs.join(', ')}}] = {{=it.class_name}}({{=it.audio_inputs.jo
   {{~it.controls_rate:c}} 
   % {{=c.label}}
   {{~c.stmts: s}}
-  {{=s.left}} = {{=s.right}};{{~}}
+  {{=s}};{{~}}
   {{~}}
   
 
   
   % init delay
 
-  {{~it.reset1:r}}{{=r.left}} = {{=r.right}};
+  {{~it.reset1:r}}{{=r}};
   {{~}}
-  {{~it.reset2:r}}{{=r.left}} = {{=r.right}};
+  {{~it.reset2:r}}{{=r}};
   {{~}}
   
   
-  for i = 1:length({{=it.audio_inputs[0]}})
+  for i = 1:{{?it.audio_inputs.length > 0}}length({{=it.audio_inputs[0]}}){{??}}nSamples{{?}}
 
     % audio rate
 
     {{~it.audio_rate: a}}
-    {{=a.left}} = {{=a.right}};{{~}}
+    {{=a}};{{~}}
 
     % delay updates
     
-    {{~it.delay_updates:u}}{{=u.left}} = {{=u.right}};
+    {{~it.delay_updates:u}}{{=u}};
     {{~}}
 
     % output
 
     {{~it.output_updates:u}}
-    {{=u.left}}(i) = {{=u.right}};{{~}}
+    {{=u}};{{~}}
     
   endfor
 
