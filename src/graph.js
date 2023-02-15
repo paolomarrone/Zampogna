@@ -31,6 +31,73 @@
 			return block.input_ports.map(p => self.connections.find(c => c.out == p)).filter(
 				c => c != undefined).map(c => c.in.block)
 		}
+		this.clone = function () {
+			let c = new Graph(self.id)
+			self.blocks.forEach(b => {
+				let bc = b.clone()
+				b.__son__ = bc
+				c.blocks.push(bc)
+			})
+			self.connections.forEach(conn => {
+				let i_in = conn.in.block.output_ports.indexOf(conn.in)
+				let i_out = conn.out.block.input_ports.indexOf(conn.out)
+				let new_conn = new Connection(conn.in.block.__son__.output_ports[i_in], conn.out.block.__son__.input_ports[i_out])
+				c.connections.push(new_conn)
+			})
+
+			self.input_ports.forEach(in_p => {
+				let i_in = in_p.block.input_ports.indexOf(in_p)
+				c.input_ports.push(in_p.block.__son__.input_ports[i_in])
+			})
+
+			self.output_ports.forEach(out_p => {
+				let i_out = out_p.block.output_ports.indexOf(out_p)
+				c.output_ports.push(out_p.block.__son__.output_ports[i_out])
+			})
+
+			//c.blocks.forEach(b => {
+			//	b.if_owners = b.if_owners.map(io => { ifblock: io.__son__.ifblock, branch: io.__son__.branch })
+			//})
+
+			self.blocks.forEach(b => delete b.__son__)
+
+			return c;
+		}
+		this.cloneSubGraph = function (blocks) {
+			let c = new Graph(self.id + "_sub")
+			blocks.forEach(b => {
+				let bc = b.clone()
+				bc.postfix += "_c_"
+				b.__son__ = bc
+				c.blocks.push(bc)
+			})
+			self.connections.filter(conn => blocks.includes(conn.in.block) || blocks.includes(conn.out.block)).forEach(conn => {
+				let i_in =  conn.in.block.output_ports.indexOf(conn.in)
+				let i_out = conn.out.block.input_ports.indexOf(conn.out)
+				let new_p_in = conn.in.block.__son__ ? conn.in.block.__son__.output_ports[i_in] : conn.in
+				let new_p_out = conn.out.block.__son__ ? conn.out.block.__son__.input_ports[i_out] : conn.out
+				let new_conn = new Connection(new_p_in, new_p_out)
+				c.connections.push(new_conn)
+			})
+
+			blocks.filter(b => b.operation == "IF_THEN_ELSE").forEach(b => {
+				blocks.forEach(bb => {
+					let io = bb.__son__.if_owners.find(io => io.ifblock == b)
+					if (io != undefined) {
+						let ioi = bb.__son__.if_owners.indexOf(io)
+						bb.__son__.if_owners.splice(ioi, 1, {ifblock: b.__son__, branch: io.branch})
+					}
+				})
+			})
+
+			//blocks.forEach(b => delete b.__son__)
+
+			return c;
+		}
+		this.merge = function (g) {
+			self.blocks = self.blocks.concat(g.blocks)
+			self.connections = self.connections.concat(g.connections)
+		}
 		this.crossDFS = function (callbackF) {
 			self.output_ports.forEach(p => visitNode(p.block))
 			function visitNode(block) {
@@ -89,6 +156,13 @@
 				self.output_ports.forEach((p => p.update_rate = update_rate_max))
 			}
 		}
+		this.clone = function () {
+			let c = new Block(self.input_ports.length, self.output_ports.length, self.operation, self.id, self.postfix, self.val, self.if_owners);
+			c.ifoutputindex = self.ifoutputindex
+			c.block_init = self.block_init
+			return c
+
+		}
 		this.toString = function () {
 			return '{ ' + [self.operation, self.id, self.postfix, self.val, self.input_ports.length, self.output_ports.length, self.control_dependencies.size].join(', ') + ' }'
 		}
@@ -133,6 +207,9 @@
 		let graph = convertToGraph()
 		let graph_init = convertToGraph()
 		distinguishGraphs(graph, graph_init)
+
+		normalizeIfGraphs(graph)
+		normalizeIfGraphs(graph_init)
 
 		graph = removeUnreachableNodes(graph)
 		graph_init = removeUnreachableNodes(graph_init)
@@ -377,7 +454,7 @@
 				graph_init.output_ports.push(block.output_ports[0])
 			})
 		}
-		
+
 		function removeUnreachableNodes (graph) {
 			let newGraph = new Graph(graph.id)
 			
@@ -474,8 +551,9 @@
 					input_blocks.forEach(b => visitNode(b))
 					block.propagateUpdateRate()
 				}
+
 				graph.connections.filter(c => c.in.block == block).forEach(
-					c => c.out.update_rate = block.output_ports[0].update_rate)
+					c => c.out.update_rate = c.in.update_rate)
 			}
 
 			graph.blocks.forEach(b => delete b.visited)
@@ -487,6 +565,242 @@
 				graph_init.connections.filter(c => c.in.block == block).forEach(
 					c => c.out.update_rate = block.output_ports[0].update_rate)
 			})
+		}
+
+		function normalizeIfGraphs (graph) {
+
+			// We have to normalize every IF 
+			graph.output_ports.forEach(p => visitBlock1(p.block))
+
+			function visitBlock1 (block) {
+				if (block.visited1)
+					return
+				block.visited1 = true
+
+				if (block.operation == 'IF_THEN_ELSE' && !block.handled) {
+					visitIfThenElse(block)
+				}
+				graph.getInputBlocks(block).forEach(b => visitBlock1(b))
+			}
+
+			function visitIfThenElse(ifthenelse) {
+			
+				let in_blocks = graph.getInputBlocks(ifthenelse)
+				in_blocks.shift()
+
+				in_blocks.forEach(b => {
+					visitBlock2(b)
+				})
+
+				in_blocks.forEach(b => {
+					b.__tobecopied__.compute()
+				})
+
+				// very unsafe, we should not do this
+				graph.getOutputBlocks(ifthenelse).forEach(b => b.__ifoutput__ = true)
+				graph.blocks.filter(b => b.__ifoutput__).forEach(b => {
+					delete b.__tobecopied__
+				})
+
+				// Stuff in the branches must not be copied ofc
+				graph.blocks.filter(b => b.if_owners.map(i => i.ifblock).includes(ifthenelse)).forEach(b => {
+					delete b.__tobecopied__
+				})
+
+				// We're just interested in the bool
+				graph.blocks.filter(b => b.__tobecopied__ != undefined).forEach(b => {
+					b.__tobecopied__ = b.__tobecopied__.res
+				})
+				
+				function visitBlock2(block) {
+					if (block == ifthenelse)
+						return "found"
+					if (block.__tobecopied__ == undefined)
+						block.__tobecopied__ = new MagicOR()
+					if (block.operation == "DELAY1_EXPR") {
+						block.__tobecopied__.res = false
+						return
+					}
+					if (block.visited2)
+						return
+					block.visited2 = true
+
+					graph.getInputBlocks(block).forEach(b => {
+						let ret = visitBlock2(b)
+						if (ret == "found") {
+							//block.__ifoutput__ = true
+							block.__tobecopied__.res = true
+							return
+						}
+						block.__tobecopied__.add(b.__tobecopied__)
+					})
+				}
+
+				// If an if has to be copied, all its blocks have to too
+				graph.blocks.filter(b => b.__tobecopied__ && b.operation == "IF_THEN_ELSE").forEach(b => {
+					graph.blocks.filter(bb => bb.if_owners.map(i => i.ifblock).includes(b)).forEach(bb => {
+						bb.__tobecopied__ = true
+					})
+				})
+
+				//graph.blocks.filter(b => b.operation == "TIMES_EXPR").forEach(b=>
+				
+				let tobecopied_blocks = graph.blocks.filter(b => b.__tobecopied__)
+				let copied_subgraph = graph.cloneSubGraph(tobecopied_blocks)
+				let ifinputblocks = graph.getInputBlocks(ifthenelse)
+
+				// bring tobecopied_blocks in the first branch
+				{
+					// remove conections to the second branch
+					let tobedeleted_connections = graph.connections.filter(c => 
+									c.in.block.__tobecopied__
+								&& 	c.out.block.if_owners.some(i => i.ifblock == ifthenelse && i.branch != 0))
+					
+					tobedeleted_connections.forEach(dc => graph.connections.splice(graph.connections.indexOf(dc), 1))
+
+					// bring loops within the branch: use the branch outputs instead of the IF ones
+					let tobeedited_connections = graph.connections.filter(c => 
+							c.out.block.__tobecopied__ 
+						&& 	c.in.block.__ifoutput__ )
+					tobeedited_connections.forEach(c => {
+							let index = c.in.block.ifoutputindex
+							c.in = ifinputblocks[1 + index].output_ports[0]
+						})
+				}
+
+				// bring copied_subgraph in the second branch
+				{
+					let tobedeleted_connections = copied_subgraph.connections.filter(c =>
+							copied_subgraph.blocks.includes(c.in.block) 
+						&& 	c.out.block.if_owners.some(i => i.ifblock == ifthenelse && i.branch != 1))
+					tobedeleted_connections.forEach(dc => copied_subgraph.connections.splice(copied_subgraph.connections.indexOf(dc), 1))
+
+					let tobeedited_connections = copied_subgraph.connections.filter(
+						c => 	copied_subgraph.blocks.includes(c.out.block) 
+							&& 	c.in.block.__ifoutput__ )
+					tobeedited_connections.forEach(c => {
+							let index = c.in.block.ifoutputindex
+							c.in = ifinputblocks[1 + index + ((ifthenelse.input_ports.length - 1) / 2)].output_ports[0]
+						})
+				}
+
+				//graph.blocks.filter(b => b.operation == "TIMES_EXPR").forEach(b=>
+			
+				// Let's put the variables out
+				// The inner variables of the "inner" IFs must not be put out
+				let copiedifs = graph.blocks.filter(b =>
+					b.operation == "IF_THEN_ELSE" && b.__tobecopied__)
+				let copiedifinnervariables = graph.blocks.filter(b =>
+					b.operation == "VAR" && b.if_owners.map(i => i.ifblock).some(ib => copiedifs.includes(ib)))
+				let variables = graph.blocks.filter(b => 
+					b.__tobecopied__ && !copiedifinnervariables.includes(b)).filter(b => b.operation == "VAR")
+
+
+				variables.forEach(v => {
+					ifthenelse.output_ports.push(new Port(ifthenelse))
+					let newoutport = ifthenelse.output_ports.at(-1)
+					let i = ifthenelse.output_ports.length
+					ifthenelse.input_ports.splice(i, 0, new Port(ifthenelse))					
+					ifthenelse.input_ports.push(new Port(ifthenelse))
+					let newinport1 = ifthenelse.input_ports[i]
+					let newinport2 = ifthenelse.input_ports.at(-1)
+
+					let newblockvar = new Block(1, 1, "VAR", v.id, v.postfix, NaN, v.if_owners)
+					newblockvar.ifoutputindex = ifthenelse.output_ports.length - 1
+					newblockvar.block_init = v.block_init
+
+					graph.connections.filter(c => c.in.block == v && !c.out.block.if_owners.some(i => i.ifblock == ifthenelse)).forEach(c => {
+						let c2 = copied_subgraph.connections.find(cc => cc.in.block == c.in.block.__son__ && cc.out == c.out)
+						c.in = newblockvar.output_ports[0]
+						copied_subgraph.connections.splice(copied_subgraph.connections.indexOf(c2), 1)
+					})
+
+					graph.connections.filter(c => c.in.block == v && c.out.block.operation == 'DELAY1_EXPR').forEach(c => {
+						c.in = newblockvar.output_ports[0]
+					})
+					copied_subgraph.connections.filter(c => c.in.block == v.__son__ && c.out.block.operation == 'DELAY1_EXPR').forEach(c => {
+						c.in = newblockvar.output_ports[0]
+					})
+
+					graph.connections.push(new Connection(newoutport, newblockvar.input_ports[0]))
+					graph.connections.push(new Connection(v.output_ports[0], newinport1))
+					graph.connections.push(new Connection(v.__son__.output_ports[0], newinport2))
+
+					let oid = graph.output_ports.indexOf(v.output_ports[0])
+					if (oid != -1) {
+						graph.output_ports[oid] = newblockvar.output_ports[0]
+					}
+
+
+					graph.blocks.push(newblockvar)
+				})
+
+				tobecopied_blocks.forEach(b => {
+					b.if_owners.push({ifblock: ifthenelse, branch: 0})
+					b.postfix = b.postfix + "_b0"
+				})
+				copied_subgraph.blocks.forEach(b => {
+					b.if_owners.push({ifblock: ifthenelse, branch: 1})
+					b.postfix = b.postfix + "_b1"
+				})
+
+				graph.merge(copied_subgraph)
+
+				graph.blocks.forEach(b => {
+					delete b.__tobecopied__
+					delete b.visited2
+					delete b.__ifoutput__
+				})
+
+				ifthenelse.handled = true
+
+			}
+
+			graph.blocks.forEach(b => {
+				delete b.visited1
+				delete b.handled
+			})
+
+			function MagicOR (...init) {
+				let self = this
+				this.ops = []
+				this.add = function (...x) {
+					for (let k of x)
+						this.ops.push(k)
+					return this
+				}
+				this.res = undefined
+				this.compute = function (stack = []) {
+					if (self.res != undefined)
+						return self.res
+					if (stack.includes(self)) 
+						return undefined
+					stack.push(self)
+					let left = false
+					for (let o of self.ops) {
+						let r = o.compute([...stack])
+						if (r != undefined) {
+							if (r) {
+								self.res = true
+								break
+							}
+						}
+						else
+							left = true
+					}
+					if (self.res == undefined) {
+						if (left)
+							return undefined
+						else
+							self.res = false
+					}					
+					for (let o of self.ops)
+						o.compute([...stack])
+					return self.res
+				}
+				for (i of init)
+					self.add(i)
+			}
 		}
 
 		function optimize(graph) {

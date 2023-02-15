@@ -1,0 +1,13 @@
+y1 = test(x) {
+	y1, y2 = if (x > 0.5) {
+		y1 = delay1(t1)
+		y2 = t2
+	} else {
+		y1 = t1
+		y2 = delay1(t2)
+	}
+	t1 = y2 + x
+	t2 = y1
+	@t1 = 0
+	@t2 = 0
+}
