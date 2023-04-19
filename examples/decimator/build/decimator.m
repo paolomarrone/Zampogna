@@ -1,3 +1,5 @@
+
+
 function [y__out__] = decimator(x, fs )
 
   % constants
@@ -53,3 +55,4 @@ endif
   endfor
 
 endfunction
+

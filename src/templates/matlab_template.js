@@ -1,3 +1,5 @@
+exports.s = `
+
 function [{{=it.outputs.join(', ')}}] = {{=it.class_name}}({{=it.audio_inputs.join(', ')}}{{?it.audio_inputs.length > 0}},{{??}}nSamples,{{?}} fs{{?it.control_inputs.length > 0}},{{?}} {{=it.control_inputs.join(', ')}})
 
   % constants
@@ -49,3 +51,5 @@ function [{{=it.outputs.join(', ')}}] = {{=it.class_name}}({{=it.audio_inputs.jo
   endfor
 
 endfunction
+
+`
