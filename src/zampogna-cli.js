@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 /*
 	Copyright (C) 2021, 2022 Orastron Srl
 

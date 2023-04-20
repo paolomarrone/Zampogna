@@ -14,7 +14,11 @@ Refer to https://ciaramella.dev for getting started with the syntax. Refer to ht
 # Installation
 
 ```bash
-npm install dot
+npm install zampogna
+```
+or
+
+```bash
 git clone https://github.com/paolomarrone/Zampogna.git
 ```
 
@@ -32,9 +36,9 @@ https://ciaramella.dev/webide.html
 
 ## Examples
 
-You can run the examples under test/. For example
+You can run the examples under examples/. For example
 ```bash
-cd test/lp_wdf
+cd examples/lp_wdf
 ./build.sh
 ```
 

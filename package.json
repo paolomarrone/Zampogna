@@ -1,0 +1,31 @@
+{
+  "name": "zampogna",
+  "version": "0.3.0",
+  "description": "A compiler for the Ciaramella audio DSP programming language",
+  "homepage": "https://ciaramella.dev",
+  "bugs": {
+    "email": "paolo.marrone@orastron.com"
+  },
+  "main": "src/zampogna.js",
+  "bin": {
+    "zampogna": "src/zampogna-cli.js"
+  },
+  "engines": {
+    "node": ">=12"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/paolomarrone/Zampogna.git"
+  },
+  "keywords": [
+    "compiler",
+    "language",
+    "audio",
+    "DSP"
+  ],
+  "author": "Paolo Marrone paolo.marrone@orastron.com (https://ciaramella.dev/)",
+  "license": "ISC",
+  "dependencies": {
+    "dot": "1.1.3"
+  }
+}
