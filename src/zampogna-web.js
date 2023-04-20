@@ -1902,12 +1902,12 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 				variables.forEach(v => {
 					ifthenelse.output_ports.push(new Port(ifthenelse))
-					let newoutport = ifthenelse.output_ports.at(-1)
+					let newoutport = ifthenelse.output_ports[ifthenelse.output_ports.length - 1]
 					let i = ifthenelse.output_ports.length
 					ifthenelse.input_ports.splice(i, 0, new Port(ifthenelse))					
 					ifthenelse.input_ports.push(new Port(ifthenelse))
 					let newinport1 = ifthenelse.input_ports[i]
-					let newinport2 = ifthenelse.input_ports.at(-1)
+					let newinport2 = ifthenelse.input_ports[ifthenelse.input_ports.length - 1]
 
 					let newblockvar = new Block(1, 1, "VAR", v.id, v.postfix, NaN, v.if_owners)
 					newblockvar.ifoutputindex = ifthenelse.output_ports.length - 1
@@ -2163,7 +2163,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 			if (update_rate == 2 && is_used_locally)
 				is_used_locally = output_blocks.every(b => checkSetEquality(b.control_dependencies, block.control_dependencies))
 			if (is_used_locally && block.if_owners.length > 0) {
-				let bb = block.if_owners.at(-1)
+				let bb = block.if_owners[block.if_owners.length - 1]
 				is_used_locally = output_blocks.every(b => b.if_owners.some(i => i.ifblock == bb.ifblock && i.branch == bb.branch))
 				if (output_blocks.some(b => b.operation == "DELAY1_EXPR"))
 					is_used_locally = false;
@@ -2462,9 +2462,9 @@ if (typeof module !== 'undefined' && require.main === module) {
 				if (out_i.length == 0)
 					continue
 
-				let stmts = program[levels[lvl]].filter(s => s.if_owners.at(-1) && s.if_owners.at(-1).ifblock == block)
-				let b0 = stmts.filter(s => s.if_owners.at(-1).branch == 0)
-				let b1 = stmts.filter(s => s.if_owners.at(-1).branch == 1)
+				let stmts = program[levels[lvl]].filter(s => s.if_owners[s.if_owners.length - 1] && s.if_owners[s.if_owners.length - 1].ifblock == block)
+				let b0 = stmts.filter(s => s.if_owners[s.if_owners.length - 1].branch == 0)
+				let b1 = stmts.filter(s => s.if_owners[s.if_owners.length - 1].branch == 1)
 
 				for (let i of out_i) {
 					b0.push(new MagicString(

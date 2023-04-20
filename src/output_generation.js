@@ -114,7 +114,7 @@
 			if (update_rate == 2 && is_used_locally)
 				is_used_locally = output_blocks.every(b => checkSetEquality(b.control_dependencies, block.control_dependencies))
 			if (is_used_locally && block.if_owners.length > 0) {
-				let bb = block.if_owners.at(-1)
+				let bb = block.if_owners[block.if_owners.length - 1]
 				is_used_locally = output_blocks.every(b => b.if_owners.some(i => i.ifblock == bb.ifblock && i.branch == bb.branch))
 				if (output_blocks.some(b => b.operation == "DELAY1_EXPR"))
 					is_used_locally = false;
@@ -413,9 +413,9 @@
 				if (out_i.length == 0)
 					continue
 
-				let stmts = program[levels[lvl]].filter(s => s.if_owners.at(-1) && s.if_owners.at(-1).ifblock == block)
-				let b0 = stmts.filter(s => s.if_owners.at(-1).branch == 0)
-				let b1 = stmts.filter(s => s.if_owners.at(-1).branch == 1)
+				let stmts = program[levels[lvl]].filter(s => s.if_owners[s.if_owners.length - 1] && s.if_owners[s.if_owners.length - 1].ifblock == block)
+				let b0 = stmts.filter(s => s.if_owners[s.if_owners.length - 1].branch == 0)
+				let b1 = stmts.filter(s => s.if_owners[s.if_owners.length - 1].branch == 1)
 
 				for (let i of out_i) {
 					b0.push(new MagicString(

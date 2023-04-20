@@ -698,12 +698,12 @@
 
 				variables.forEach(v => {
 					ifthenelse.output_ports.push(new Port(ifthenelse))
-					let newoutport = ifthenelse.output_ports.at(-1)
+					let newoutport = ifthenelse.output_ports[ifthenelse.output_ports.length - 1]
 					let i = ifthenelse.output_ports.length
 					ifthenelse.input_ports.splice(i, 0, new Port(ifthenelse))					
 					ifthenelse.input_ports.push(new Port(ifthenelse))
 					let newinport1 = ifthenelse.input_ports[i]
-					let newinport2 = ifthenelse.input_ports.at(-1)
+					let newinport2 = ifthenelse.input_ports[ifthenelse.input_ports.length - 1]
 
 					let newblockvar = new Block(1, 1, "VAR", v.id, v.postfix, NaN, v.if_owners)
 					newblockvar.ifoutputindex = ifthenelse.output_ports.length - 1
