@@ -3,9 +3,8 @@ var Plugin = {
 		this.fs = 0;
 		this.firstRun = 1;
 
-		this.C = 0.000001;
-		this.C_3 = this.C;
-		this.lp_filter__extra__0 = (2 * 3.141592653589793);
+		this.C_3 = 0.000001;
+		this.lp_filter_extra_0 = (2 * 3.141592653589793);
 		this.al_5 = 0;
 		
 
@@ -13,8 +12,8 @@ var Plugin = {
 
 		
 		this.Rr_5 = 0;
-		this.lp_filter__extra__1 = 0;
-		this.__delayed__2 = 0;
+		this.lp_filter_extra_1 = 0;
+		this._delayed_2 = 0;
 
 		
 		this.cutoff = 0;
@@ -45,24 +44,24 @@ var Plugin = {
 
 		
 		if (this.cutoff_CHANGED) {
-			this.lp_filter__extra__1 = (this.Rr_5 / ((1 / ((this.lp_filter__extra__0 * ((0.1 + (0.3 * this.cutoff)) * this.fs)) * this.C)) + this.Rr_5));
+			this.lp_filter_extra_1 = (this.Rr_5 / ((1 / ((this.lp_filter_extra_0 * ((0.1 + (0.3 * this.cutoff)) * this.fs)) * 0.000001)) + this.Rr_5));
 		}
 		
 		this.cutoff_CHANGED = false;
 
 		if (this.firstRun) { 
 			
-			this.__delayed__2 = 0;
+			this._delayed_2 = 0;
 		}
 
 		for (let i = 0; i < nSamples; i++) {
 			
-			this.bC = this.__delayed__2;
+			this.bC = this._delayed_2;
 			this.ar_5 = this.bC;
-			this.aC = (this.ar_5 - (this.lp_filter__extra__1 * ((this.al_5 + this.ar_5) + ((2 * x[i]) - -((this.al_5 + this.ar_5))))));
+			this.aC = (this.ar_5 - (this.lp_filter_extra_1 * ((this.al_5 + this.ar_5) + ((2 * x[i]) - -((this.al_5 + this.ar_5))))));
 			this.y = (0.5 * (this.aC + this.bC));
 			
-			this.__delayed__2 = this.aC;
+			this._delayed_2 = this.aC;
 			
 			
 			y__out__[i] = this.y;
@@ -102,7 +101,10 @@ class PluginProcessor extends AudioWorkletProcessor {
 		var input = inputs[0];
 		var output = outputs[0];
 		let nSamples = Math.min(input.length >= 1 ? input[0].length : 0, output[0].length)
-		this.instance.process(input[0], output[0], nSamples);
+		
+
+
+		this.instance.process(input[0],  output[0], nSamples);
 
 		return true;
 	}
