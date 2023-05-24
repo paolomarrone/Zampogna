@@ -1,10 +1,10 @@
+{{~it.constant_rate:c}}const {{=c}};
+{{~}}
+
 var Plugin = {
 	init: function () {
 		this.fs = 0;
 		this.firstRun = 1;
-
-		{{~it.constant_rate:c}}{{=c}};
-		{{~}}
 
 		this.params = [{{=it.control_inputs.map(c => '"' + c + '"').join(", ")}}];
 

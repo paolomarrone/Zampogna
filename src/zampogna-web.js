@@ -1,4 +1,150 @@
 (function(f){if(typeof exports==="object"&&typeof module!=="undefined"){module.exports=f()}else if(typeof define==="function"&&define.amd){define([],f)}else{var g;if(typeof window!=="undefined"){g=window}else if(typeof global!=="undefined"){g=global}else if(typeof self!=="undefined"){g=self}else{g=this}g.zampogna = f()}})(function(){var define,module,exports;return (function(){function r(e,n,t){function o(i,f){if(!n[i]){if(!e[i]){var c="function"==typeof require&&require;if(!f&&c)return c(i,!0);if(u)return u(i,!0);var a=new Error("Cannot find module '"+i+"'");throw a.code="MODULE_NOT_FOUND",a}var p=n[i]={exports:{}};e[i][0].call(p.exports,function(r){var n=e[i][1][r];return o(n||r)},p,p.exports,r,e,n,t)}return n[i].exports}for(var u="function"==typeof require&&require,i=0;i<t.length;i++)o(t[i]);return o}return r})()({1:[function(require,module,exports){
+// doT.js
+// 2011-2014, Laura Doktorova, https://github.com/olado/doT
+// Licensed under the MIT license.
+
+(function () {
+	"use strict";
+
+	var doT = {
+		name: "doT",
+		version: "1.1.1",
+		templateSettings: {
+			evaluate:    /\{\{([\s\S]+?(\}?)+)\}\}/g,
+			interpolate: /\{\{=([\s\S]+?)\}\}/g,
+			encode:      /\{\{!([\s\S]+?)\}\}/g,
+			use:         /\{\{#([\s\S]+?)\}\}/g,
+			useParams:   /(^|[^\w$])def(?:\.|\[[\'\"])([\w$\.]+)(?:[\'\"]\])?\s*\:\s*([\w$\.]+|\"[^\"]+\"|\'[^\']+\'|\{[^\}]+\})/g,
+			define:      /\{\{##\s*([\w\.$]+)\s*(\:|=)([\s\S]+?)#\}\}/g,
+			defineParams:/^\s*([\w$]+):([\s\S]+)/,
+			conditional: /\{\{\?(\?)?\s*([\s\S]*?)\s*\}\}/g,
+			iterate:     /\{\{~\s*(?:\}\}|([\s\S]+?)\s*\:\s*([\w$]+)\s*(?:\:\s*([\w$]+))?\s*\}\})/g,
+			varname:	"it",
+			strip:		true,
+			append:		true,
+			selfcontained: false,
+			doNotSkipEncoded: false
+		},
+		template: undefined, //fn, compile template
+		compile:  undefined, //fn, for express
+		log: true
+	}, _globals;
+
+	doT.encodeHTMLSource = function(doNotSkipEncoded) {
+		var encodeHTMLRules = { "&": "&#38;", "<": "&#60;", ">": "&#62;", '"': "&#34;", "'": "&#39;", "/": "&#47;" },
+			matchHTML = doNotSkipEncoded ? /[&<>"'\/]/g : /&(?!#?\w+;)|<|>|"|'|\//g;
+		return function(code) {
+			return code ? code.toString().replace(matchHTML, function(m) {return encodeHTMLRules[m] || m;}) : "";
+		};
+	};
+
+	_globals = (function(){ return this || (0,eval)("this"); }());
+
+	/* istanbul ignore else */
+	if (typeof module !== "undefined" && module.exports) {
+		module.exports = doT;
+	} else if (typeof define === "function" && define.amd) {
+		define(function(){return doT;});
+	} else {
+		_globals.doT = doT;
+	}
+
+	var startend = {
+		append: { start: "'+(",      end: ")+'",      startencode: "'+encodeHTML(" },
+		split:  { start: "';out+=(", end: ");out+='", startencode: "';out+=encodeHTML(" }
+	}, skip = /$^/;
+
+	function resolveDefs(c, block, def) {
+		return ((typeof block === "string") ? block : block.toString())
+		.replace(c.define || skip, function(m, code, assign, value) {
+			if (code.indexOf("def.") === 0) {
+				code = code.substring(4);
+			}
+			if (!(code in def)) {
+				if (assign === ":") {
+					if (c.defineParams) value.replace(c.defineParams, function(m, param, v) {
+						def[code] = {arg: param, text: v};
+					});
+					if (!(code in def)) def[code]= value;
+				} else {
+					new Function("def", "def['"+code+"']=" + value)(def);
+				}
+			}
+			return "";
+		})
+		.replace(c.use || skip, function(m, code) {
+			if (c.useParams) code = code.replace(c.useParams, function(m, s, d, param) {
+				if (def[d] && def[d].arg && param) {
+					var rw = (d+":"+param).replace(/'|\\/g, "_");
+					def.__exp = def.__exp || {};
+					def.__exp[rw] = def[d].text.replace(new RegExp("(^|[^\\w$])" + def[d].arg + "([^\\w$])", "g"), "$1" + param + "$2");
+					return s + "def.__exp['"+rw+"']";
+				}
+			});
+			var v = new Function("def", "return " + code)(def);
+			return v ? resolveDefs(c, v, def) : v;
+		});
+	}
+
+	function unescape(code) {
+		return code.replace(/\\('|\\)/g, "$1").replace(/[\r\t\n]/g, " ");
+	}
+
+	doT.template = function(tmpl, c, def) {
+		c = c || doT.templateSettings;
+		var cse = c.append ? startend.append : startend.split, needhtmlencode, sid = 0, indv,
+			str  = (c.use || c.define) ? resolveDefs(c, tmpl, def || {}) : tmpl;
+
+		str = ("var out='" + (c.strip ? str.replace(/(^|\r|\n)\t* +| +\t*(\r|\n|$)/g," ")
+					.replace(/\r|\n|\t|\/\*[\s\S]*?\*\//g,""): str)
+			.replace(/'|\\/g, "\\$&")
+			.replace(c.interpolate || skip, function(m, code) {
+				return cse.start + unescape(code) + cse.end;
+			})
+			.replace(c.encode || skip, function(m, code) {
+				needhtmlencode = true;
+				return cse.startencode + unescape(code) + cse.end;
+			})
+			.replace(c.conditional || skip, function(m, elsecase, code) {
+				return elsecase ?
+					(code ? "';}else if(" + unescape(code) + "){out+='" : "';}else{out+='") :
+					(code ? "';if(" + unescape(code) + "){out+='" : "';}out+='");
+			})
+			.replace(c.iterate || skip, function(m, iterate, vname, iname) {
+				if (!iterate) return "';} } out+='";
+				sid+=1; indv=iname || "i"+sid; iterate=unescape(iterate);
+				return "';var arr"+sid+"="+iterate+";if(arr"+sid+"){var "+vname+","+indv+"=-1,l"+sid+"=arr"+sid+".length-1;while("+indv+"<l"+sid+"){"
+					+vname+"=arr"+sid+"["+indv+"+=1];out+='";
+			})
+			.replace(c.evaluate || skip, function(m, code) {
+				return "';" + unescape(code) + "out+='";
+			})
+			+ "';return out;")
+			.replace(/\n/g, "\\n").replace(/\t/g, '\\t').replace(/\r/g, "\\r")
+			.replace(/(\s|;|\}|^|\{)out\+='';/g, '$1').replace(/\+''/g, "");
+			//.replace(/(\s|;|\}|^|\{)out\+=''\+/g,'$1out+=');
+
+		if (needhtmlencode) {
+			if (!c.selfcontained && _globals && !_globals._encodeHTML) _globals._encodeHTML = doT.encodeHTMLSource(c.doNotSkipEncoded);
+			str = "var encodeHTML = typeof _encodeHTML !== 'undefined' ? _encodeHTML : ("
+				+ doT.encodeHTMLSource.toString() + "(" + (c.doNotSkipEncoded || '') + "));"
+				+ str;
+		}
+		try {
+			return new Function(c.varname, str);
+		} catch (e) {
+			/* istanbul ignore else */
+			if (typeof console !== "undefined") console.log("Could not create a template function: " + str);
+			throw e;
+		}
+	};
+
+	doT.compile = function(tmpl, def) {
+		return doT.template(tmpl, null, def);
+	};
+}());
+
+},{}],2:[function(require,module,exports){
 /*
 	Copyright (C) 2021, 2022 Orastron Srl
 
@@ -285,7 +431,7 @@
 	exports["validate"] = validate
 
 }());
-},{}],2:[function(require,module,exports){
+},{}],3:[function(require,module,exports){
 (function (process){(function (){
 /* parser generated by jison 0.4.18 */
 /*
@@ -1201,7 +1347,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 }
 }
 }).call(this)}).call(this,require('_process'))
-},{"_process":13,"fs":8,"path":12}],3:[function(require,module,exports){
+},{"_process":13,"fs":8,"path":12}],4:[function(require,module,exports){
 /*
 	Copyright (C) 2021, 2022 Orastron Srl
 
@@ -2046,7 +2192,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 	exports["ASTToGraph"] = ASTToGraph
 
 }());
-},{}],4:[function(require,module,exports){
+},{}],5:[function(require,module,exports){
 /*
 	Copyright (C) 2021, 2022 Orastron Srl
 
@@ -2063,16 +2209,67 @@ if (typeof module !== 'undefined' && require.main === module) {
 */
 
 (function() {
-
 	function getIndexer (target_lang, index) {
-		if (['cpp', 'd', 'js'].includes(target_lang))
+		if (['C', 'cpp', 'VST2', 'yaaaeapa', 'd', 'js'].includes(target_lang))
 			return "[" + index + "]"
 		else if (target_lang == 'MATLAB')
 			return "(" + index + ")"
 	}
 
+	function getNumber(target_lang, n) {
+		if (['C', 'cpp', 'VST2', 'yaaaeapa', 'd'].includes(target_lang))
+			return n + ((n.includes('.') || n.toLowerCase().includes('e')) ? 'f' : '.0f');
+		else if (['MATLAB', 'js'].includes(target_lang))
+			return n;
+		return n;
+	}
+
+	function getIdPrefix(target_lang) {
+		if (['C', 'yaaaeapa'].includes(target_lang))
+			return "instance->"
+		else if (['js'].includes(target_lang))
+			return "this."
+		else
+			return ""
+	}
+	function getConstType(target_lang) {
+		if (['C', 'cpp', 'VST2', 'yaaaeapa', 'd'].includes(target_lang))
+			return "const float "
+		else if (['js'].includes(target_lang))
+			return "const "
+		else
+			return ""
+	}
+
 	function convert(doT, templates, target_lang, graph, graph_init, schedule, schedule_init) {
 		
+		const ct = getConstType(target_lang)
+		var MagicStringProto = {
+			s: null,
+			add: function(...x) {
+				for (let k of x) {
+					if (k == undefined) {
+						throw new Error(k)
+					}
+					this.s.push(k)
+				}
+				return this
+			},
+			toString: function(){
+				let str = this.is_used_locally ? ct : ""
+				for (let p of this.s)
+					str += p.toString()
+				return str
+			}
+		}
+		function MagicString(...init) {
+			var m = Object.create(MagicStringProto);
+			m.s = []
+			for (let i of init)
+				m.add(i)	
+			return m;
+		}
+
 		let program = {
 			class_name: 	graph.id,
 			control_inputs: graph.input_ports.filter(p => p.update_rate == 2).map(p => p.block.label()),
@@ -2081,6 +2278,8 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 			declarations1: 	[],
 			declarations2:  [],
+
+			init: 			[],
 
 			reset1: 		[],
 			reset2: 		[],
@@ -2095,40 +2294,59 @@ if (typeof module !== 'undefined' && require.main === module) {
 		}
 
 		let extra_vars_n = 0
-
-		graph.blocks.forEach(block => block.output_ports.forEach(oport => oport.code = new MagicString()))
-		graph_init.blocks.forEach(block => block.output_ports.forEach(oport => oport.code = new MagicString()))
+	
+		graph.blocks.forEach(block => block.output_ports.forEach(oport => oport.code = MagicString()))
+		graph_init.blocks.forEach(block => block.output_ports.forEach(oport => oport.code = MagicString()))
 
 
 		graph.input_ports.forEach(ip => ip.block.operation = 'VAR_IN')
 		graph.output_ports.forEach(op => op.block.operation = "VAR_OUT")
 		graph_init.input_ports.forEach(ip => ip.block.operation = 'VAR_IN')
 
-		const id_prefix = target_lang == 'js' ? "this." : "";
+		const id_prefix_ = getIdPrefix(target_lang);
 
 		schedule.forEach(block => convertBlock(block))
 		schedule_init.forEach(block => convertBlockInit(block))
 
 		for (let outi = 0; outi < graph.output_ports.length; outi++) {
-			program.outputs[outi] = graph.output_ports[outi].block.label() + '__out__';
+			program.outputs[outi] = graph.output_ports[outi].block.label() + '_out_';
 			appendAssignment(program.outputs[outi] + getIndexer(target_lang, 'i'), graph.output_ports[outi].code, 5, null)
 		}
 
 		groupControls()
 
-		program.declarations2 = program.declarations2.concat(
-			graph.input_ports.filter(p => p.update_rate == 2).map(p => p.block).map(function (block) {
-				return new MagicString(block.output_ports[0].code, " = ", block.block_init.output_ports[0].code)
-			})
-		)
+		graph.input_ports.filter(p => p.update_rate == 2).map(p => p.block).forEach(function (block) {
+			program.declarations2.push(MagicString(block.output_ports[0].code));
+			program.init.push(MagicString(block.output_ports[0].code, " = ", getNumber(target_lang, block.block_init.output_ports[0].code.toString())));
+		})
 
 		doT.templateSettings.strip = false
-		if (target_lang == 'cpp') {
+
+		if (target_lang == 'C') {
 			return [
-				{ name: "vst2_" + graph.id + ".h", str: doT.template(templates["vst2_main_h"])(program) },
-				{ name: "vst2_" + graph.id + ".cpp", str: doT.template(templates["vst2_main_cpp"])(program) },
-				{ name: "vst2_effect.h", str: doT.template(templates["vst2_effect_h"])(program) },
-				{ name: "vst2_effect.cpp", str: doT.template(templates["vst2_effect_cpp"])(program) }
+				{ name: graph.id + ".h", str: doT.template(templates["C_h"])(program) },
+				{ name: graph.id + ".c", str: doT.template(templates["C_c"])(program) },
+			]
+		}
+		else if (target_lang == 'cpp') {
+			return [
+				{ name: graph.id + ".h", str: doT.template(templates["cpp_h"])(program) },
+				{ name: graph.id + ".cpp", str: doT.template(templates["cpp_cpp"])(program) }
+			]
+		}
+		else if (target_lang == 'VST2') {
+			return [
+				{ name: graph.id + ".h", str: doT.template(templates["cpp_h"])(program) },
+				{ name: graph.id + ".cpp", str: doT.template(templates["cpp_cpp"])(program) },
+				{ name: graph.id + "_vst2_wrapper.h", str: doT.template(templates["vst2_wrapper_h"])(program) },
+				{ name: graph.id + "_vst2_wrapper.cpp", str: doT.template(templates["vst2_wrapper_cpp"])(program) }
+			]
+		}
+		else if (target_lang == 'yaaaeapa') {
+			return [
+				{ name: graph.id + ".h", str: doT.template(templates["C_h"])(program) },
+				{ name: graph.id + ".c", str: doT.template(templates["C_c"])(program) },
+				{ name: graph.id + "_yaaaeapa_wrapper.c", str: doT.template(templates["yaaaeapa_wrapper_c"])(program) }
 			]
 		}
 		else if (target_lang == 'MATLAB') {
@@ -2156,7 +2374,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 			const update_rate = block.output_ports[0].update_rate
 			const code = block.output_ports[0].code
 
-			const auxcode = new MagicString()
+			const auxcode = MagicString()
 
 			let is_used_locally = true
 			is_used_locally = output_blocks.every(b => b.output_ports[0].update_rate == update_rate)
@@ -2168,13 +2386,14 @@ if (typeof module !== 'undefined' && require.main === module) {
 				if (output_blocks.some(b => b.operation == "DELAY1_EXPR"))
 					is_used_locally = false;
 			}
+			const id_prefix = is_used_locally || update_rate == 0 ? "" : id_prefix_;
 
-
-				
 			if (block.ifoutputindex != undefined && !isNaN(block.ifoutputindex)) {
-				code.add(id_prefix, block.label())
+				code.add(id_prefix_, block.label())
+				appendAssignment(code, "",  666, null, true, false, null)
 				return
 			}
+
 			switch (block.operation) {
 				case 'VAR':
 					if (input_blocks[0].operation == 'NUMBER')
@@ -2191,7 +2410,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 						code.add(block.label(), getIndexer(target_lang, 'i'))
 					}
 					else if (update_rate == 2)
-						code.add(id_prefix, block.label())
+						code.add(id_prefix_, block.label())
 					return
 				case 'VAR_OUT':
 					code.add(id_prefix, block.label())
@@ -2199,32 +2418,29 @@ if (typeof module !== 'undefined' && require.main === module) {
 					return
 				case 'DELAY1_EXPR':
 					const id = '_delayed_' + extra_vars_n++
-					code.add(id_prefix, id)
+					code.add(id_prefix_, id)
 					appendAssignment(code, input_blocks_code[0], 4, block.control_dependencies, false, false, block.if_owners)
 					appendAssignment(code, input_blocks[0].block_init.output_ports[0].code, -1, null, true, false, block.if_owners)
 					return
 				case 'NUMBER':
-					if (['cpp', 'd'].includes(target_lang))
-						code.add(block.val + ((block.val.toString().includes('.') || block.val.toString().toLowerCase().includes('e')) ? 'f' : '.0f'));
-					else if (['MATLAB', 'js'].includes(target_lang))
-						code.add(block.val)
+					code.add(getNumber(target_lang, block.val.toString()));
 					return
 				case 'SAMPLERATE':
-					code.add(id_prefix, 'fs')
+					code.add(id_prefix_, 'fs')
 					return
 				case 'IF_THEN_ELSE':
-					if (['cpp', 'd', 'js'].includes(target_lang)) {
+					if (['C', 'cpp', 'VST2', 'yaaaeapa', 'd', 'js'].includes(target_lang)) {
 						code.add("if (", input_blocks_code[0], ') {\n')
-						code.add('__branch0__') // 3
+						code.add('_branch0_') // 3
 						code.add("\n} else {\n")
-						code.add('__branch1__') // 5
+						code.add('_branch1_') // 5
 						code.add("\n}\n")
 					}
 					else if (target_lang == 'MATLAB') {
 						code.add("if (", input_blocks_code[0], ')\n')
-						code.add('__branch0__') // 3
+						code.add('_branch0_') // 3
 						code.add("\nelse\n")
-						code.add('__branch1__') // 5
+						code.add('_branch1_') // 5
 						code.add("\nendif\n")
 					}
 					appendIfStatement(block, code, input_blocks[0].output_ports[0].update_rate, block.if_owners, output_blocks, input_blocks, block.control_dependencies)
@@ -2301,12 +2517,14 @@ if (typeof module !== 'undefined' && require.main === module) {
 			const level = update_rate == 2 ? -2 : update_rate
 			const code = block.output_ports[0].code
 
-			const auxcode = new MagicString()
+			const auxcode = MagicString()
 
 			let is_used_locally = true
 			is_used_locally = output_blocks.every(b => b.output_ports[0].update_rate == update_rate)
 			if (update_rate == 2 && is_used_locally)
 				is_used_locally = output_blocks.every(b => checkSetEquality(b.control_dependencies, block.control_dependencies))
+
+			const id_prefix = is_used_locally ? "" : id_prefix_;
 
 			switch (block.operation) {
 				case 'VAR':
@@ -2329,10 +2547,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 					code.add(input_blocks_code[0])
 					return
 				case 'NUMBER':
-					if (['cpp', 'd'].includes(target_lang))
-						code.add(block.val + ((block.val.toString().includes('.') || block.val.toString().toLowerCase().includes('e')) ? 'f' : '.0f'));
-					else if (['MATLAB', 'js'].includes(target_lang))
-						code.add(block.val)
+					code.add(getNumber(target_lang, block.val.toString()));
 					return
 				case 'SAMPLERATE':
 					code.add(id_prefix, 'fs')
@@ -2402,16 +2617,16 @@ if (typeof module !== 'undefined' && require.main === module) {
 		}
 
 		function appendAssignment(left, right, level, control_dependencies, to_be_declared, is_used_locally, if_owners) {
-			let stmt = new MagicString(left, ' = ', right)
+			let stmt = MagicString(left, ' = ', right)
 			stmt.if_owners = if_owners
 
-
-			if (to_be_declared && level != 0) {
-				if (is_used_locally) {
-					stmt.is_used_locally = true
-				}
-				else {
+			if (is_used_locally) {
+				stmt.is_used_locally = true
+			}
+			else {
+				if (to_be_declared && level != 0) {
 					program.declarations1.push(left)
+					program.init.push(MagicString(left, ' = ', getNumber(target_lang, "0")))
 				}
 			}
 
@@ -2467,13 +2682,13 @@ if (typeof module !== 'undefined' && require.main === module) {
 				let b1 = stmts.filter(s => s.if_owners[s.if_owners.length - 1].branch == 1)
 
 				for (let i of out_i) {
-					b0.push(new MagicString(
+					b0.push(MagicString(
 						output_blocks[i].output_ports[0].code, 
 						' = ', 
 						input_blocks[i + 1].output_ports[0].code,
 					))
 
-					b1.push(new MagicString(
+					b1.push(MagicString(
 						output_blocks[i].output_ports[0].code,
 						' = ',
 						input_blocks[i + 1 + block.output_ports.length].output_ports[0].code
@@ -2483,17 +2698,16 @@ if (typeof module !== 'undefined' && require.main === module) {
 				b0.forEach(s => s.add(';\n'))
 				b1.forEach(s => s.add(';\n'))
 
-				let newcode = new MagicString(...code.s)
+				let newcode = MagicString(...code.s)
 
-				newcode.s.splice(newcode.s.indexOf('__branch0__'), 1, ...b0)
-				newcode.s.splice(newcode.s.indexOf('__branch1__'), 1, ...b1)
+				newcode.s.splice(newcode.s.indexOf('_branch0_'), 1, ...b0)
+				newcode.s.splice(newcode.s.indexOf('_branch1_'), 1, ...b1)
 
 				newcode.control_dependencies = control_dependencies
 				newcode.if_owners = if_owners
 				
 				program[levels[lvl]] = program[levels[lvl]].filter(s => !stmts.includes(s))
 				program[levels[lvl]].push(newcode)
-
 			}
 		}
 
@@ -2522,27 +2736,6 @@ if (typeof module !== 'undefined' && require.main === module) {
 		}
 	}
 
-	function MagicString(...init) {
-		this.s = []
-		this.add = function(...x) {
-			for (let k of x) {
-				if (k == undefined) {
-					throw new Error(k)
-				}
-				this.s.push(k);
-			}
-			return this
-		}
-		this.toString = function(){
-			let str = ''
-			for (let p of this.s)
-				str += p.toString()
-			return str
-		}
-		for (let i of init)
-			this.add(i)	
-	}
-
 	function checkSetsInclusion(A, B) { // if A is included in B
 		return Array.from(A).every(Av => Array.from(B).some(Bv => Av == Bv))
 	}
@@ -2552,9 +2745,8 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 
 	exports["convert"] = convert;
-
 }())
-},{}],5:[function(require,module,exports){
+},{}],6:[function(require,module,exports){
 /*
 	Copyright (C) 2021, 2022 Orastron Srl
 
@@ -2639,7 +2831,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 	exports["scheduleInit"] = scheduleInit
 
 }())
-},{}],6:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
 (function (Buffer){(function (){
 /*
 	Copyright (C) 2021, 2022 Orastron Srl
@@ -2671,14 +2863,17 @@ if (typeof module !== 'undefined' && require.main === module) {
 				"output_generation":require("./output_generation"),
 				"doT": 				require("dot"),
 				"templates":{
-					"matlab": 			String(Buffer("ZnVuY3Rpb24gW3t7PWl0Lm91dHB1dHMuam9pbignLCAnKX19XSA9IHt7PWl0LmNsYXNzX25hbWV9fSh7ez1pdC5hdWRpb19pbnB1dHMuam9pbignLCAnKX19e3s/aXQuYXVkaW9faW5wdXRzLmxlbmd0aCA+IDB9fSx7ez8/fX1uU2FtcGxlcyx7ez99fSBmc3t7P2l0LmNvbnRyb2xfaW5wdXRzLmxlbmd0aCA+IDB9fSx7ez99fSB7ez1pdC5jb250cm9sX2lucHV0cy5qb2luKCcsICcpfX0pCgogICUgY29uc3RhbnRzCgogIHt7fml0LmNvbnN0YW50X3JhdGU6Y319e3s9Y319OwogIHt7fn19CgogICUgZnMKCiAge3t+aXQuc2FtcGxpbmdfcmF0ZTpzfX17ez1zfX07CiAge3t+fX0KCgogICUgY29udHJvbGxpL2NvZWZmaWNpZW50aQoKICB7e35pdC5jb250cm9sc19yYXRlOmN9fSAKICAlIHt7PWMubGFiZWx9fQogIHt7fmMuc3RtdHM6IHN9fQogIHt7PXN9fTt7e359fQogIHt7fn19CiAgCgogIAogICUgaW5pdCBkZWxheQoKICB7e35pdC5yZXNldDE6cn19e3s9cn19OwogIHt7fn19CiAge3t+aXQucmVzZXQyOnJ9fXt7PXJ9fTsKICB7e359fQogIAogIAogIGZvciBpID0gMTp7ez9pdC5hdWRpb19pbnB1dHMubGVuZ3RoID4gMH19bGVuZ3RoKHt7PWl0LmF1ZGlvX2lucHV0c1swXX19KXt7Pz99fW5TYW1wbGVze3s/fX0KCiAgICAlIGF1ZGlvIHJhdGUKCiAgICB7e35pdC5hdWRpb19yYXRlOiBhfX0KICAgIHt7PWF9fTt7e359fQoKICAgICUgZGVsYXkgdXBkYXRlcwogICAgCiAgICB7e35pdC5kZWxheV91cGRhdGVzOnV9fXt7PXV9fTsKICAgIHt7fn19CgogICAgJSBvdXRwdXQKCiAgICB7e35pdC5vdXRwdXRfdXBkYXRlczp1fX0KICAgIHt7PXV9fTt7e359fQogICAgCiAgZW5kZm9yCgplbmRmdW5jdGlvbgo=","base64")),
-					"vst2_main_h": 		String(Buffer("Y2xhc3Mge3s9aXQuY2xhc3NfbmFtZX19CnsKcHVibGljOgoJdm9pZCBzZXRTYW1wbGVSYXRlKGZsb2F0IHNhbXBsZVJhdGUpOwoJdm9pZCByZXNldCgpOwoJdm9pZCBwcm9jZXNzKHt7PWl0LmF1ZGlvX2lucHV0cy5jb25jYXQoaXQub3V0cHV0cykubWFwKHggPT4gJ2Zsb2F0IConICsgeCkuam9pbignLCAnKX19LCBpbnQgblNhbXBsZXMpOwp7e35pdC5jb250cm9sX2lucHV0czpjfX0KCWZsb2F0IGdldHt7PWN9fSgpOwoJdm9pZCBzZXR7ez1jfX0oZmxvYXQgdmFsdWUpO3t7fn19Cgpwcml2YXRlOgoKCXt7fml0LmRlY2xhcmF0aW9uczE6ZH19CglmbG9hdCB7ez1kfX0gPSAwLmY7e3t+fX0KCQoJe3t+aXQuZGVjbGFyYXRpb25zMjpkfX0KCWZsb2F0IHt7PWR9fTt7e359fQoKCXt7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQoJZmxvYXQge3s9Y319X3oxOwoJY2hhciB7ez1jfX1fQ0hBTkdFRDsKCXt7fn19CgoJZmxvYXQgZnM7CgljaGFyIGZpcnN0UnVuOwoKfTsK","base64")),
-					"vst2_main_cpp": 	String(Buffer("I2luY2x1ZGUgInZzdDJfe3s9aXQuY2xhc3NfbmFtZX19LmgiCgoKe3t+aXQuY29uc3RhbnRfcmF0ZTpjfX1zdGF0aWMgY29uc3QgZmxvYXQge3s9Y319Owp7e359fQoKdm9pZCB7ez1pdC5jbGFzc19uYW1lfX06OnJlc2V0KCkKewoJZmlyc3RSdW4gPSAxOwp9Cgp2b2lkIHt7PWl0LmNsYXNzX25hbWV9fTo6c2V0U2FtcGxlUmF0ZShmbG9hdCBzYW1wbGVSYXRlKQp7CglmcyA9IHNhbXBsZVJhdGU7Cgl7e35pdC5zYW1wbGluZ19yYXRlOnN9fXt7P3MuaXNfdXNlZF9sb2NhbGx5fX1jb25zdCBmbG9hdCB7ez99fXt7PXN9fTsKCXt7fn19Cn0KCnZvaWQge3s9aXQuY2xhc3NfbmFtZX19Ojpwcm9jZXNzKHt7PWl0LmF1ZGlvX2lucHV0cy5jb25jYXQoaXQub3V0cHV0cykubWFwKHggPT4gJ2Zsb2F0IConICsgeCkuam9pbignLCAnKX19LCBpbnQgblNhbXBsZXMpCnsKCWlmIChmaXJzdFJ1bikge3t7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQoJCXt7PWN9fV9DSEFOR0VEID0gMTt7e359fQoJfQoJZWxzZSB7e3t+aXQuY29udHJvbF9pbnB1dHM6Y319CgkJe3s9Y319X0NIQU5HRUQgPSB7ez1jfX0gIT0ge3s9Y319X3oxO3t7fn19Cgl9Cgl7e35pdC5jb250cm9sc19yYXRlOmN9fQoJaWYgKHt7PUFycmF5LmZyb20oYy5zZXQpLm1hcChlID0+IGUgKyAiX0NIQU5HRUQiKS5qb2luKCcgfCAnKX19KSB7e3t+Yy5zdG10czogc319CgkJe3s/cy5pc191c2VkX2xvY2FsbHl9fWNvbnN0IGZsb2F0IHt7P319e3s9c319O3t7fn19Cgl9e3t+fX0KCXt7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQoJe3s9Y319X0NIQU5HRUQgPSAwO3t7fn19CgoJaWYgKGZpcnN0UnVuKSB7e3t+aXQucmVzZXQxOnJ9fQoJCXt7P3IuaXNfdXNlZF9sb2NhbGx5fX1jb25zdCBmbG9hdCB7ez99fXt7PXJ9fTt7e359fQoJCXt7fml0LnJlc2V0MjpyfX0KCQl7ez9yLmlzX3VzZWRfbG9jYWxseX19Y29uc3QgZmxvYXQge3s/fX17ez1yfX07e3t+fX0KCX0KCglmb3IgKGludCBpID0gMDsgaSA8IG5TYW1wbGVzOyBpKyspIHsKCQl7e35pdC5hdWRpb19yYXRlOiBhfX0KCQl7ez9hLmlzX3VzZWRfbG9jYWxseX19Y29uc3QgZmxvYXQge3s/fX17ez1hfX07e3t+fX0KCQkKCQl7e35pdC5kZWxheV91cGRhdGVzOnV9fXt7PXV9fTsKCQl7e359fQoJCXt7fml0Lm91dHB1dF91cGRhdGVzOnV9fQoJCXt7PXV9fTt7e359fQoJfQoKCXt7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQoJe3s9Y319X3oxID0ge3s9Y319O3t7fn19CglmaXJzdFJ1biA9IDA7Cn0KCnt7fml0LmNvbnRyb2xfaW5wdXRzOiBjfX0KZmxvYXQge3s9aXQuY2xhc3NfbmFtZX19OjpnZXR7ez1jfX0oKSB7CglyZXR1cm4ge3s9Y319Owp9CnZvaWQge3s9aXQuY2xhc3NfbmFtZX19OjpzZXR7ez1jfX0oZmxvYXQgdmFsdWUpIHsKCXt7PWN9fSA9IHZhbHVlOwp9Cnt7fn19","base64")),
-					"vst2_effect_h": 	String(Buffer("I2lmbmRlZiBfRUZGRUNUX0gKI2RlZmluZSBfRUZGRUNUX0gKCiNpbmNsdWRlICJhdWRpb2VmZmVjdHguaCIKI2luY2x1ZGUgInZzdDJfe3s9aXQuY2xhc3NfbmFtZX19LmgiCgpjbGFzcyBFZmZlY3QgOiBwdWJsaWMgQXVkaW9FZmZlY3RYCnsKcHVibGljOgoJRWZmZWN0KGF1ZGlvTWFzdGVyQ2FsbGJhY2sgYXVkaW9NYXN0ZXIpOwoJfkVmZmVjdCgpOwoKCXZpcnR1YWwgdm9pZCBzZXRTYW1wbGVSYXRlKGZsb2F0IHNhbXBsZVJhdGUpOwoJdmlydHVhbCB2b2lkIHByb2Nlc3MoZmxvYXQgKippbnB1dHMsIGZsb2F0ICoqb3V0cHV0cywgVnN0SW50MzIgc2FtcGxlRnJhbWVzKTsKCXZpcnR1YWwgdm9pZCBwcm9jZXNzUmVwbGFjaW5nKGZsb2F0ICoqaW5wdXRzLCBmbG9hdCAqKm91dHB1dHMsIFZzdEludDMyIHNhbXBsZUZyYW1lcyk7Cgl2aXJ0dWFsIHZvaWQgc2V0UHJvZ3JhbU5hbWUoY2hhciAqbmFtZSk7Cgl2aXJ0dWFsIHZvaWQgZ2V0UHJvZ3JhbU5hbWUoY2hhciAqbmFtZSk7Cgl2aXJ0dWFsIGJvb2wgZ2V0UHJvZ3JhbU5hbWVJbmRleGVkKFZzdEludDMyIGNhdGVnb3J5LCBWc3RJbnQzMiBpbmRleCwgY2hhciogbmFtZSk7Cgl2aXJ0dWFsIHZvaWQgc2V0UGFyYW1ldGVyKFZzdEludDMyIGluZGV4LCBmbG9hdCB2YWx1ZSk7Cgl2aXJ0dWFsIGZsb2F0IGdldFBhcmFtZXRlcihWc3RJbnQzMiBpbmRleCk7Cgl2aXJ0dWFsIHZvaWQgZ2V0UGFyYW1ldGVyTGFiZWwoVnN0SW50MzIgaW5kZXgsIGNoYXIgKmxhYmVsKTsKCXZpcnR1YWwgdm9pZCBnZXRQYXJhbWV0ZXJEaXNwbGF5KFZzdEludDMyIGluZGV4LCBjaGFyICp0ZXh0KTsKCXZpcnR1YWwgdm9pZCBnZXRQYXJhbWV0ZXJOYW1lKFZzdEludDMyIGluZGV4LCBjaGFyICp0ZXh0KTsKCgl2aXJ0dWFsIGJvb2wgZ2V0RWZmZWN0TmFtZShjaGFyICpuYW1lKTsKCXZpcnR1YWwgYm9vbCBnZXRWZW5kb3JTdHJpbmcoY2hhciAqdGV4dCk7Cgl2aXJ0dWFsIGJvb2wgZ2V0UHJvZHVjdFN0cmluZyhjaGFyICp0ZXh0KTsKCXZpcnR1YWwgVnN0SW50MzIgZ2V0VmVuZG9yVmVyc2lvbigpIHsgcmV0dXJuIDEwMDA7IH0KCnByaXZhdGU6CgljaGFyIHByb2dyYW1OYW1lWzMyXTsKCgl7ez1pdC5jbGFzc19uYW1lfX0gaW5zdGFuY2U7Cn07CgojZW5kaWYK","base64")),
-					"vst2_effect_cpp": 	String(Buffer("I2luY2x1ZGUgInZzdDJfZWZmZWN0LmgiCgojaW5jbHVkZSA8Y3N0ZGxpYj4KI2luY2x1ZGUgPGNzdGRpbz4KI2luY2x1ZGUgPGNtYXRoPgojaW5jbHVkZSA8YWxnb3JpdGhtPgoKQXVkaW9FZmZlY3QgKmNyZWF0ZUVmZmVjdEluc3RhbmNlKGF1ZGlvTWFzdGVyQ2FsbGJhY2sgYXVkaW9NYXN0ZXIpIHsgcmV0dXJuIG5ldyBFZmZlY3QoYXVkaW9NYXN0ZXIpOyB9CgpFZmZlY3Q6OkVmZmVjdChhdWRpb01hc3RlckNhbGxiYWNrIGF1ZGlvTWFzdGVyKSA6IEF1ZGlvRWZmZWN0WChhdWRpb01hc3RlciwgMSwge3s9aXQuY29udHJvbF9pbnB1dHMubGVuZ3RofX0pIHsKCXNldE51bUlucHV0cyh7ez1pdC5hdWRpb19pbnB1dHMubGVuZ3RofX0pOwoJc2V0TnVtT3V0cHV0cyh7ez1pdC5vdXRwdXRzLmxlbmd0aH19KTsKCXNldFVuaXF1ZUlEKCdmeGZ4Jyk7CglERUNMQVJFX1ZTVF9ERVBSRUNBVEVEKGNhbk1vbm8pICgpOwoJY2FuUHJvY2Vzc1JlcGxhY2luZygpOwoJc3RyY3B5KHByb2dyYW1OYW1lLCAiRWZmZWN0Iik7CgoJaW5zdGFuY2UgPSB7ez1pdC5jbGFzc19uYW1lfX0oKTsKfQoKRWZmZWN0Ojp+RWZmZWN0KCkge30KCmJvb2wgRWZmZWN0OjpnZXRQcm9kdWN0U3RyaW5nKGNoYXIqIHRleHQpIHsgc3RyY3B5KHRleHQsICJFZmZlY3QiKTsgcmV0dXJuIHRydWU7IH0KYm9vbCBFZmZlY3Q6OmdldFZlbmRvclN0cmluZyhjaGFyKiB0ZXh0KSB7IHN0cmNweSh0ZXh0LCAiQ2lhcmFtZWxsYSIpOyByZXR1cm4gdHJ1ZTsgfQpib29sIEVmZmVjdDo6Z2V0RWZmZWN0TmFtZShjaGFyKiBuYW1lKSB7IHN0cmNweShuYW1lLCAiRWZmZWN0Iik7IHJldHVybiB0cnVlOyB9Cgp2b2lkIEVmZmVjdDo6c2V0UHJvZ3JhbU5hbWUoY2hhciAqbmFtZSkgeyBzdHJjcHkocHJvZ3JhbU5hbWUsIG5hbWUpOyB9CnZvaWQgRWZmZWN0OjpnZXRQcm9ncmFtTmFtZShjaGFyICpuYW1lKSB7IHN0cmNweShuYW1lLCBwcm9ncmFtTmFtZSk7IH0KCmJvb2wgRWZmZWN0OjpnZXRQcm9ncmFtTmFtZUluZGV4ZWQoVnN0SW50MzIgY2F0ZWdvcnksIFZzdEludDMyIGluZGV4LCBjaGFyKiBuYW1lKSB7CglpZiAoaW5kZXggPT0gMCkgewoJCXN0cmNweShuYW1lLCBwcm9ncmFtTmFtZSk7CgkJcmV0dXJuIHRydWU7Cgl9CglyZXR1cm4gZmFsc2U7Cn0KCnZvaWQgRWZmZWN0OjpzZXRQYXJhbWV0ZXIoVnN0SW50MzIgaW5kZXgsIGZsb2F0IHZhbHVlKSB7Cglzd2l0Y2ggKGluZGV4KSB7Cgl7e35pdC5jb250cm9sX2lucHV0czpjfX0KCWNhc2Uge3s9aXQuY29udHJvbF9pbnB1dHMuaW5kZXhPZihjKX19OgoJCWluc3RhbmNlLnNldHt7PWN9fSh2YWx1ZSk7CgkJYnJlYWs7e3t+fX0KCX0KfQoKZmxvYXQgRWZmZWN0OjpnZXRQYXJhbWV0ZXIoVnN0SW50MzIgaW5kZXgpIHsKCWZsb2F0IHYgPSAwLmY7Cglzd2l0Y2ggKGluZGV4KSB7Cgl7e35pdC5jb250cm9sX2lucHV0czpjfX0KCWNhc2Uge3s9aXQuY29udHJvbF9pbnB1dHMuaW5kZXhPZihjKX19OgoJCXYgPSBpbnN0YW5jZS5nZXR7ez1jfX0oKTsKCQlicmVhazt7e359fQoJfQoJcmV0dXJuIHY7Cn0KCnZvaWQgRWZmZWN0OjpnZXRQYXJhbWV0ZXJOYW1lKFZzdEludDMyIGluZGV4LCBjaGFyICp0ZXh0KSB7Cgljb25zdCBjaGFyICpuYW1lc1tdID0geyB7ez1pdC5jb250cm9sX2lucHV0cy5tYXAoYyA9PiAnXCInICtjKydcIicpfX19OwoJc3RyY3B5KHRleHQsIG5hbWVzW2luZGV4XSk7Cn0KCnZvaWQgRWZmZWN0OjpnZXRQYXJhbWV0ZXJEaXNwbGF5KFZzdEludDMyIGluZGV4LCBjaGFyICp0ZXh0KSB7Cgl0ZXh0WzBdID0gJ1wwJzsKfQoKdm9pZCBFZmZlY3Q6OmdldFBhcmFtZXRlckxhYmVsKFZzdEludDMyIGluZGV4LCBjaGFyICp0ZXh0KSAgewoJdGV4dFswXSA9ICdcMCc7Cn0KCnZvaWQgRWZmZWN0OjpzZXRTYW1wbGVSYXRlKGZsb2F0IHNhbXBsZVJhdGUpIHsKCWluc3RhbmNlLnNldFNhbXBsZVJhdGUoc2FtcGxlUmF0ZSk7CglpbnN0YW5jZS5yZXNldCgpOwp9Cgp2b2lkIEVmZmVjdDo6cHJvY2VzcyhmbG9hdCAqKmlucHV0cywgZmxvYXQgKipvdXRwdXRzLCBWc3RJbnQzMiBzYW1wbGVGcmFtZXMpIHsKCWluc3RhbmNlLnByb2Nlc3Moe3s9aXQuYXVkaW9faW5wdXRzLm1hcChpID0+ICdpbnB1dHNbJytpdC5hdWRpb19pbnB1dHMuaW5kZXhPZihpKSsnXScpfX0sIHt7PWl0Lm91dHB1dHMubWFwKGkgPT4gJ291dHB1dHNbJytpdC5vdXRwdXRzLmluZGV4T2YoaSkrJ10nKX19LCBzYW1wbGVGcmFtZXMpOwp9Cgp2b2lkIEVmZmVjdDo6cHJvY2Vzc1JlcGxhY2luZyhmbG9hdCAqKmlucHV0cywgZmxvYXQgKipvdXRwdXRzLCBWc3RJbnQzMiBzYW1wbGVGcmFtZXMpIHsKCWluc3RhbmNlLnByb2Nlc3Moe3s9aXQuYXVkaW9faW5wdXRzLm1hcChpID0+ICdpbnB1dHNbJytpdC5hdWRpb19pbnB1dHMuaW5kZXhPZihpKSsnXScpfX0sIHt7PWl0Lm91dHB1dHMubWFwKGkgPT4gJ291dHB1dHNbJytpdC5vdXRwdXRzLmluZGV4T2YoaSkrJ10nKX19LCBzYW1wbGVGcmFtZXMpOwp9","base64")),
+					"matlab": 			String(Buffer("ZnVuY3Rpb24gW3t7PWl0Lm91dHB1dHMuam9pbignLCAnKX19XSA9IHt7PWl0LmNsYXNzX25hbWV9fSh7ez1pdC5hdWRpb19pbnB1dHMuam9pbignLCAnKX19e3s/aXQuYXVkaW9faW5wdXRzLmxlbmd0aCA+IDB9fSx7ez8/fX1uU2FtcGxlcyx7ez99fSBmc3t7P2l0LmNvbnRyb2xfaW5wdXRzLmxlbmd0aCA+IDB9fSx7ez99fSB7ez1pdC5jb250cm9sX2lucHV0cy5qb2luKCcsICcpfX0pCgogICUgY29uc3RhbnRzCgogIHt7fml0LmNvbnN0YW50X3JhdGU6Y319e3s9Y319OwogIHt7fn19CgogICUgZnMKCiAge3t+aXQuc2FtcGxpbmdfcmF0ZTpzfX17ez1zfX07CiAge3t+fX0KCgogICUgY29udHJvbGxpL2NvZWZmaWNpZW50aQoKICB7e35pdC5jb250cm9sc19yYXRlOmN9fSAKICAlIHt7PWMubGFiZWx9fQogIHt7fmMuc3RtdHM6IHN9fQogIHt7PXN9fTt7e359fQogIHt7fn19CiAgCgogIAogICUgaW5pdCBkZWxheQoKICB7e35pdC5yZXNldDE6cn19e3s9cn19OwogIHt7fn19CiAge3t+aXQucmVzZXQyOnJ9fXt7PXJ9fTsKICB7e359fQogIAogIAogIGZvciBpID0gMTp7ez9pdC5hdWRpb19pbnB1dHMubGVuZ3RoID4gMH19bGVuZ3RoKHt7PWl0LmF1ZGlvX2lucHV0c1swXX19KXt7Pz99fW5TYW1wbGVze3s/fX0KCiAgICAlIGF1ZGlvIHJhdGUKCiAgICB7e35pdC5hdWRpb19yYXRlOiBhfX0KICAgIHt7PWF9fTt7e359fQoKICAgICUgZGVsYXkgdXBkYXRlcwogICAgCiAgICB7e35pdC5kZWxheV91cGRhdGVzOnV9fXt7PXV9fTsKICAgIHt7fn19CgogICAgJSBvdXRwdXQKCiAgICB7e35pdC5vdXRwdXRfdXBkYXRlczp1fX0KICAgIHt7PXV9fTt7e359fQogICAgCiAgZW5kZm9yCgplbmRmdW5jdGlvbg==","base64")),
+					"C_h": 				String(Buffer("I2lmbmRlZiBfe3s9aXQuY2xhc3NfbmFtZS50b1VwcGVyQ2FzZSgpfX1fSAojZGVmaW5lIF97ez1pdC5jbGFzc19uYW1lLnRvVXBwZXJDYXNlKCl9fV9ICgp7ez9pdC5jb250cm9sX2lucHV0cy5sZW5ndGggPiAwfX0KZW51bSB7Cgl7e35pdC5jb250cm9sX2lucHV0czpjfX0KCXBfe3s9Y319LHt7fn19Cn07Cnt7P319CgpzdHJ1Y3QgX3t7PWl0LmNsYXNzX25hbWV9fSB7Cgl7e35pdC5kZWNsYXJhdGlvbnMxOmR9fQoJZmxvYXQge3s9ZC50b1N0cmluZygpLnJlcGxhY2UoImluc3RhbmNlLT4iLCAiIil9fTt7e359fQoJCgl7e35pdC5kZWNsYXJhdGlvbnMyOmR9fQoJZmxvYXQge3s9ZC50b1N0cmluZygpLnJlcGxhY2UoImluc3RhbmNlLT4iLCAiIil9fTt7e359fQoKCXt7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQoJZmxvYXQge3s9Y319X3oxOwoJY2hhciB7ez1jfX1fQ0hBTkdFRDsKCXt7fn19CgoJZmxvYXQgZnM7CgljaGFyIGZpcnN0UnVuOwp9Owp0eXBlZGVmIHN0cnVjdCBfe3s9aXQuY2xhc3NfbmFtZX19IHt7PWl0LmNsYXNzX25hbWV9fTsKCgp2b2lkIHt7PWl0LmNsYXNzX25hbWV9fV9pbml0KHt7PWl0LmNsYXNzX25hbWV9fSAqaW5zdGFuY2UpOwp2b2lkIHt7PWl0LmNsYXNzX25hbWV9fV9zZXRfc2FtcGxlX3JhdGUoe3s9aXQuY2xhc3NfbmFtZX19ICppbnN0YW5jZSwgZmxvYXQgc2FtcGxlX3JhdGUpOwp2b2lkIHt7PWl0LmNsYXNzX25hbWV9fV9yZXNldCh7ez1pdC5jbGFzc19uYW1lfX0gKmluc3RhbmNlKTsKdm9pZCB7ez1pdC5jbGFzc19uYW1lfX1fcHJvY2Vzcyh7ez1pdC5jbGFzc19uYW1lfX0gKmluc3RhbmNlLCB7ez9pdC5hdWRpb19pbnB1dHMubGVuZ3RoID4gMH19IHt7PWl0LmF1ZGlvX2lucHV0cy5tYXAoeCA9PiAnY29uc3QgZmxvYXQgKicgKyB4KS5qb2luKCcsICcpfX0sIHt7P319e3s/aXQub3V0cHV0cy5sZW5ndGggPiAwfX17ez1pdC5vdXRwdXRzLm1hcCh4ID0+ICdmbG9hdCAqJyArIHgpLmpvaW4oJywgJyl9fSwge3s/fX1pbnQgblNhbXBsZXMpOwpmbG9hdCB7ez1pdC5jbGFzc19uYW1lfX1fZ2V0X3BhcmFtZXRlcih7ez1pdC5jbGFzc19uYW1lfX0gKmluc3RhbmNlLCBpbnQgaW5kZXgpOwp2b2lkIHt7PWl0LmNsYXNzX25hbWV9fV9zZXRfcGFyYW1ldGVyKHt7PWl0LmNsYXNzX25hbWV9fSAqaW5zdGFuY2UsIGludCBpbmRleCwgZmxvYXQgdmFsdWUpOwoKI2VuZGlm","base64")),
+					"C_c": 				String(Buffer("I2luY2x1ZGUgInt7PWl0LmNsYXNzX25hbWV9fS5oIgoKe3t+aXQuY29uc3RhbnRfcmF0ZTpjfX1zdGF0aWMgY29uc3QgZmxvYXQge3s9Y319Owp7e359fQoKdm9pZCB7ez1pdC5jbGFzc19uYW1lfX1faW5pdCh7ez1pdC5jbGFzc19uYW1lfX0gKmluc3RhbmNlKSB7Cgl7e35pdC5pbml0OmR9fQoJe3s9ZH19O3t7fn19Cn0KCnZvaWQge3s9aXQuY2xhc3NfbmFtZX19X3Jlc2V0KHt7PWl0LmNsYXNzX25hbWV9fSAqaW5zdGFuY2UpIHsKCWluc3RhbmNlLT5maXJzdFJ1biA9IDE7Cn0KCnZvaWQge3s9aXQuY2xhc3NfbmFtZX19X3NldF9zYW1wbGVfcmF0ZSh7ez1pdC5jbGFzc19uYW1lfX0gKmluc3RhbmNlLCBmbG9hdCBzYW1wbGVfcmF0ZSkgewoJaW5zdGFuY2UtPmZzID0gc2FtcGxlX3JhdGU7Cgl7e35pdC5zYW1wbGluZ19yYXRlOnN9fXt7PXN9fTsKCXt7fn19Cn0KCnZvaWQge3s9aXQuY2xhc3NfbmFtZX19X3Byb2Nlc3Moe3s9aXQuY2xhc3NfbmFtZX19ICppbnN0YW5jZSwge3s/aXQuYXVkaW9faW5wdXRzLmxlbmd0aCA+IDB9fSB7ez1pdC5hdWRpb19pbnB1dHMubWFwKHggPT4gJ2NvbnN0IGZsb2F0IConICsgeCkuam9pbignLCAnKX19LCB7ez99fXt7P2l0Lm91dHB1dHMubGVuZ3RoID4gMH19e3s9aXQub3V0cHV0cy5tYXAoeCA9PiAnZmxvYXQgKicgKyB4KS5qb2luKCcsICcpfX0sIHt7P319aW50IG5TYW1wbGVzKSB7CglpZiAoaW5zdGFuY2UtPmZpcnN0UnVuKSB7e3t+aXQuY29udHJvbF9pbnB1dHM6Y319CgkJaW5zdGFuY2UtPnt7PWN9fV9DSEFOR0VEID0gMTt7e359fQoJfQoJZWxzZSB7e3t+aXQuY29udHJvbF9pbnB1dHM6Y319CgkJaW5zdGFuY2UtPnt7PWN9fV9DSEFOR0VEID0gaW5zdGFuY2UtPnt7PWN9fSAhPSBpbnN0YW5jZS0+e3s9Y319X3oxO3t7fn19Cgl9Cgl7e35pdC5jb250cm9sc19yYXRlOmN9fQoJaWYgKHt7PUFycmF5LmZyb20oYy5zZXQpLm1hcChlID0+ICJpbnN0YW5jZS0+IiArIGUgKyAiX0NIQU5HRUQiKS5qb2luKCcgfCAnKX19KSB7e3t+Yy5zdG10czogc319CgkJe3s9c319O3t7fn19Cgl9e3t+fX0KCXt7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQoJaW5zdGFuY2UtPnt7PWN9fV9DSEFOR0VEID0gMDt7e359fQoKCWlmIChpbnN0YW5jZS0+Zmlyc3RSdW4pIHt7e35pdC5yZXNldDE6cn19CgkJe3s9cn19O3t7fn19CgkJe3t+aXQucmVzZXQyOnJ9fQoJCXt7PXJ9fTt7e359fQoJfQoKCWZvciAoaW50IGkgPSAwOyBpIDwgblNhbXBsZXM7IGkrKykgewoJCXt7fml0LmF1ZGlvX3JhdGU6IGF9fQoJCXt7PWF9fTt7e359fQoJCQoJCXt7fml0LmRlbGF5X3VwZGF0ZXM6dX19e3s9dX19OwoJCXt7fn19CgkJe3t+aXQub3V0cHV0X3VwZGF0ZXM6dX19CgkJe3s9dX19O3t7fn19Cgl9CgoJe3t+aXQuY29udHJvbF9pbnB1dHM6Y319CglpbnN0YW5jZS0+e3s9Y319X3oxID0gaW5zdGFuY2UtPnt7PWN9fTt7e359fQoJaW5zdGFuY2UtPmZpcnN0UnVuID0gMDsKfQoKZmxvYXQge3s9aXQuY2xhc3NfbmFtZX19X2dldF9wYXJhbWV0ZXIoe3s9aXQuY2xhc3NfbmFtZX19ICppbnN0YW5jZSwgaW50IGluZGV4KSB7Cglzd2l0Y2ggKGluZGV4KSB7CgkJe3t+aXQuY29udHJvbF9pbnB1dHM6Y319Y2FzZSBwX3t7PWN9fToKCQkJcmV0dXJuIGluc3RhbmNlLT57ez1jfX07CgkJe3t+fX0KCX0KfQoKdm9pZCB7ez1pdC5jbGFzc19uYW1lfX1fc2V0X3BhcmFtZXRlcih7ez1pdC5jbGFzc19uYW1lfX0gKmluc3RhbmNlLCBpbnQgaW5kZXgsIGZsb2F0IHZhbHVlKSB7Cglzd2l0Y2ggKGluZGV4KSB7CgkJe3t+aXQuY29udHJvbF9pbnB1dHM6Y319Y2FzZSBwX3t7PWN9fToKCQkJaW5zdGFuY2UtPnt7PWN9fSA9IHZhbHVlOwoJCQlicmVhazsKCQl7e359fQoJfQp9","base64")),
+					"cpp_h": 			String(Buffer("Y2xhc3Mge3s9aXQuY2xhc3NfbmFtZX19CnsKcHVibGljOgoJdm9pZCBzZXRTYW1wbGVSYXRlKGZsb2F0IHNhbXBsZVJhdGUpOwoJdm9pZCByZXNldCgpOwoJdm9pZCBwcm9jZXNzKHt7PWl0LmF1ZGlvX2lucHV0cy5jb25jYXQoaXQub3V0cHV0cykubWFwKHggPT4gJ2Zsb2F0IConICsgeCkuam9pbignLCAnKX19LCBpbnQgblNhbXBsZXMpOwp7e35pdC5jb250cm9sX2lucHV0czpjfX0KCWZsb2F0IGdldHt7PWN9fSgpOwoJdm9pZCBzZXR7ez1jfX0oZmxvYXQgdmFsdWUpO3t7fn19Cgpwcml2YXRlOgoKCXt7fml0LmluaXQ6ZH19CglmbG9hdCB7ez1kfX07e3t+fX0KCgl7e35pdC5jb250cm9sX2lucHV0czpjfX0KCWZsb2F0IHt7PWN9fV96MTsKCWNoYXIge3s9Y319X0NIQU5HRUQ7Cgl7e359fQoKCWZsb2F0IGZzOwoJY2hhciBmaXJzdFJ1bjsKCn07Cg==","base64")),
+					"cpp_cpp": 			String(Buffer("I2luY2x1ZGUgInt7PWl0LmNsYXNzX25hbWV9fS5oIgoKCnt7fml0LmNvbnN0YW50X3JhdGU6Y319c3RhdGljIGNvbnN0IGZsb2F0IHt7PWN9fTsKe3t+fX0KCnZvaWQge3s9aXQuY2xhc3NfbmFtZX19OjpyZXNldCgpCnsKCWZpcnN0UnVuID0gMTsKfQoKdm9pZCB7ez1pdC5jbGFzc19uYW1lfX06OnNldFNhbXBsZVJhdGUoZmxvYXQgc2FtcGxlUmF0ZSkKewoJZnMgPSBzYW1wbGVSYXRlOwoJe3t+aXQuc2FtcGxpbmdfcmF0ZTpzfX17ez1zfX07Cgl7e359fQp9Cgp2b2lkIHt7PWl0LmNsYXNzX25hbWV9fTo6cHJvY2Vzcyh7ez1pdC5hdWRpb19pbnB1dHMuY29uY2F0KGl0Lm91dHB1dHMpLm1hcCh4ID0+ICdmbG9hdCAqJyArIHgpLmpvaW4oJywgJyl9fSwgaW50IG5TYW1wbGVzKQp7CglpZiAoZmlyc3RSdW4pIHt7e35pdC5jb250cm9sX2lucHV0czpjfX0KCQl7ez1jfX1fQ0hBTkdFRCA9IDE7e3t+fX0KCX0KCWVsc2Uge3t7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQoJCXt7PWN9fV9DSEFOR0VEID0ge3s9Y319ICE9IHt7PWN9fV96MTt7e359fQoJfQoJe3t+aXQuY29udHJvbHNfcmF0ZTpjfX0KCWlmICh7ez1BcnJheS5mcm9tKGMuc2V0KS5tYXAoZSA9PiBlICsgIl9DSEFOR0VEIikuam9pbignIHwgJyl9fSkge3t7fmMuc3RtdHM6IHN9fQoJCXt7PXN9fTt7e359fQoJfXt7fn19Cgl7e35pdC5jb250cm9sX2lucHV0czpjfX0KCXt7PWN9fV9DSEFOR0VEID0gMDt7e359fQoKCWlmIChmaXJzdFJ1bikge3t7fml0LnJlc2V0MTpyfX0KCQl7ez1yfX07e3t+fX0KCQl7e35pdC5yZXNldDI6cn19CgkJe3s9cn19O3t7fn19Cgl9CgoJZm9yIChpbnQgaSA9IDA7IGkgPCBuU2FtcGxlczsgaSsrKSB7CgkJe3t+aXQuYXVkaW9fcmF0ZTogYX19CgkJe3s9YX19O3t7fn19CgkJCgkJe3t+aXQuZGVsYXlfdXBkYXRlczp1fX17ez11fX07CgkJe3t+fX0KCQl7e35pdC5vdXRwdXRfdXBkYXRlczp1fX0KCQl7ez11fX07e3t+fX0KCX0KCgl7e35pdC5jb250cm9sX2lucHV0czpjfX0KCXt7PWN9fV96MSA9IHt7PWN9fTt7e359fQoJZmlyc3RSdW4gPSAwOwp9Cgp7e35pdC5jb250cm9sX2lucHV0czogY319CmZsb2F0IHt7PWl0LmNsYXNzX25hbWV9fTo6Z2V0e3s9Y319KCkgewoJcmV0dXJuIHt7PWN9fTsKfQp2b2lkIHt7PWl0LmNsYXNzX25hbWV9fTo6c2V0e3s9Y319KGZsb2F0IHZhbHVlKSB7Cgl7ez1jfX0gPSB2YWx1ZTsKfQp7e359fQ==","base64")),
+					"vst2_wrapper_h": 	String(Buffer("I2lmbmRlZiBfRUZGRUNUX0gKI2RlZmluZSBfRUZGRUNUX0gKCiNpbmNsdWRlICJhdWRpb2VmZmVjdHguaCIKI2luY2x1ZGUgInt7PWl0LmNsYXNzX25hbWV9fS5oIgoKY2xhc3MgRWZmZWN0IDogcHVibGljIEF1ZGlvRWZmZWN0WAp7CnB1YmxpYzoKCUVmZmVjdChhdWRpb01hc3RlckNhbGxiYWNrIGF1ZGlvTWFzdGVyKTsKCX5FZmZlY3QoKTsKCgl2aXJ0dWFsIHZvaWQgc2V0U2FtcGxlUmF0ZShmbG9hdCBzYW1wbGVSYXRlKTsKCXZpcnR1YWwgdm9pZCBwcm9jZXNzKGZsb2F0ICoqaW5wdXRzLCBmbG9hdCAqKm91dHB1dHMsIFZzdEludDMyIHNhbXBsZUZyYW1lcyk7Cgl2aXJ0dWFsIHZvaWQgcHJvY2Vzc1JlcGxhY2luZyhmbG9hdCAqKmlucHV0cywgZmxvYXQgKipvdXRwdXRzLCBWc3RJbnQzMiBzYW1wbGVGcmFtZXMpOwoJdmlydHVhbCB2b2lkIHNldFByb2dyYW1OYW1lKGNoYXIgKm5hbWUpOwoJdmlydHVhbCB2b2lkIGdldFByb2dyYW1OYW1lKGNoYXIgKm5hbWUpOwoJdmlydHVhbCBib29sIGdldFByb2dyYW1OYW1lSW5kZXhlZChWc3RJbnQzMiBjYXRlZ29yeSwgVnN0SW50MzIgaW5kZXgsIGNoYXIqIG5hbWUpOwoJdmlydHVhbCB2b2lkIHNldFBhcmFtZXRlcihWc3RJbnQzMiBpbmRleCwgZmxvYXQgdmFsdWUpOwoJdmlydHVhbCBmbG9hdCBnZXRQYXJhbWV0ZXIoVnN0SW50MzIgaW5kZXgpOwoJdmlydHVhbCB2b2lkIGdldFBhcmFtZXRlckxhYmVsKFZzdEludDMyIGluZGV4LCBjaGFyICpsYWJlbCk7Cgl2aXJ0dWFsIHZvaWQgZ2V0UGFyYW1ldGVyRGlzcGxheShWc3RJbnQzMiBpbmRleCwgY2hhciAqdGV4dCk7Cgl2aXJ0dWFsIHZvaWQgZ2V0UGFyYW1ldGVyTmFtZShWc3RJbnQzMiBpbmRleCwgY2hhciAqdGV4dCk7CgoJdmlydHVhbCBib29sIGdldEVmZmVjdE5hbWUoY2hhciAqbmFtZSk7Cgl2aXJ0dWFsIGJvb2wgZ2V0VmVuZG9yU3RyaW5nKGNoYXIgKnRleHQpOwoJdmlydHVhbCBib29sIGdldFByb2R1Y3RTdHJpbmcoY2hhciAqdGV4dCk7Cgl2aXJ0dWFsIFZzdEludDMyIGdldFZlbmRvclZlcnNpb24oKSB7IHJldHVybiAxMDAwOyB9Cgpwcml2YXRlOgoJY2hhciBwcm9ncmFtTmFtZVszMl07CgoJe3s9aXQuY2xhc3NfbmFtZX19IGluc3RhbmNlOwp9OwoKI2VuZGlm","base64")),
+					"vst2_wrapper_cpp": String(Buffer("I2luY2x1ZGUgInt7PWl0LmNsYXNzX25hbWV9fV92c3QyX3dyYXBwZXIuaCIKCiNpbmNsdWRlIDxjc3RkbGliPgojaW5jbHVkZSA8Y3N0ZGlvPgojaW5jbHVkZSA8Y21hdGg+CiNpbmNsdWRlIDxhbGdvcml0aG0+CgpBdWRpb0VmZmVjdCAqY3JlYXRlRWZmZWN0SW5zdGFuY2UoYXVkaW9NYXN0ZXJDYWxsYmFjayBhdWRpb01hc3RlcikgeyByZXR1cm4gbmV3IEVmZmVjdChhdWRpb01hc3Rlcik7IH0KCkVmZmVjdDo6RWZmZWN0KGF1ZGlvTWFzdGVyQ2FsbGJhY2sgYXVkaW9NYXN0ZXIpIDogQXVkaW9FZmZlY3RYKGF1ZGlvTWFzdGVyLCAxLCB7ez1pdC5jb250cm9sX2lucHV0cy5sZW5ndGh9fSkgewoJc2V0TnVtSW5wdXRzKHt7PWl0LmF1ZGlvX2lucHV0cy5sZW5ndGh9fSk7CglzZXROdW1PdXRwdXRzKHt7PWl0Lm91dHB1dHMubGVuZ3RofX0pOwoJc2V0VW5pcXVlSUQoJ2Z4ZngnKTsKCURFQ0xBUkVfVlNUX0RFUFJFQ0FURUQoY2FuTW9ubykgKCk7CgljYW5Qcm9jZXNzUmVwbGFjaW5nKCk7CglzdHJjcHkocHJvZ3JhbU5hbWUsICJFZmZlY3QiKTsKCglpbnN0YW5jZSA9IHt7PWl0LmNsYXNzX25hbWV9fSgpOwp9CgpFZmZlY3Q6On5FZmZlY3QoKSB7fQoKYm9vbCBFZmZlY3Q6OmdldFByb2R1Y3RTdHJpbmcoY2hhciogdGV4dCkgeyBzdHJjcHkodGV4dCwgIkVmZmVjdCIpOyByZXR1cm4gdHJ1ZTsgfQpib29sIEVmZmVjdDo6Z2V0VmVuZG9yU3RyaW5nKGNoYXIqIHRleHQpIHsgc3RyY3B5KHRleHQsICJDaWFyYW1lbGxhIik7IHJldHVybiB0cnVlOyB9CmJvb2wgRWZmZWN0OjpnZXRFZmZlY3ROYW1lKGNoYXIqIG5hbWUpIHsgc3RyY3B5KG5hbWUsICJFZmZlY3QiKTsgcmV0dXJuIHRydWU7IH0KCnZvaWQgRWZmZWN0OjpzZXRQcm9ncmFtTmFtZShjaGFyICpuYW1lKSB7IHN0cmNweShwcm9ncmFtTmFtZSwgbmFtZSk7IH0Kdm9pZCBFZmZlY3Q6OmdldFByb2dyYW1OYW1lKGNoYXIgKm5hbWUpIHsgc3RyY3B5KG5hbWUsIHByb2dyYW1OYW1lKTsgfQoKYm9vbCBFZmZlY3Q6OmdldFByb2dyYW1OYW1lSW5kZXhlZChWc3RJbnQzMiBjYXRlZ29yeSwgVnN0SW50MzIgaW5kZXgsIGNoYXIqIG5hbWUpIHsKCWlmIChpbmRleCA9PSAwKSB7CgkJc3RyY3B5KG5hbWUsIHByb2dyYW1OYW1lKTsKCQlyZXR1cm4gdHJ1ZTsKCX0KCXJldHVybiBmYWxzZTsKfQoKdm9pZCBFZmZlY3Q6OnNldFBhcmFtZXRlcihWc3RJbnQzMiBpbmRleCwgZmxvYXQgdmFsdWUpIHsKCXN3aXRjaCAoaW5kZXgpIHsKCXt7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQoJY2FzZSB7ez1pdC5jb250cm9sX2lucHV0cy5pbmRleE9mKGMpfX06CgkJaW5zdGFuY2Uuc2V0e3s9Y319KHZhbHVlKTsKCQlicmVhazt7e359fQoJfQp9CgpmbG9hdCBFZmZlY3Q6OmdldFBhcmFtZXRlcihWc3RJbnQzMiBpbmRleCkgewoJZmxvYXQgdiA9IDAuZjsKCXN3aXRjaCAoaW5kZXgpIHsKCXt7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQoJY2FzZSB7ez1pdC5jb250cm9sX2lucHV0cy5pbmRleE9mKGMpfX06CgkJdiA9IGluc3RhbmNlLmdldHt7PWN9fSgpOwoJCWJyZWFrO3t7fn19Cgl9CglyZXR1cm4gdjsKfQoKdm9pZCBFZmZlY3Q6OmdldFBhcmFtZXRlck5hbWUoVnN0SW50MzIgaW5kZXgsIGNoYXIgKnRleHQpIHsKCWNvbnN0IGNoYXIgKm5hbWVzW10gPSB7IHt7PWl0LmNvbnRyb2xfaW5wdXRzLm1hcChjID0+ICdcIicgK2MrJ1wiJyl9fX07CglzdHJjcHkodGV4dCwgbmFtZXNbaW5kZXhdKTsKfQoKdm9pZCBFZmZlY3Q6OmdldFBhcmFtZXRlckRpc3BsYXkoVnN0SW50MzIgaW5kZXgsIGNoYXIgKnRleHQpIHsKCXRleHRbMF0gPSAnXDAnOwp9Cgp2b2lkIEVmZmVjdDo6Z2V0UGFyYW1ldGVyTGFiZWwoVnN0SW50MzIgaW5kZXgsIGNoYXIgKnRleHQpICB7Cgl0ZXh0WzBdID0gJ1wwJzsKfQoKdm9pZCBFZmZlY3Q6OnNldFNhbXBsZVJhdGUoZmxvYXQgc2FtcGxlUmF0ZSkgewoJaW5zdGFuY2Uuc2V0U2FtcGxlUmF0ZShzYW1wbGVSYXRlKTsKCWluc3RhbmNlLnJlc2V0KCk7Cn0KCnZvaWQgRWZmZWN0Ojpwcm9jZXNzKGZsb2F0ICoqaW5wdXRzLCBmbG9hdCAqKm91dHB1dHMsIFZzdEludDMyIHNhbXBsZUZyYW1lcykgewoJaW5zdGFuY2UucHJvY2Vzcyh7ez1pdC5hdWRpb19pbnB1dHMubWFwKGkgPT4gJ2lucHV0c1snK2l0LmF1ZGlvX2lucHV0cy5pbmRleE9mKGkpKyddJyl9fSwge3s9aXQub3V0cHV0cy5tYXAoaSA9PiAnb3V0cHV0c1snK2l0Lm91dHB1dHMuaW5kZXhPZihpKSsnXScpfX0sIHNhbXBsZUZyYW1lcyk7Cn0KCnZvaWQgRWZmZWN0Ojpwcm9jZXNzUmVwbGFjaW5nKGZsb2F0ICoqaW5wdXRzLCBmbG9hdCAqKm91dHB1dHMsIFZzdEludDMyIHNhbXBsZUZyYW1lcykgewoJaW5zdGFuY2UucHJvY2Vzcyh7ez1pdC5hdWRpb19pbnB1dHMubWFwKGkgPT4gJ2lucHV0c1snK2l0LmF1ZGlvX2lucHV0cy5pbmRleE9mKGkpKyddJyl9fSwge3s9aXQub3V0cHV0cy5tYXAoaSA9PiAnb3V0cHV0c1snK2l0Lm91dHB1dHMuaW5kZXhPZihpKSsnXScpfX0sIHNhbXBsZUZyYW1lcyk7Cn0=","base64")),
+					"yaaaeapa_wrapper_c": String(Buffer("I2luY2x1ZGUgInt7PWl0LmNsYXNzX25hbWV9fS5oIgoKLy8gSW1wbGVtZW50aW5nIHRoZSB5YWFhZWFwYSBpbnRlcmZhY2UKCnt7PWl0LmNsYXNzX25hbWV9fSBpbnN0YW5jZTsKCnZvaWQgeWFhYWVhcGFfaW5pdCh2b2lkKSB7Cgl7ez1pdC5jbGFzc19uYW1lfX1faW5pdCgmaW5zdGFuY2UpOwp9CnZvaWQgeWFhYWVhcGFfZmluaSh2b2lkKSB7Cn0Kdm9pZCB5YWFhZWFwYV9zZXRfc2FtcGxlX3JhdGUoZmxvYXQgc2FtcGxlX3JhdGUpIHsKCXt7PWl0LmNsYXNzX25hbWV9fV9zZXRfc2FtcGxlX3JhdGUoJmluc3RhbmNlLCBzYW1wbGVfcmF0ZSk7Cn0Kdm9pZCB5YWFhZWFwYV9yZXNldCh2b2lkKSB7Cgl7ez1pdC5jbGFzc19uYW1lfX1fcmVzZXQoJmluc3RhbmNlKTsKfQp2b2lkIHlhYWFlYXBhX3Byb2Nlc3MoY29uc3QgZmxvYXQqKiB4LCBmbG9hdCoqIHksIGludCBuX3NhbXBsZXMpIHsKCXt7PWl0LmNsYXNzX25hbWV9fV9wcm9jZXNzKCZpbnN0YW5jZSwge3s/aXQuYXVkaW9faW5wdXRzLmxlbmd0aCA+IDB9fXt7fml0LmF1ZGlvX2lucHV0czphOml9fXhbe3s9aX19XXt7fn19LCB7ez99fXt7fml0Lm91dHB1dHM6bzppfX15W3t7PWl9fV17e359fSwgbl9zYW1wbGVzKTsKfQp2b2lkIHlhYWFlYXBhX3NldF9wYXJhbWV0ZXIoaW50IGluZGV4LCBmbG9hdCB2YWx1ZSkgewoJe3s9aXQuY2xhc3NfbmFtZX19X3NldF9wYXJhbWV0ZXIoJmluc3RhbmNlLCBpbmRleCwgdmFsdWUpOwp9CmZsb2F0IHlhYWFlYXBhX2dldF9wYXJhbWV0ZXIoaW50IGluZGV4KSB7CglyZXR1cm4ge3s9aXQuY2xhc3NfbmFtZX19X2dldF9wYXJhbWV0ZXIoJmluc3RhbmNlLCBpbmRleCk7Cn0Kdm9pZCB5YWFhZWFwYV9ub3RlX29uKGNoYXIgbm90ZSwgY2hhciB2ZWxvY2l0eSkgewoJKHZvaWQpbm90ZTsKCSh2b2lkKXZlbG9jaXR5Owp9CnZvaWQgeWFhYWVhcGFfbm90ZV9vZmYoY2hhciBub3RlKSB7Cgkodm9pZClub3RlOwp9CnZvaWQgeWFhYWVhcGFfcGl0Y2hfYmVuZChpbnQgYmVuZCkgewoJKHZvaWQpYmVuZDsKfQp2b2lkIHlhYWFlYXBhX21vZF93aGVlbChjaGFyIHdoZWVsKSB7Cgkodm9pZCl3aGVlbDsKfQoKaW50IHlhYWFlYXBhX3BhcmFtZXRlcnNfbiAJPSB7ez1pdC5jb250cm9sX2lucHV0cy5sZW5ndGh9fTsKaW50IHlhYWFlYXBhX2J1c2VzX2luX24gCT0gMTsKaW50IHlhYWFlYXBhX2J1c2VzX291dF9uIAk9IDE7CmludCB5YWFhZWFwYV9jaGFubmVsc19pbl9uIAk9IHt7PWl0LmF1ZGlvX2lucHV0cy5sZW5ndGh9fTsKaW50IHlhYWFlYXBhX2NoYW5uZWxzX291dF9uCT0ge3s9aXQub3V0cHV0cy5sZW5ndGh9fTsKLy92b2lkKiB5YWFhZWFwYV9kYXRhIAkJPSBOVUxMOwoKdm9pZCB5YWFhZWFwYV9nZXRfcGFyYW1ldGVyX2luZm8gKGludCBpbmRleCwgY2hhcioqIG5hbWUsIGNoYXIqKiBzaG9ydE5hbWUsIGNoYXIqKiB1bml0cywgY2hhciogb3V0LCBjaGFyKiBieXBhc3MsIGludCogc3RlcHMsIGZsb2F0KiBkZWZhdWx0VmFsdWVVbm1hcHBlZCkgewoJaWYgKGluZGV4IDwgMCB8fCBpbmRleCA+PSB7ez1pdC5jb250cm9sX2lucHV0cy5sZW5ndGh9fSkgcmV0dXJuOwoJc3dpdGNoIChpbmRleCkgewoJe3t+aXQuY29udHJvbF9pbnB1dHM6YzppfX0KCQljYXNlIHt7PWl9fToKCQkJaWYgKG5hbWUpICpuYW1lID0gKGNoYXIqKSAie3s9Y319IjsKCQkJaWYgKHNob3J0TmFtZSkgKnNob3J0TmFtZSA9IChjaGFyKikgInt7PWN9fSI7CgkJCWlmICh1bml0cykgKnVuaXRzID0gKGNoYXIqKSAiIjsKCQkJaWYgKG91dCkgKm91dCA9IDA7CgkJCWlmIChieXBhc3MpICpieXBhc3MgPSAwOwoJCQlpZiAoc3RlcHMpICpzdGVwcyA9IDA7CgkJCWlmIChkZWZhdWx0VmFsdWVVbm1hcHBlZCkgKmRlZmF1bHRWYWx1ZVVubWFwcGVkID0gMC5mOyAvLyBGaXgKCQkJYnJlYWs7Cgl7e359fQoJfQp9","base64")),
 					"js_html": 			String(Buffer("PCFET0NUWVBFIGh0bWw+CjxodG1sPgo8aGVhZD4KPHRpdGxlPlBsdWdpbjwvdGl0bGU+CjxzY3JpcHQgdHlwZT0idGV4dC9qYXZhc2NyaXB0Ij4KCnZhciBub2RlOwp2YXIgY3R4Owp2YXIgaW5wdXROb2RlOwoKdmFyIGJlZ2luID0gYXN5bmMgZnVuY3Rpb24gKCkgewoJY3R4ID0gbmV3IEF1ZGlvQ29udGV4dCgpOwoKCWF3YWl0IGN0eC5hdWRpb1dvcmtsZXQuYWRkTW9kdWxlKCJwcm9jZXNzb3IuanMiKTsKCglub2RlID0gbmV3IEF1ZGlvV29ya2xldE5vZGUoY3R4LCAiUGx1Z2luUHJvY2Vzc29yIiwgeyBvdXRwdXRDaGFubmVsQ291bnQ6IFsxXSB9KTsKCglub2RlLmNvbm5lY3QoY3R4LmRlc3RpbmF0aW9uKTsKCgl2YXIgc3RyZWFtID0gYXdhaXQgbmF2aWdhdG9yLm1lZGlhRGV2aWNlcy5nZXRVc2VyTWVkaWEoeyBhdWRpbzogeyBhdXRvR2FpbkNvbnRyb2w6IGZhbHNlLCBlY2hvQ2FuY2VsbGF0aW9uOiBmYWxzZSwgbm9pc2VTdXBwcmVzc2lvbjogZmFsc2UsIGxhdGVuY3k6IDAuMDA1IH0gfSk7CglpbnB1dE5vZGUgPSBjdHguY3JlYXRlTWVkaWFTdHJlYW1Tb3VyY2Uoc3RyZWFtKTsKCglpbnB1dE5vZGUuY29ubmVjdChub2RlKTsKCiAge3t+aXQuY29udHJvbF9pbnB1dHM6Y319CiAgZG9jdW1lbnQuZ2V0RWxlbWVudEJ5SWQoInt7PWN9fSIpLm9uaW5wdXQgPSBoYW5kbGVJbnB1dDsge3t+fX0KICAKfTsKCmZ1bmN0aW9uIGhhbmRsZUlucHV0KGUpIHsKCW5vZGUucG9ydC5wb3N0TWVzc2FnZSh7dHlwZTogInBhcmFtQ2hhbmdlIiwgaWQ6IGUudGFyZ2V0LmlkLCB2YWx1ZTogZS50YXJnZXQudmFsdWV9KQp9Owo8L3NjcmlwdD4KPC9oZWFkPgo8Ym9keT4KICA8aDE+e3s9aXQuY2xhc3NfbmFtZX19PC9oMT4KICAKICB7e35pdC5jb250cm9sX2lucHV0czpjfX0KICA8bGFiZWwgZm9yPSJ7ez1jfX0iPnt7PWN9fTwvbGFiZWw+CiAgPGlucHV0IHR5cGU9InJhbmdlIiBpZD0ie3s9Y319IiBuYW1lPSJ7ez1jfX0iIG1pbj0iMCIgbWF4PSIxIiB2YWx1ZT0iMC41IiBzdGVwPSJhbnkiPjxicj57e359fQoKICA8YnV0dG9uIG9uY2xpY2s9ImJlZ2luKCkiPlN0YXJ0PC9idXR0b24+CjwvYm9keT4KPC9odG1sPgo=","base64")),
-					"js_processor": 	String(Buffer("dmFyIFBsdWdpbiA9IHsKCWluaXQ6IGZ1bmN0aW9uICgpIHsKCQl0aGlzLmZzID0gMDsKCQl0aGlzLmZpcnN0UnVuID0gMTsKCgkJe3t+aXQuY29uc3RhbnRfcmF0ZTpjfX17ez1jfX07CgkJe3t+fX0KCgkJdGhpcy5wYXJhbXMgPSBbe3s9aXQuY29udHJvbF9pbnB1dHMubWFwKGMgPT4gJyInICsgYyArICciJykuam9pbigiLCAiKX19XTsKCgkJe3t+aXQuZGVjbGFyYXRpb25zMTpkfX0KCQl7ez1kfX0gPSAwO3t7fn19CgoJCXt7fml0LmRlY2xhcmF0aW9uczI6ZH19CgkJe3s9ZH19O3t7fn19CgoJCXt7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQoJCXRoaXMue3s9Y319X3oxID0gMDsKCQl0aGlzLnt7PWN9fV9DSEFOR0VEID0gdHJ1ZTsKCQl7e359fQoJfSwKCglyZXNldDogZnVuY3Rpb24gKCkgewoJCXRoaXMuZmlyc3RSdW4gPSAxCgl9LAoKCXNldFNhbXBsZVJhdGU6IGZ1bmN0aW9uIChzYW1wbGVSYXRlKSB7CgkJdGhpcy5mcyA9IHNhbXBsZVJhdGU7CgkJe3t+aXQuc2FtcGxpbmdfcmF0ZTpzfX17ez1zfX07CgkJe3t+fX0KCX0sCgoJcHJvY2VzczogZnVuY3Rpb24gKHt7PWl0LmF1ZGlvX2lucHV0cy5jb25jYXQoaXQub3V0cHV0cykuam9pbignLCAnKX19LCBuU2FtcGxlcykgewoJCWlmICh0aGlzLmZpcnN0UnVuKSB7e3t+aXQuY29udHJvbF9pbnB1dHM6Y319CgkJCXRoaXMue3s9Y319X0NIQU5HRUQgPSB0cnVlO3t7fn19CgkJfQoJCWVsc2Uge3t7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQoJCQl0aGlzLnt7PWN9fV9DSEFOR0VEID0gdGhpcy57ez1jfX0gIT0gdGhpcy57ez1jfX1fejE7e3t+fX0KCQl9CgoJCXt7fml0LmNvbnRyb2xzX3JhdGU6Y319CgkJaWYgKHt7PUFycmF5LmZyb20oYy5zZXQpLm1hcChlID0+ICJ0aGlzLiIgKyBlICsgIl9DSEFOR0VEIikuam9pbignIHwgJyl9fSkge3t7fmMuc3RtdHM6IHN9fQoJCQl7ez1zfX07e3t+fX0KCQl9e3t+fX0KCQl7e35pdC5jb250cm9sX2lucHV0czpjfX0KCQl0aGlzLnt7PWN9fV9DSEFOR0VEID0gZmFsc2U7e3t+fX0KCgkJaWYgKHRoaXMuZmlyc3RSdW4pIHsge3t+aXQucmVzZXQxOnJ9fQoJCQl7ez1yfX07e3t+fX0KCQkJe3t+aXQucmVzZXQyOnJ9fQoJCQl7ez1yfX07e3t+fX0KCQl9CgoJCWZvciAobGV0IGkgPSAwOyBpIDwgblNhbXBsZXM7IGkrKykgewoJCQl7e35pdC5hdWRpb19yYXRlOiBhfX0KCQkJe3s9YX19O3t7fn19CgkJCQoJCQl7e35pdC5kZWxheV91cGRhdGVzOnV9fXt7PXV9fTsKCQkJe3t+fX0KCQkJe3t+aXQub3V0cHV0X3VwZGF0ZXM6dX19CgkJCXt7PXV9fTt7e359fQoJCX0KCgkJe3t+aXQuY29udHJvbF9pbnB1dHM6Y319CgkJdGhpcy57ez1jfX1fejEgPSB0aGlzLnt7PWN9fTt7e359fQoJCXRoaXMuZmlyc3RSdW4gPSAwOwoJfQp9CgovLyBTdGF0aWMgcGFydApjbGFzcyBQbHVnaW5Qcm9jZXNzb3IgZXh0ZW5kcyBBdWRpb1dvcmtsZXRQcm9jZXNzb3IgewoJY29uc3RydWN0b3IgKCkgewoKCQlzdXBlcigpOwoJCXRoaXMuaW5zdGFuY2UgPSBPYmplY3QuY3JlYXRlKFBsdWdpbik7CgkJdGhpcy5pbnN0YW5jZS5pbml0KCk7CgkJdGhpcy5pbnN0YW5jZS5zZXRTYW1wbGVSYXRlKHNhbXBsZVJhdGUpOwoJCXRoaXMuaW5zdGFuY2UucmVzZXQoKTsKCgkJdGhpcy5wb3J0Lm9ubWVzc2FnZSA9IChlKSA9PiB7CgkJCWlmIChlLmRhdGEudHlwZSA9PSAiY2hhbmdlSW5zdGFuY2UiKSB7CgkJCQlldmFsKGUuZGF0YS52YWx1ZSkKCQkJCXRoaXMuaW5zdGFuY2UgPSBPYmplY3QuY3JlYXRlKFBsdWdpbik7CgkJCQl0aGlzLmluc3RhbmNlLmluaXQoKTsKCQkJCXRoaXMuaW5zdGFuY2Uuc2V0U2FtcGxlUmF0ZShzYW1wbGVSYXRlKTsKCQkJCXRoaXMuaW5zdGFuY2UucmVzZXQoKTsKCQkJfQoJCQllbHNlIGlmIChlLmRhdGEudHlwZSA9PSAicGFyYW1DaGFuZ2UiKSB7CgkJCQl0aGlzLmluc3RhbmNlW2UuZGF0YS5pZF0gPSBlLmRhdGEudmFsdWUKCQkJfQoJCX0KCX0KCXByb2Nlc3MgKGlucHV0cywgb3V0cHV0cywgcGFyYW1ldGVycykgewoKCQl2YXIgaW5wdXQgPSBpbnB1dHNbMF07CgkJdmFyIG91dHB1dCA9IG91dHB1dHNbMF07CgkJbGV0IG5TYW1wbGVzID0gTWF0aC5taW4oaW5wdXQubGVuZ3RoID49IDEgPyBpbnB1dFswXS5sZW5ndGggOiAwLCBvdXRwdXRbMF0ubGVuZ3RoKQoJCQoKCgkJdGhpcy5pbnN0YW5jZS5wcm9jZXNzKHt7PWl0LmF1ZGlvX2lucHV0cy5tYXAoKGlpLCBpKSA9PiAiaW5wdXRbIiArIGkgKyAiXSIpfX17ez9pdC5hdWRpb19pbnB1dHMubGVuZ3RoID4gMH19LCB7ez99fSB7ez1pdC5vdXRwdXRzLm1hcCgoaWksIGkpID0+ICJvdXRwdXRbIiArIGkgKyAiXSIpfX0sIG5TYW1wbGVzKTsKCgkJcmV0dXJuIHRydWU7Cgl9CgoJc3RhdGljIGdldCBwYXJhbWV0ZXJEZXNjcmlwdG9ycygpIHsKCQlyZXR1cm4gW107Cgl9Cn0KCnJlZ2lzdGVyUHJvY2Vzc29yKCJQbHVnaW5Qcm9jZXNzb3IiLCBQbHVnaW5Qcm9jZXNzb3IpOwo=","base64")),
-					"d_processor":		String(Buffer("c3RydWN0IHt7PWl0LmNsYXNzX25hbWV9fQp7Cm5vdGhyb3c6CnB1YmxpYzoKQG5vZ2M6CgogICAge3t+aXQuY29uc3RhbnRfcmF0ZTpjfX1lbnVtIGZsb2F0IHt7PWN9fTsKICAgIHt7fn19CgogICAgdm9pZCBzZXRTYW1wbGVSYXRlKGZsb2F0IHNhbXBsZVJhdGUpCiAgICB7CiAgICAgICAgZnMgPSBzYW1wbGVSYXRlOwogICAgICAgIHt7fml0LnNhbXBsaW5nX3JhdGU6c319e3s/cy5pc191c2VkX2xvY2FsbHl9fWNvbnN0IGZsb2F0IHt7P319e3s9c319OwogICAgICAgIHt7fn19CiAgICB9CgogICAgdm9pZCByZXNldCgpCiAgICB7CiAgICAgICAgZmlyc3RSdW4gPSAxOwogICAgfQoKICAgIHZvaWQgcHJvY2Vzcyh7ez1pdC5hdWRpb19pbnB1dHMuY29uY2F0KGl0Lm91dHB1dHMpLm1hcCh4ID0+ICdmbG9hdCAqJyArIHgpLmpvaW4oJywgJyl9fSwgaW50IG5TYW1wbGVzKQogICAgewogICAgICAgIGlmIChmaXJzdFJ1bikgCiAgICAgICAgewogICAgICAgICAgICB7e35pdC5jb250cm9sX2lucHV0czpjfX17ez1jfX1fQ0hBTkdFRCA9IDE7CiAgICAgICAgICAgIHt7fn19CiAgICAgICAgfQogICAgICAgIGVsc2Uge3t7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQogICAgICAgICAgICB7ez1jfX1fQ0hBTkdFRCA9IHt7PWN9fSAhPSB7ez1jfX1fejE7e3t+fX0KICAgICAgICB9CiAgICAgICAge3t+aXQuY29udHJvbHNfcmF0ZTpjfX0KICAgICAgICBpZiAoe3s9QXJyYXkuZnJvbShjLnNldCkubWFwKGUgPT4gZSArICJfQ0hBTkdFRCIpLmpvaW4oJyB8ICcpfX0pIHt7e35jLnN0bXRzOiBzfX0KICAgICAgICAgICAge3s/cy5pc191c2VkX2xvY2FsbHl9fWNvbnN0IGZsb2F0IHt7P319e3s9c319O3t7fn19CiAgICAgICAgfXt7fn19CiAgICAgICAge3t+aXQuY29udHJvbF9pbnB1dHM6Y319CiAgICAgICAge3s9Y319X0NIQU5HRUQgPSAwO3t7fn19CgogICAgICAgIGlmIChmaXJzdFJ1bikge3t7fml0LnJlc2V0MTpyfX0KICAgICAgICAgICAge3s/ci5pc191c2VkX2xvY2FsbHl9fWNvbnN0IGZsb2F0IHt7P319e3s9cn19O3t7fn19CiAgICAgICAgICAgIHt7fml0LnJlc2V0MjpyfX0KICAgICAgICAgICAge3s/ci5pc191c2VkX2xvY2FsbHl9fWNvbnN0IGZsb2F0IHt7P319e3s9cn19O3t7fn19CiAgICAgICAgfQoKICAgICAgICBmb3IgKGludCBpID0gMDsgaSA8IG5TYW1wbGVzOyBpKyspIHsKICAgICAgICAgICAge3t+aXQuYXVkaW9fcmF0ZTogYX19CiAgICAgICAgICAgIHt7P2EuaXNfdXNlZF9sb2NhbGx5fX1jb25zdCBmbG9hdCB7ez99fXt7PWF9fTt7e359fQoKICAgICAgICAgICAge3t+aXQuZGVsYXlfdXBkYXRlczp1fX17ez11fX07CiAgICAgICAgICAgIHt7fn19CiAgICAgICAgICAgIHt7fml0Lm91dHB1dF91cGRhdGVzOnV9fQogICAgICAgICAgICB7ez11fX07e3t+fX0KICAgICAgICB9CgogICAgICAgIHt7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQogICAgICAgIHt7PWN9fV96MSA9IHt7PWN9fTt7e359fQogICAgICAgIGZpcnN0UnVuID0gMDsKICAgIH0KCiAgICB7e35pdC5jb250cm9sX2lucHV0czpjfX0KICAgIGZsb2F0IGdldHt7PWN9fSgpCiAgICB7CiAgICAgICAgcmV0dXJuIHt7PWN9fTsKICAgIH0KICAgIHZvaWQgc2V0e3s9Y319KGZsb2F0IHZhbHVlKQogICAgewogICAgICAgIHt7PWN9fSA9IHZhbHVlOwogICAgfQogICAge3t+fX0KCnByaXZhdGU6CgogICAge3t+aXQuZGVjbGFyYXRpb25zMTpkfX0KICAgIGZsb2F0IHt7PWR9fSA9IDAuMGY7e3t+fX0KCiAgICB7e35pdC5kZWNsYXJhdGlvbnMyOmR9fQogICAgZmxvYXQge3s9ZH19O3t7fn19CgogICAge3t+aXQuY29udHJvbF9pbnB1dHM6Y319CiAgICBmbG9hdCB7ez1jfX1fejE7CiAgICBjaGFyIHt7PWN9fV9DSEFOR0VEOwogICAge3t+fX0KCiAgICBmbG9hdCBmczsKICAgIGludCBmaXJzdFJ1bjsKCn07","base64"))
+					"js_processor": 	String(Buffer("e3t+aXQuY29uc3RhbnRfcmF0ZTpjfX1jb25zdCB7ez1jfX07Cnt7fn19Cgp2YXIgUGx1Z2luID0gewoJaW5pdDogZnVuY3Rpb24gKCkgewoJCXRoaXMuZnMgPSAwOwoJCXRoaXMuZmlyc3RSdW4gPSAxOwoKCQl0aGlzLnBhcmFtcyA9IFt7ez1pdC5jb250cm9sX2lucHV0cy5tYXAoYyA9PiAnIicgKyBjICsgJyInKS5qb2luKCIsICIpfX1dOwoKCQl7e35pdC5pbml0OmR9fQoJCXt7PWR9fTt7e359fQoKCQl7e35pdC5jb250cm9sX2lucHV0czpjfX0KCQl0aGlzLnt7PWN9fV96MSA9IDA7CgkJdGhpcy57ez1jfX1fQ0hBTkdFRCA9IHRydWU7CgkJe3t+fX0KCX0sCgoJcmVzZXQ6IGZ1bmN0aW9uICgpIHsKCQl0aGlzLmZpcnN0UnVuID0gMQoJfSwKCglzZXRTYW1wbGVSYXRlOiBmdW5jdGlvbiAoc2FtcGxlUmF0ZSkgewoJCXRoaXMuZnMgPSBzYW1wbGVSYXRlOwoJCXt7fml0LnNhbXBsaW5nX3JhdGU6c319e3s9c319OwoJCXt7fn19Cgl9LAoKCXByb2Nlc3M6IGZ1bmN0aW9uICh7ez1pdC5hdWRpb19pbnB1dHMuY29uY2F0KGl0Lm91dHB1dHMpLmpvaW4oJywgJyl9fSwgblNhbXBsZXMpIHsKCQlpZiAodGhpcy5maXJzdFJ1bikge3t7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQoJCQl0aGlzLnt7PWN9fV9DSEFOR0VEID0gdHJ1ZTt7e359fQoJCX0KCQllbHNlIHt7e35pdC5jb250cm9sX2lucHV0czpjfX0KCQkJdGhpcy57ez1jfX1fQ0hBTkdFRCA9IHRoaXMue3s9Y319ICE9IHRoaXMue3s9Y319X3oxO3t7fn19CgkJfQoKCQl7e35pdC5jb250cm9sc19yYXRlOmN9fQoJCWlmICh7ez1BcnJheS5mcm9tKGMuc2V0KS5tYXAoZSA9PiAidGhpcy4iICsgZSArICJfQ0hBTkdFRCIpLmpvaW4oJyB8ICcpfX0pIHt7e35jLnN0bXRzOiBzfX0KCQkJe3s9c319O3t7fn19CgkJfXt7fn19CgkJe3t+aXQuY29udHJvbF9pbnB1dHM6Y319CgkJdGhpcy57ez1jfX1fQ0hBTkdFRCA9IGZhbHNlO3t7fn19CgoJCWlmICh0aGlzLmZpcnN0UnVuKSB7IHt7fml0LnJlc2V0MTpyfX0KCQkJe3s9cn19O3t7fn19CgkJCXt7fml0LnJlc2V0MjpyfX0KCQkJe3s9cn19O3t7fn19CgkJfQoKCQlmb3IgKGxldCBpID0gMDsgaSA8IG5TYW1wbGVzOyBpKyspIHsKCQkJe3t+aXQuYXVkaW9fcmF0ZTogYX19CgkJCXt7PWF9fTt7e359fQoJCQkKCQkJe3t+aXQuZGVsYXlfdXBkYXRlczp1fX17ez11fX07CgkJCXt7fn19CgkJCXt7fml0Lm91dHB1dF91cGRhdGVzOnV9fQoJCQl7ez11fX07e3t+fX0KCQl9CgoJCXt7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQoJCXRoaXMue3s9Y319X3oxID0gdGhpcy57ez1jfX07e3t+fX0KCQl0aGlzLmZpcnN0UnVuID0gMDsKCX0KfQoKLy8gU3RhdGljIHBhcnQKY2xhc3MgUGx1Z2luUHJvY2Vzc29yIGV4dGVuZHMgQXVkaW9Xb3JrbGV0UHJvY2Vzc29yIHsKCWNvbnN0cnVjdG9yICgpIHsKCgkJc3VwZXIoKTsKCQl0aGlzLmluc3RhbmNlID0gT2JqZWN0LmNyZWF0ZShQbHVnaW4pOwoJCXRoaXMuaW5zdGFuY2UuaW5pdCgpOwoJCXRoaXMuaW5zdGFuY2Uuc2V0U2FtcGxlUmF0ZShzYW1wbGVSYXRlKTsKCQl0aGlzLmluc3RhbmNlLnJlc2V0KCk7CgoJCXRoaXMucG9ydC5vbm1lc3NhZ2UgPSAoZSkgPT4gewoJCQlpZiAoZS5kYXRhLnR5cGUgPT0gImNoYW5nZUluc3RhbmNlIikgewoJCQkJZXZhbChlLmRhdGEudmFsdWUpCgkJCQl0aGlzLmluc3RhbmNlID0gT2JqZWN0LmNyZWF0ZShQbHVnaW4pOwoJCQkJdGhpcy5pbnN0YW5jZS5pbml0KCk7CgkJCQl0aGlzLmluc3RhbmNlLnNldFNhbXBsZVJhdGUoc2FtcGxlUmF0ZSk7CgkJCQl0aGlzLmluc3RhbmNlLnJlc2V0KCk7CgkJCX0KCQkJZWxzZSBpZiAoZS5kYXRhLnR5cGUgPT0gInBhcmFtQ2hhbmdlIikgewoJCQkJdGhpcy5pbnN0YW5jZVtlLmRhdGEuaWRdID0gZS5kYXRhLnZhbHVlCgkJCX0KCQl9Cgl9Cglwcm9jZXNzIChpbnB1dHMsIG91dHB1dHMsIHBhcmFtZXRlcnMpIHsKCgkJdmFyIGlucHV0ID0gaW5wdXRzWzBdOwoJCXZhciBvdXRwdXQgPSBvdXRwdXRzWzBdOwoJCWxldCBuU2FtcGxlcyA9IE1hdGgubWluKGlucHV0Lmxlbmd0aCA+PSAxID8gaW5wdXRbMF0ubGVuZ3RoIDogMCwgb3V0cHV0WzBdLmxlbmd0aCkKCQkKCgoJCXRoaXMuaW5zdGFuY2UucHJvY2Vzcyh7ez1pdC5hdWRpb19pbnB1dHMubWFwKChpaSwgaSkgPT4gImlucHV0WyIgKyBpICsgIl0iKX19e3s/aXQuYXVkaW9faW5wdXRzLmxlbmd0aCA+IDB9fSwge3s/fX0ge3s9aXQub3V0cHV0cy5tYXAoKGlpLCBpKSA9PiAib3V0cHV0WyIgKyBpICsgIl0iKX19LCBuU2FtcGxlcyk7CgoJCXJldHVybiB0cnVlOwoJfQoKCXN0YXRpYyBnZXQgcGFyYW1ldGVyRGVzY3JpcHRvcnMoKSB7CgkJcmV0dXJuIFtdOwoJfQp9CgpyZWdpc3RlclByb2Nlc3NvcigiUGx1Z2luUHJvY2Vzc29yIiwgUGx1Z2luUHJvY2Vzc29yKTsK","base64")),
+					"d_processor":		String(Buffer("c3RydWN0IHt7PWl0LmNsYXNzX25hbWV9fQp7Cm5vdGhyb3c6CnB1YmxpYzoKQG5vZ2M6CgogICAge3t+aXQuY29uc3RhbnRfcmF0ZTpjfX1lbnVtIGZsb2F0IHt7PWN9fTsKICAgIHt7fn19CgogICAgdm9pZCBzZXRTYW1wbGVSYXRlKGZsb2F0IHNhbXBsZVJhdGUpCiAgICB7CiAgICAgICAgZnMgPSBzYW1wbGVSYXRlOwogICAgICAgIHt7fml0LnNhbXBsaW5nX3JhdGU6c319e3s9c319OwogICAgICAgIHt7fn19CiAgICB9CgogICAgdm9pZCByZXNldCgpCiAgICB7CiAgICAgICAgZmlyc3RSdW4gPSAxOwogICAgfQoKICAgIHZvaWQgcHJvY2Vzcyh7ez1pdC5hdWRpb19pbnB1dHMuY29uY2F0KGl0Lm91dHB1dHMpLm1hcCh4ID0+ICdmbG9hdCAqJyArIHgpLmpvaW4oJywgJyl9fSwgaW50IG5TYW1wbGVzKQogICAgewogICAgICAgIGlmIChmaXJzdFJ1bikgCiAgICAgICAgewogICAgICAgICAgICB7e35pdC5jb250cm9sX2lucHV0czpjfX17ez1jfX1fQ0hBTkdFRCA9IDE7CiAgICAgICAgICAgIHt7fn19CiAgICAgICAgfQogICAgICAgIGVsc2Uge3t7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQogICAgICAgICAgICB7ez1jfX1fQ0hBTkdFRCA9IHt7PWN9fSAhPSB7ez1jfX1fejE7e3t+fX0KICAgICAgICB9CiAgICAgICAge3t+aXQuY29udHJvbHNfcmF0ZTpjfX0KICAgICAgICBpZiAoe3s9QXJyYXkuZnJvbShjLnNldCkubWFwKGUgPT4gZSArICJfQ0hBTkdFRCIpLmpvaW4oJyB8ICcpfX0pIHt7e35jLnN0bXRzOiBzfX0KICAgICAgICAgICAge3s9c319O3t7fn19CiAgICAgICAgfXt7fn19CiAgICAgICAge3t+aXQuY29udHJvbF9pbnB1dHM6Y319CiAgICAgICAge3s9Y319X0NIQU5HRUQgPSAwO3t7fn19CgogICAgICAgIGlmIChmaXJzdFJ1bikge3t7fml0LnJlc2V0MTpyfX0KICAgICAgICAgICAge3s9cn19O3t7fn19CiAgICAgICAgICAgIHt7fml0LnJlc2V0MjpyfX0KICAgICAgICAgICAge3s9cn19O3t7fn19CiAgICAgICAgfQoKICAgICAgICBmb3IgKGludCBpID0gMDsgaSA8IG5TYW1wbGVzOyBpKyspIHsKICAgICAgICAgICAge3t+aXQuYXVkaW9fcmF0ZTogYX19CiAgICAgICAgICAgIHt7PWF9fTt7e359fQoKICAgICAgICAgICAge3t+aXQuZGVsYXlfdXBkYXRlczp1fX17ez11fX07CiAgICAgICAgICAgIHt7fn19CiAgICAgICAgICAgIHt7fml0Lm91dHB1dF91cGRhdGVzOnV9fQogICAgICAgICAgICB7ez11fX07e3t+fX0KICAgICAgICB9CgogICAgICAgIHt7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQogICAgICAgIHt7PWN9fV96MSA9IHt7PWN9fTt7e359fQogICAgICAgIGZpcnN0UnVuID0gMDsKICAgIH0KCiAgICB7e35pdC5jb250cm9sX2lucHV0czpjfX0KICAgIGZsb2F0IGdldHt7PWN9fSgpCiAgICB7CiAgICAgICAgcmV0dXJuIHt7PWN9fTsKICAgIH0KICAgIHZvaWQgc2V0e3s9Y319KGZsb2F0IHZhbHVlKQogICAgewogICAgICAgIHt7PWN9fSA9IHZhbHVlOwogICAgfQogICAge3t+fX0KCnByaXZhdGU6CgogICAge3t+aXQuaW5pdDpkfX0KICAgIGZsb2F0IHt7PWR9fTt7e359fQoKICAgIHt7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQogICAgZmxvYXQge3s9Y319X3oxOwogICAgY2hhciB7ez1jfX1fQ0hBTkdFRDsKICAgIHt7fn19CgogICAgZmxvYXQgZnM7CiAgICBpbnQgZmlyc3RSdW47Cgp9Ow==","base64"))
 				}
 			}
 		}
@@ -2695,8 +2890,8 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 		let scheduled_blocks = env["scheduler"].schedule(graphes[0])
 		let scheduled_blocks_init = env["scheduler"].scheduleInit(graphes[1])
-		if (debug) console.log(scheduled_blocks.map(b => b.operation + "   " + (b.id ? b.id : "") + " " + (b.val ? b.val : "")))
-		if (debug) console.log(scheduled_blocks_init.map(b => b.operation + "   " + (b.id ? b.id : "") + " " + (b.val ? b.val : "")))
+		if (debug) console.log(scheduled_blocks.map(b => b.operation + "   " + b.label() + " " + (b.val ? b.val : "")))
+		if (debug) console.log(scheduled_blocks_init.map(b => b.operation + "   " + b.label() + " " + (b.val ? b.val : "")))
 
 		let files = env["output_generation"].convert(env["doT"], env["templates"], target_lang, graphes[0], graphes[1], scheduled_blocks, scheduled_blocks_init)
 		return files
@@ -2706,153 +2901,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 }());
 }).call(this)}).call(this,require("buffer").Buffer)
-},{"./extended_syntax":1,"./grammar":2,"./graph":3,"./output_generation":4,"./scheduler":5,"buffer":10,"dot":7,"path":12}],7:[function(require,module,exports){
-// doT.js
-// 2011-2014, Laura Doktorova, https://github.com/olado/doT
-// Licensed under the MIT license.
-
-(function () {
-	"use strict";
-
-	var doT = {
-		name: "doT",
-		version: "1.1.1",
-		templateSettings: {
-			evaluate:    /\{\{([\s\S]+?(\}?)+)\}\}/g,
-			interpolate: /\{\{=([\s\S]+?)\}\}/g,
-			encode:      /\{\{!([\s\S]+?)\}\}/g,
-			use:         /\{\{#([\s\S]+?)\}\}/g,
-			useParams:   /(^|[^\w$])def(?:\.|\[[\'\"])([\w$\.]+)(?:[\'\"]\])?\s*\:\s*([\w$\.]+|\"[^\"]+\"|\'[^\']+\'|\{[^\}]+\})/g,
-			define:      /\{\{##\s*([\w\.$]+)\s*(\:|=)([\s\S]+?)#\}\}/g,
-			defineParams:/^\s*([\w$]+):([\s\S]+)/,
-			conditional: /\{\{\?(\?)?\s*([\s\S]*?)\s*\}\}/g,
-			iterate:     /\{\{~\s*(?:\}\}|([\s\S]+?)\s*\:\s*([\w$]+)\s*(?:\:\s*([\w$]+))?\s*\}\})/g,
-			varname:	"it",
-			strip:		true,
-			append:		true,
-			selfcontained: false,
-			doNotSkipEncoded: false
-		},
-		template: undefined, //fn, compile template
-		compile:  undefined, //fn, for express
-		log: true
-	}, _globals;
-
-	doT.encodeHTMLSource = function(doNotSkipEncoded) {
-		var encodeHTMLRules = { "&": "&#38;", "<": "&#60;", ">": "&#62;", '"': "&#34;", "'": "&#39;", "/": "&#47;" },
-			matchHTML = doNotSkipEncoded ? /[&<>"'\/]/g : /&(?!#?\w+;)|<|>|"|'|\//g;
-		return function(code) {
-			return code ? code.toString().replace(matchHTML, function(m) {return encodeHTMLRules[m] || m;}) : "";
-		};
-	};
-
-	_globals = (function(){ return this || (0,eval)("this"); }());
-
-	/* istanbul ignore else */
-	if (typeof module !== "undefined" && module.exports) {
-		module.exports = doT;
-	} else if (typeof define === "function" && define.amd) {
-		define(function(){return doT;});
-	} else {
-		_globals.doT = doT;
-	}
-
-	var startend = {
-		append: { start: "'+(",      end: ")+'",      startencode: "'+encodeHTML(" },
-		split:  { start: "';out+=(", end: ");out+='", startencode: "';out+=encodeHTML(" }
-	}, skip = /$^/;
-
-	function resolveDefs(c, block, def) {
-		return ((typeof block === "string") ? block : block.toString())
-		.replace(c.define || skip, function(m, code, assign, value) {
-			if (code.indexOf("def.") === 0) {
-				code = code.substring(4);
-			}
-			if (!(code in def)) {
-				if (assign === ":") {
-					if (c.defineParams) value.replace(c.defineParams, function(m, param, v) {
-						def[code] = {arg: param, text: v};
-					});
-					if (!(code in def)) def[code]= value;
-				} else {
-					new Function("def", "def['"+code+"']=" + value)(def);
-				}
-			}
-			return "";
-		})
-		.replace(c.use || skip, function(m, code) {
-			if (c.useParams) code = code.replace(c.useParams, function(m, s, d, param) {
-				if (def[d] && def[d].arg && param) {
-					var rw = (d+":"+param).replace(/'|\\/g, "_");
-					def.__exp = def.__exp || {};
-					def.__exp[rw] = def[d].text.replace(new RegExp("(^|[^\\w$])" + def[d].arg + "([^\\w$])", "g"), "$1" + param + "$2");
-					return s + "def.__exp['"+rw+"']";
-				}
-			});
-			var v = new Function("def", "return " + code)(def);
-			return v ? resolveDefs(c, v, def) : v;
-		});
-	}
-
-	function unescape(code) {
-		return code.replace(/\\('|\\)/g, "$1").replace(/[\r\t\n]/g, " ");
-	}
-
-	doT.template = function(tmpl, c, def) {
-		c = c || doT.templateSettings;
-		var cse = c.append ? startend.append : startend.split, needhtmlencode, sid = 0, indv,
-			str  = (c.use || c.define) ? resolveDefs(c, tmpl, def || {}) : tmpl;
-
-		str = ("var out='" + (c.strip ? str.replace(/(^|\r|\n)\t* +| +\t*(\r|\n|$)/g," ")
-					.replace(/\r|\n|\t|\/\*[\s\S]*?\*\//g,""): str)
-			.replace(/'|\\/g, "\\$&")
-			.replace(c.interpolate || skip, function(m, code) {
-				return cse.start + unescape(code) + cse.end;
-			})
-			.replace(c.encode || skip, function(m, code) {
-				needhtmlencode = true;
-				return cse.startencode + unescape(code) + cse.end;
-			})
-			.replace(c.conditional || skip, function(m, elsecase, code) {
-				return elsecase ?
-					(code ? "';}else if(" + unescape(code) + "){out+='" : "';}else{out+='") :
-					(code ? "';if(" + unescape(code) + "){out+='" : "';}out+='");
-			})
-			.replace(c.iterate || skip, function(m, iterate, vname, iname) {
-				if (!iterate) return "';} } out+='";
-				sid+=1; indv=iname || "i"+sid; iterate=unescape(iterate);
-				return "';var arr"+sid+"="+iterate+";if(arr"+sid+"){var "+vname+","+indv+"=-1,l"+sid+"=arr"+sid+".length-1;while("+indv+"<l"+sid+"){"
-					+vname+"=arr"+sid+"["+indv+"+=1];out+='";
-			})
-			.replace(c.evaluate || skip, function(m, code) {
-				return "';" + unescape(code) + "out+='";
-			})
-			+ "';return out;")
-			.replace(/\n/g, "\\n").replace(/\t/g, '\\t').replace(/\r/g, "\\r")
-			.replace(/(\s|;|\}|^|\{)out\+='';/g, '$1').replace(/\+''/g, "");
-			//.replace(/(\s|;|\}|^|\{)out\+=''\+/g,'$1out+=');
-
-		if (needhtmlencode) {
-			if (!c.selfcontained && _globals && !_globals._encodeHTML) _globals._encodeHTML = doT.encodeHTMLSource(c.doNotSkipEncoded);
-			str = "var encodeHTML = typeof _encodeHTML !== 'undefined' ? _encodeHTML : ("
-				+ doT.encodeHTMLSource.toString() + "(" + (c.doNotSkipEncoded || '') + "));"
-				+ str;
-		}
-		try {
-			return new Function(c.varname, str);
-		} catch (e) {
-			/* istanbul ignore else */
-			if (typeof console !== "undefined") console.log("Could not create a template function: " + str);
-			throw e;
-		}
-	};
-
-	doT.compile = function(tmpl, def) {
-		return doT.template(tmpl, null, def);
-	};
-}());
-
-},{}],8:[function(require,module,exports){
+},{"./extended_syntax":2,"./grammar":3,"./graph":4,"./output_generation":5,"./scheduler":6,"buffer":10,"dot":1,"path":12}],8:[function(require,module,exports){
 
 },{}],9:[function(require,module,exports){
 'use strict'
@@ -5593,5 +5642,5 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}]},{},[6])(6)
+},{}]},{},[7])(7)
 });

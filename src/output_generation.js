@@ -48,6 +48,33 @@
 
 	function convert(doT, templates, target_lang, graph, graph_init, schedule, schedule_init) {
 		
+		const ct = getConstType(target_lang)
+		var MagicStringProto = {
+			s: null,
+			add: function(...x) {
+				for (let k of x) {
+					if (k == undefined) {
+						throw new Error(k)
+					}
+					this.s.push(k)
+				}
+				return this
+			},
+			toString: function(){
+				let str = this.is_used_locally ? ct : ""
+				for (let p of this.s)
+					str += p.toString()
+				return str
+			}
+		}
+		function MagicString(...init) {
+			var m = Object.create(MagicStringProto);
+			m.s = []
+			for (let i of init)
+				m.add(i)	
+			return m;
+		}
+
 		let program = {
 			class_name: 	graph.id,
 			control_inputs: graph.input_ports.filter(p => p.update_rate == 2).map(p => p.block.label()),
@@ -97,12 +124,6 @@
 			program.declarations2.push(MagicString(block.output_ports[0].code));
 			program.init.push(MagicString(block.output_ports[0].code, " = ", getNumber(target_lang, block.block_init.output_ports[0].code.toString())));
 		})
-
-		const ct = getConstType(target_lang)
-		const oldToString = MagicStringProto.toString
-		MagicStringProto.toString = function () {
-			return (this.is_used_locally ? ct : "") + oldToString.apply(this);
-		}
 
 		doT.templateSettings.strip = false
 
@@ -518,32 +539,6 @@
 
 			program.controls_rate = groups
 		}
-	}
-
-	var MagicStringProto = {
-		s: null,
-		add: function(...x) {
-			for (let k of x) {
-				if (k == undefined) {
-					throw new Error(k)
-				}
-				this.s.push(k)
-			}
-			return this
-		},
-		toString: function(){
-			let str = ""
-			for (let p of this.s)
-				str += p.toString()
-			return str
-		}
-	}
-	function MagicString(...init) {
-		var m = Object.create(MagicStringProto);
-		m.s = []
-		for (let i of init)
-			m.add(i)	
-		return m;
 	}
 
 	function checkSetsInclusion(A, B) { // if A is included in B
