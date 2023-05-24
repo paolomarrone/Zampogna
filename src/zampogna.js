@@ -29,10 +29,13 @@
 				"doT": 				require("dot"),
 				"templates":{
 					"matlab": 			String(fs.readFileSync(path.join(__dirname, "templates", "matlab_template.txt"))),
-					"vst2_main_h": 		String(fs.readFileSync(path.join(__dirname, "templates", "vst2_program_h_template.txt"))),
-					"vst2_main_cpp": 	String(fs.readFileSync(path.join(__dirname, "templates", "vst2_program_c_template.txt"))),
-					"vst2_effect_h": 	String(fs.readFileSync(path.join(__dirname, "templates", "vst2_effect_h_template.txt"))),
-					"vst2_effect_cpp": 	String(fs.readFileSync(path.join(__dirname, "templates", "vst2_effect_c_template.txt"))),
+					"C_h": 				String(fs.readFileSync(path.join(__dirname, "templates", "C_h_template.txt"))),
+					"C_c": 				String(fs.readFileSync(path.join(__dirname, "templates", "C_c_template.txt"))),
+					"cpp_h": 			String(fs.readFileSync(path.join(__dirname, "templates", "cpp_h_template.txt"))),
+					"cpp_cpp": 			String(fs.readFileSync(path.join(__dirname, "templates", "cpp_cpp_template.txt"))),
+					"vst2_wrapper_h": 	String(fs.readFileSync(path.join(__dirname, "templates", "vst2_wrapper_h_template.txt"))),
+					"vst2_wrapper_cpp": String(fs.readFileSync(path.join(__dirname, "templates", "vst2_wrapper_cpp_template.txt"))),
+					"yaaaeapa_wrapper_c": String(fs.readFileSync(path.join(__dirname, "templates", "yaaaeapa_wrapper_c_template.txt"))),
 					"js_html": 			String(fs.readFileSync(path.join(__dirname, "templates", "js_html_template.txt"))),
 					"js_processor": 	String(fs.readFileSync(path.join(__dirname, "templates", "js_processor_template.txt"))),
 					"d_processor":		String(fs.readFileSync(path.join(__dirname, "templates", "d_processor_template.txt")))
@@ -52,8 +55,8 @@
 
 		let scheduled_blocks = env["scheduler"].schedule(graphes[0])
 		let scheduled_blocks_init = env["scheduler"].scheduleInit(graphes[1])
-		if (debug) console.log(scheduled_blocks.map(b => b.operation + "   " + (b.id ? b.id : "") + " " + (b.val ? b.val : "")))
-		if (debug) console.log(scheduled_blocks_init.map(b => b.operation + "   " + (b.id ? b.id : "") + " " + (b.val ? b.val : "")))
+		if (debug) console.log(scheduled_blocks.map(b => b.operation + "   " + b.label() + " " + (b.val ? b.val : "")))
+		if (debug) console.log(scheduled_blocks_init.map(b => b.operation + "   " + b.label() + " " + (b.val ? b.val : "")))
 
 		let files = env["output_generation"].convert(env["doT"], env["templates"], target_lang, graphes[0], graphes[1], scheduled_blocks, scheduled_blocks_init)
 		return files

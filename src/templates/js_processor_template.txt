@@ -8,10 +8,7 @@ var Plugin = {
 
 		this.params = [{{=it.control_inputs.map(c => '"' + c + '"').join(", ")}}];
 
-		{{~it.declarations1:d}}
-		{{=d}} = 0;{{~}}
-
-		{{~it.declarations2:d}}
+		{{~it.init:d}}
 		{{=d}};{{~}}
 
 		{{~it.control_inputs:c}}

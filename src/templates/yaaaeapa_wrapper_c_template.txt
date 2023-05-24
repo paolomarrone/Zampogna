@@ -1,0 +1,63 @@
+#include "{{=it.class_name}}.h"
+
+// Implementing the yaaaeapa interface
+
+{{=it.class_name}} instance;
+
+void yaaaeapa_init(void) {
+	{{=it.class_name}}_init(&instance);
+}
+void yaaaeapa_fini(void) {
+}
+void yaaaeapa_set_sample_rate(float sample_rate) {
+	{{=it.class_name}}_set_sample_rate(&instance, sample_rate);
+}
+void yaaaeapa_reset(void) {
+	{{=it.class_name}}_reset(&instance);
+}
+void yaaaeapa_process(const float** x, float** y, int n_samples) {
+	{{=it.class_name}}_process(&instance, {{?it.audio_inputs.length > 0}}{{~it.audio_inputs:a:i}}x[{{=i}}]{{~}}, {{?}}{{~it.outputs:o:i}}y[{{=i}}]{{~}}, n_samples);
+}
+void yaaaeapa_set_parameter(int index, float value) {
+	{{=it.class_name}}_set_parameter(&instance, index, value);
+}
+float yaaaeapa_get_parameter(int index) {
+	return {{=it.class_name}}_get_parameter(&instance, index);
+}
+void yaaaeapa_note_on(char note, char velocity) {
+	(void)note;
+	(void)velocity;
+}
+void yaaaeapa_note_off(char note) {
+	(void)note;
+}
+void yaaaeapa_pitch_bend(int bend) {
+	(void)bend;
+}
+void yaaaeapa_mod_wheel(char wheel) {
+	(void)wheel;
+}
+
+int yaaaeapa_parameters_n 	= {{=it.control_inputs.length}};
+int yaaaeapa_buses_in_n 	= 1;
+int yaaaeapa_buses_out_n 	= 1;
+int yaaaeapa_channels_in_n 	= {{=it.audio_inputs.length}};
+int yaaaeapa_channels_out_n	= {{=it.outputs.length}};
+//void* yaaaeapa_data 		= NULL;
+
+void yaaaeapa_get_parameter_info (int index, char** name, char** shortName, char** units, char* out, char* bypass, int* steps, float* defaultValueUnmapped) {
+	if (index < 0 || index >= {{=it.control_inputs.length}}) return;
+	switch (index) {
+	{{~it.control_inputs:c:i}}
+		case {{=i}}:
+			if (name) *name = (char*) "{{=c}}";
+			if (shortName) *shortName = (char*) "{{=c}}";
+			if (units) *units = (char*) "";
+			if (out) *out = 0;
+			if (bypass) *bypass = 0;
+			if (steps) *steps = 0;
+			if (defaultValueUnmapped) *defaultValueUnmapped = 0.f; // Fix
+			break;
+	{{~}}
+	}
+}

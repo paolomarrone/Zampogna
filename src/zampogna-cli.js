@@ -58,7 +58,7 @@
 	if (options["-i"] == "")
 		throw new Error("Specify the initial_block.", usage);
 	
-	const supported_target_languages = ["cpp", "MATLAB", "js", "d"];
+	const supported_target_languages = ["C", "cpp", "VST2", "yaaaeapa", "MATLAB", "js", "d"];
 	if (!supported_target_languages.includes(options["-t"]))
 		throw new Error(options["-t"] + " is not a supported target language. Choose among: " + supported_target_languages.join(", "))
 
@@ -71,6 +71,8 @@
 
 	if (!fs.existsSync(options['-o']))
 	    fs.mkdirSync(options['-o']);
-	files.forEach(f => fs.writeFile(path.normalize(path.join(options['-o'], f.name)), f.str, err => { if (err) throw err }))
+	if (!fs.existsSync(path.join(options['-o'], options["-t"])))
+		fs.mkdirSync(path.join(options['-o'], options["-t"]));
+	files.forEach(f => fs.writeFile(path.normalize(path.join(options['-o'], options["-t"], f.name)), f.str, err => { if (err) throw err }))
 
 }());

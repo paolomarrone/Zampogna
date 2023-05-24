@@ -1,4 +1,4 @@
-#include "vst2_effect.h"
+#include "{{=it.class_name}}_vst2_wrapper.h"
 
 #include <cstdlib>
 #include <cstdio>
@@ -7,15 +7,15 @@
 
 AudioEffect *createEffectInstance(audioMasterCallback audioMaster) { return new Effect(audioMaster); }
 
-Effect::Effect(audioMasterCallback audioMaster) : AudioEffectX(audioMaster, 1, 3) {
-	setNumInputs(2);
-	setNumOutputs(2);
+Effect::Effect(audioMasterCallback audioMaster) : AudioEffectX(audioMaster, 1, {{=it.control_inputs.length}}) {
+	setNumInputs({{=it.audio_inputs.length}});
+	setNumOutputs({{=it.outputs.length}});
 	setUniqueID('fxfx');
 	DECLARE_VST_DEPRECATED(canMono) ();
 	canProcessReplacing();
 	strcpy(programName, "Effect");
 
-	instance = EQregaliaStereo();
+	instance = {{=it.class_name}}();
 }
 
 Effect::~Effect() {}
@@ -37,38 +37,26 @@ bool Effect::getProgramNameIndexed(VstInt32 category, VstInt32 index, char* name
 
 void Effect::setParameter(VstInt32 index, float value) {
 	switch (index) {
-	
-	case 0:
-		instance.setlow(value);
-		break;
-	case 1:
-		instance.setmed(value);
-		break;
-	case 2:
-		instance.sethigh(value);
-		break;
+	{{~it.control_inputs:c}}
+	case {{=it.control_inputs.indexOf(c)}}:
+		instance.set{{=c}}(value);
+		break;{{~}}
 	}
 }
 
 float Effect::getParameter(VstInt32 index) {
 	float v = 0.f;
 	switch (index) {
-	
-	case 0:
-		v = instance.getlow();
-		break;
-	case 1:
-		v = instance.getmed();
-		break;
-	case 2:
-		v = instance.gethigh();
-		break;
+	{{~it.control_inputs:c}}
+	case {{=it.control_inputs.indexOf(c)}}:
+		v = instance.get{{=c}}();
+		break;{{~}}
 	}
 	return v;
 }
 
 void Effect::getParameterName(VstInt32 index, char *text) {
-	const char *names[] = { "low","med","high"};
+	const char *names[] = { {{=it.control_inputs.map(c => '\"' +c+'\"')}}};
 	strcpy(text, names[index]);
 }
 
@@ -86,9 +74,9 @@ void Effect::setSampleRate(float sampleRate) {
 }
 
 void Effect::process(float **inputs, float **outputs, VstInt32 sampleFrames) {
-	instance.process(inputs[0],inputs[1], outputs[0],outputs[1], sampleFrames);
+	instance.process({{=it.audio_inputs.map(i => 'inputs['+it.audio_inputs.indexOf(i)+']')}}, {{=it.outputs.map(i => 'outputs['+it.outputs.indexOf(i)+']')}}, sampleFrames);
 }
 
 void Effect::processReplacing(float **inputs, float **outputs, VstInt32 sampleFrames) {
-	instance.process(inputs[0],inputs[1], outputs[0],outputs[1], sampleFrames);
+	instance.process({{=it.audio_inputs.map(i => 'inputs['+it.audio_inputs.indexOf(i)+']')}}, {{=it.outputs.map(i => 'outputs['+it.outputs.indexOf(i)+']')}}, sampleFrames);
 }

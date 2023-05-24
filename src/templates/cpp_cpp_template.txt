@@ -1,4 +1,4 @@
-#include "vst2_{{=it.class_name}}.h"
+#include "{{=it.class_name}}.h"
 
 
 {{~it.constant_rate:c}}static const float {{=c}};
@@ -12,7 +12,7 @@ void {{=it.class_name}}::reset()
 void {{=it.class_name}}::setSampleRate(float sampleRate)
 {
 	fs = sampleRate;
-	{{~it.sampling_rate:s}}{{?s.is_used_locally}}const float {{?}}{{=s}};
+	{{~it.sampling_rate:s}}{{=s}};
 	{{~}}
 }
 
@@ -26,20 +26,20 @@ void {{=it.class_name}}::process({{=it.audio_inputs.concat(it.outputs).map(x => 
 	}
 	{{~it.controls_rate:c}}
 	if ({{=Array.from(c.set).map(e => e + "_CHANGED").join(' | ')}}) {{{~c.stmts: s}}
-		{{?s.is_used_locally}}const float {{?}}{{=s}};{{~}}
+		{{=s}};{{~}}
 	}{{~}}
 	{{~it.control_inputs:c}}
 	{{=c}}_CHANGED = 0;{{~}}
 
 	if (firstRun) {{{~it.reset1:r}}
-		{{?r.is_used_locally}}const float {{?}}{{=r}};{{~}}
+		{{=r}};{{~}}
 		{{~it.reset2:r}}
-		{{?r.is_used_locally}}const float {{?}}{{=r}};{{~}}
+		{{=r}};{{~}}
 	}
 
 	for (int i = 0; i < nSamples; i++) {
 		{{~it.audio_rate: a}}
-		{{?a.is_used_locally}}const float {{?}}{{=a}};{{~}}
+		{{=a}};{{~}}
 		
 		{{~it.delay_updates:u}}{{=u}};
 		{{~}}
