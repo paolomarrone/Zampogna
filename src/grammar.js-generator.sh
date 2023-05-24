@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # Depends on Jison. Use npm install jison
 
