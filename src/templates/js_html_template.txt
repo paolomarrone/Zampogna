@@ -13,7 +13,7 @@ var begin = async function () {
 
 	await ctx.audioWorklet.addModule("processor.js");
 
-	node = new AudioWorkletNode(ctx, "PluginProcessor", { outputChannelCount: [1] });
+	node = new AudioWorkletNode(ctx, "PluginProcessor", { numberOfInputs:1,  numberOfOutputs:1, outputChannelCount: [{{=it.outputs.length}}] });
 
 	node.connect(ctx.destination);
 

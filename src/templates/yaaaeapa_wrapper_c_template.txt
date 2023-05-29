@@ -16,7 +16,7 @@ void yaaaeapa_reset(void) {
 	{{=it.class_name}}_reset(&instance);
 }
 void yaaaeapa_process(const float** x, float** y, int n_samples) {
-	{{=it.class_name}}_process(&instance, {{?it.audio_inputs.length > 0}}{{~it.audio_inputs:a:i}}x[{{=i}}]{{~}}, {{?}}{{~it.outputs:o:i}}y[{{=i}}]{{~}}, n_samples);
+	{{=it.class_name}}_process(&instance, {{~it.audio_inputs:a:i}}x[{{=i}}], {{~}}{{~it.outputs:o:i}}y[{{=i}}], {{~}} n_samples);
 }
 void yaaaeapa_set_parameter(int index, float value) {
 	{{=it.class_name}}_set_parameter(&instance, index, value);

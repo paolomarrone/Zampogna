@@ -426,7 +426,8 @@
 			stmt.if_owners = if_owners
 
 			if (is_used_locally) {
-				stmt.is_used_locally = true
+				if (level != 0)
+					stmt.is_used_locally = true
 			}
 			else {
 				if (to_be_declared && level != 0) {

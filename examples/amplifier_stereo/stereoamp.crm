@@ -1,0 +1,4 @@
+yl, yr = stereoamp(xl, xr, vl, vr) { 
+	yl = xl * vl
+	yr = xr * vr
+}
