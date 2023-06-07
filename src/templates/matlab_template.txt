@@ -5,6 +5,10 @@ function [{{=it.outputs.join(', ')}}] = {{=it.class_name}}({{=it.audio_inputs.jo
   {{~it.constant_rate:c}}{{=c}};
   {{~}}
 
+  % declarations
+  {{~it.declarations1:d}}
+  {{=d}} = 0;{{~}}
+
   % fs
 
   {{~it.sampling_rate:s}}{{=s}};

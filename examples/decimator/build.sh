@@ -1,3 +1,3 @@
 #!/bin/sh
 
-node ../../src/zampogna-cli.js -i decimator -t MATLAB -d true decimator.crm
+node ../../src/zampogna-cli.js -i decimator -c bypass -t MATLAB -d true decimator.crm
