@@ -20,11 +20,11 @@
 	exports.Port.type = function () {
 		if (this.block.i_ports.includes(this)) return "in";
 		if (this.block.o_ports.includes(this)) return "out";
-	}
+	};
 	exports.Port.index = function () {
 		if (this.type() == "in")  return this.block.i_ports.indexOf(this);
 		if (this.type() == "out") return this.block.o_ports.indexOf(this);
-	}
+	};
 	exports.Port.toString = function () {
 		return this.block.toString() + "[" + this.type() + ": " + this.index() + "]";
 	};
@@ -40,7 +40,7 @@
 		this.o_ports = new Array(o_n).fill().map(() => Object.create(exports.Port));
 		this.i_ports.forEach(p => p.block = this);
 		this.o_ports.forEach(p => p.block = this);
-	}
+	};
 	exports.Block.toString = function () {
 		return "{ B_" + this.id + ", " + this.operation + " }";
 	};
@@ -49,10 +49,16 @@
 		r.createPorts(r, this.i_ports.length, this.o_ports.length); // mmmm...
 	};
 	exports.Block.flatten = function () {};
+	exports.Block.isUseless = function () { return false }; // TODO
 
 
 	exports.VarBlock = Object.create(exports.Block);
 	exports.VarBlock.operation = "VAR";
+
+
+	exports.DelayBlock = Object.create(exports.Block);
+	exports.DelayBlock.operation = "DELAY";
+	exports.DelayBlock.nSamples = 1; // ...
 
 
 	exports.NumberBlock = Object.create(exports.Block);
@@ -132,6 +138,28 @@
 	exports.CompositeBlock.getOutputBlocks = function (block) { // Unordered
 		return Array.from(new Set(block.o_ports.map(p => this.getOutputPorts(p)).flat().map(p => p.block)));
 	};
+	exports.CompositeBlock.removeBlock = function (block) { // Brute remove
+		this.blocks.splice(this.blocks.indexOf(block), 1);
+		this.connections = this.connections.filter(c => c.in.block != block && c.out.block != block);
+	};
+	exports.CompositeBlock.removeIntermediateBlock = function (block) { // Assuming 1 i_p, and n o_ps
+		let i_p  = this.getInputPorts(block.i_ports[0])[0];
+		let o_ps = this.getOutputPorts(block.o_ports[0]);
+		o_ps.forEach(o_p => {
+			let c = Object.create(exports.Connection);
+			c.in = i_p;
+			c.out = o_p;
+			this.connections.push(c);
+		});
+		this.removeBlock(block);
+	}
+	exports.CompositeBlock.removeIntermediateBlocks = function () {
+		this.blocks.filter(b => 
+			(exports.VarBlock.isPrototypeOf(b)) ||
+			(exports.SumBlock.isPrototypeOf(b) && b.i_ports.length == 1 && b.add[0]) ||
+			(exports.MulBlock.isPrototypeOf(b) && b.i_ports.length == 1 && b.over[0])
+		).forEach(b => this.removeIntermediateBlock(b));
+	}
 	exports.CompositeBlock.flatten = function () {
 		this.blocks.forEach(b => b.flatten());
 
@@ -142,7 +170,6 @@
 		})
 
 	};
-
 
 
 }());
