@@ -126,7 +126,7 @@
 		})
 
 		doT.templateSettings.strip = false
-
+	
 		if (target_lang == 'C') {
 			return [
 				{ name: graph.id + ".h", str: doT.template(templates["C_h"])(program) },
@@ -192,6 +192,11 @@
 					is_used_locally = false;
 			}
 			const id_prefix = is_used_locally || update_rate == 0 ? "" : id_prefix_;
+
+			if (!block.output_ports[0].toBeCached) {
+				if (update_rate == 2 && !checkSetEquality(output_blocks[0].control_dependencies, block.control_dependencies))
+					block.output_ports[0].toBeCached = true;
+			}
 
 			if (block.ifoutputindex != undefined && !isNaN(block.ifoutputindex)) {
 				code.add(id_prefix_, block.label())
@@ -325,11 +330,15 @@
 			const auxcode = MagicString()
 
 			let is_used_locally = true
+			/*
 			is_used_locally = output_blocks.every(b => b.output_ports[0].update_rate == update_rate)
 			if (update_rate == 2 && is_used_locally)
 				is_used_locally = output_blocks.every(b => checkSetEquality(b.control_dependencies, block.control_dependencies))
+			*/
+			// TMP... TODO: fix
+			is_used_locally = false;
 
-			const id_prefix = is_used_locally ? "" : id_prefix_;
+			const id_prefix = is_used_locally || update_rate == 0 ? "" : id_prefix_;
 
 			switch (block.operation) {
 				case 'VAR':
