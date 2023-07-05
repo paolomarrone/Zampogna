@@ -1,4 +1,0 @@
-y1, y2 = volControl(x1, x2, vol1, vol2) {
-	y1 = x1 * vol1
-	y2 = x2 * vol2
-}

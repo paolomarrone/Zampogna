@@ -1,5 +1,0 @@
-y = amp (x, level) {
-
-	y = x * level * 2
-	
-}
