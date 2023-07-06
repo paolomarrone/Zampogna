@@ -56,28 +56,28 @@ id                          [_a-zA-Z][_a-zA-Z0-9]*
 "["							return '['
 "]"							return ']'
 
-
-"int"						return 'TYPE_int'
-"float"						return 'TYPE_float'
-"bool"						return 'TYPE_bool'
-
 {int}						return 'VALUE_INT'
 {float}						return 'VALUE_FLOAT'
 "true" 						return 'VALUE_TRUE'
 "false"						return 'VALUE_FALSE'
 
+"int"						return 'TYPE_INT32'
+"float"						return 'TYPE_FLOAT32'
+"bool"						return 'TYPE_BOOL'
+
+"_"							return '_'
 "mem" 						return 'MEM'
 "fs"						return 'SAMPLERATE'
-"?"							return '?'
-":"							retirm ':'
 "if"						return 'IF'
 "else"						return "ELSE"
-{id}                        return 'ID'
-
+"?"							return '?'
+":"							return ':'
 
 "@"							return 'INIT'
 
-[\n\r]+						return 'NL'
-[;]+						return ';'
+
+{id}                        return 'ID'
+
+[\n\r;]+					return 'END'
 
 [ \t\v\f]+					/* ignore bad chars */
