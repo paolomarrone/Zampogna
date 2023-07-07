@@ -13,7 +13,11 @@
     Author: Paolo Marrone
 */
 
-
+%{
+    function printAST () {
+        console.log("asd")
+    }   
+%}
 
 %%
 
@@ -31,10 +35,10 @@ statements      	: statements statement
                         {{
                             $$ = $1.concat($2); 
                         }}
-                    | END
-                    	{{ $$ = []; }}
-                    |
-                        {{ $$ = []; }}
+                    |   
+                        {{
+                            $$ = []
+                        }}
                     ;
 
 statement 			: block_definition
@@ -43,14 +47,26 @@ statement 			: block_definition
                         {{ $$ = $1 }}
 					| assignment
 						{{ $$ = $1 }}
+                    | END
+                        {{ $$ = [] }}
 					;
 
-block_definition    : typed_ids '=' id '(' typed_ids_0 ')' block
+block_definition    : exprs '=' id '(' exprs ')' block
                         {{
                             $$ = {
                                 name: 'BLOCK_DEFINITION',
                                 id: $3,
                                 inputs: $5,
+                                outputs: $1,
+                                statemetns: $7.statements
+                            }
+                        }}
+                    | exprs '=' id '(' ')' block
+                        {{
+                            $$ = {
+                                name: 'BLOCK_DEFINITION',
+                                id: $3,
+                                inputs: [],
                                 outputs: $1,
                                 statemetns: $7.statements
                             }
@@ -68,7 +84,7 @@ memory_declaration  : MEM '[' expr ']' type id END
                         }}
                     ;
 
-assignment 			: left_values '=' expr END
+assignment 			: exprs '=' expr END
                         {{
                             $$ = {
                                 name: 'ASSIGNMENT',
@@ -77,7 +93,7 @@ assignment 			: left_values '=' expr END
                                 outputs: $1
                             }
                         }}
-                    | left_values '=' if_then_elses END
+                    | exprs '=' if_then_elses END
                         {{
                             $3.outputs = $1
                             $$ = {
@@ -87,7 +103,7 @@ assignment 			: left_values '=' expr END
                                 outputs: $1
                             }
                         }}
-                    | left_values '=' block END
+                    | exprs '=' block END
                         {{
                             $3.outputs = $1
                             $$ = {
@@ -320,25 +336,25 @@ multiplicative_expr : unary_expr
                         }}
                     ;
 
-unary_expr          : primary_expr
+unary_expr          : postfix_expr
                         {{ $$ = $1 }}
-                    | '-' primary_expr
+                    | '-' postfix_expr
                         {{
                             $$ = {
                                 name: 'UMINUS_EXPR',
                                 args: [$2]
                             }
                         }}
-                    | '+' primary_expr
+                    | '+' postfix_expr
                         {{ $$ = $2 }}
-                    | '!' primary_expr
+                    | '!' postfix_expr
                         {{
                             $$ = {
                                 name: 'LOGICAL_NOT_EXPR',
                                 args: [$2]
                             }
                         }}
-                    | '~' primary_expr
+                    | '~' postfix_expr
                         {{
                             $$ = {
                                 name: 'BITWISE_NOT_EXPR',
@@ -347,43 +363,17 @@ unary_expr          : primary_expr
                         }}
                     ;
 
-primary_expr        : id
+postfix_expr        : primary_expr
                         {{ $$ = $1 }}
-                    | value
-                        {{ $$ = $1 }}
-                    | SAMPLERATE
-                        {{ $$ = { name: 'SAMPLERATE' } }}
-                    | '(' expr ')'
-                        {{ $$ = $2 }}
-                    | fb_call
-                        {{ $$ = $1 }}
-                    ;
-
-id                  : ID
-                        {{ 
-                            $$ = { name: 'ID', value: yytext}; 
+                    | id '(' ')'
+                        {{
+                            $$ = {
+                                name: 'CALL_EXPR',
+                                id: $1,
+                                args: []
+                            }
                         }}
-                    ;
-
-value               : VALUE_INT
-                        {{ 
-                            $$ = { name: 'VALUE', type: 'INT', val: parseInt(yytext) };
-                        }}
-                    | VALUE_FLOAT
-                        {{ 
-                            $$ = { name: 'VALUE', type: 'FLOAT', val: parseFloat(yytext) };
-                        }}
-                    | VALUE_TRUE
-                        {{ 
-                            $$ = { name: 'VALUE', type:'BOOL', val: true }; 
-                        }}
-                    | VALUE_FALSE
-                        {{ 
-                            $$ = { name: 'VALUE', type:'BOOL' val: false }; 
-                        }}
-                    ;
-
-fb_call             : id '(' exprs ')'
+                    | id '(' exprs ')'
                         {{
                             $$ = {
                                 name: 'CALL_EXPR',
@@ -391,11 +381,54 @@ fb_call             : id '(' exprs ')'
                                 args: $3
                             }
                         }}
+                    | id '[' expr ']'
+                        {{
+                            $1.index = $3
+                            $$ = $1
+                        }}
                     ;
 
-exprs               : 
-                        {{ $$ = [] }}
-                    | expr
+primary_expr        : id
+                        {{ $$ = $1 }}
+                    | type id
+                        {{
+                            $2.declaredType = $1
+                            $$ = $2
+                        }}
+                    | id '.' id
+                        {{
+                            $$ = {
+                                name: 'PROPERTY',
+                                var: $1,
+                                property: $3
+                            }
+                        }}
+                    | '_'
+                        {{ $$ = { name: 'DISCARD' } }}
+                    | value
+                        {{ $$ = $1 }}
+                    | '(' expr ')'
+                        {{ $$ = $2 }}
+                    ;
+
+value               : VALUE_INT
+                        {{ 
+                            $$ = { name: 'VALUE', type: 'INT', val: parseInt(yytext) };
+                        }}
+                    | VALUE_FLOAT32
+                        {{ $$ = { name: 'VALUE', type: 'FLOAT', val: parseFloat(yytext) };
+                        }}
+                    | VALUE_TRUE
+                        {{ 
+                            $$ = { name: 'VALUE', type:'BOOL', val: true }; 
+                        }}
+                    | VALUE_FALSE
+                        {{ 
+                            $$ = { name: 'VALUE', type:'BOOL', val: false }; 
+                        }}
+                    ;
+
+exprs               : expr
                         {{ $$ = [$1] }}
                     | exprs ',' expr
                         {{ 
@@ -403,55 +436,10 @@ exprs               :
                         }}
                     ;
 
-left_value          : typed_id
-                        {{
-                            $$ = $1
+id                  : ID
+                        {{ 
+                            $$ = { name: 'ID', value: yytext}; 
                         }}
-                    | id '[' expr ']'
-                        {{
-                            $1.index = $3
-                            $$ = $1
-                        }}
-                    | INIT id
-                        {{
-                            $2.init = true
-                            $$ = $2
-                        }}
-                    | '_'
-                        {{
-                            $$ = { name: 'ID', value: '_' }
-                        }}
-                    ;
-
-left_values         : left_value
-                        {{ $$ = [$1] }}
-                    | left_values ',' left_value
-                        {{
-                            $$ = $1.concat($3)
-                        }}
-                    ;
-
-typed_id            : id
-                        {{ $$ = $1 }}
-                    | type id
-                        {{
-                            $2.declaredType = $1
-                            $$ = $2
-                        }}
-                    ;
-
-typed_ids           : typed_id
-                        {{ $$ = [$1] }}
-                    | typed_ids ',' typed_id
-                        {{
-                            $$ = $1.concat($3)
-                        }}
-                    ;
-
-typed_ids_0         :
-                        {{ $$ = [] }
-                    | typed_ids
-                        {{ $$ = $1 }}
                     ;
 
 type                : TYPE_INT32 
