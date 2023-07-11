@@ -1,5 +1,5 @@
 /*
-    Copyright (C) 2021, 2022 Orastron Srl
+    Copyright (C) 2021, 2022, 2023 Orastron Srl
 
     Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is 
     hereby granted, provided that the above copyright notice and this permission notice appear in all copies.
@@ -12,12 +12,6 @@
 
     Author: Paolo Marrone
 */
-
-%{
-    function printAST () {
-        console.log("asd")
-    }   
-%}
 
 %%
 
@@ -405,26 +399,26 @@ primary_expr        : id
                         }}
                     | '_'
                         {{ $$ = { name: 'DISCARD' } }}
-                    | value
+                    | constant
                         {{ $$ = $1 }}
                     | '(' expr ')'
                         {{ $$ = $2 }}
                     ;
 
-value               : VALUE_INT
+constant            : CONSTANT_INT32
                         {{ 
-                            $$ = { name: 'VALUE', type: 'INT', val: parseInt(yytext) };
+                            $$ = { name: 'CONSTANT', type: 'INT32', val: parseInt(yytext) };
                         }}
-                    | VALUE_FLOAT32
-                        {{ $$ = { name: 'VALUE', type: 'FLOAT', val: parseFloat(yytext) };
+                    | CONSTANT_FLOAT32
+                        {{ $$ = { name: 'CONSTANT', type: 'FLOAT32', val: parseFloat(yytext) };
                         }}
-                    | VALUE_TRUE
+                    | CONSTANT_TRUE
                         {{ 
-                            $$ = { name: 'VALUE', type:'BOOL', val: true }; 
+                            $$ = { name: 'CONSTANT', type:'BOOL', val: true }; 
                         }}
-                    | VALUE_FALSE
+                    | CONSTANT_FALSE
                         {{ 
-                            $$ = { name: 'VALUE', type:'BOOL', val: false }; 
+                            $$ = { name: 'CONSTANT', type:'BOOL', val: false }; 
                         }}
                     ;
 

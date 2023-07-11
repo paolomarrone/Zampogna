@@ -75,8 +75,8 @@ var grammar = (function(){
 var o=function(k,v,o,l){for(o=o||{},l=k.length;l--;o[k[l]]=v);return o},$V0=[2,3],$V1=[1,7],$V2=[1,33],$V3=[1,9],$V4=[1,25],$V5=[1,24],$V6=[1,26],$V7=[1,27],$V8=[1,31],$V9=[1,38],$Va=[1,39],$Vb=[1,40],$Vc=[1,41],$Vd=[1,34],$Ve=[1,35],$Vf=[1,36],$Vg=[1,37],$Vh=[1,9,13,16,27,54,55,60,61,64,66,67,68,69,71,72,73,74],$Vi=[1,43],$Vj=[11,14,70],$Vk=[9,11,14,19,31,70],$Vl=[9,11,14,19,30,31,33,70],$Vm=[1,47],$Vn=[9,11,14,19,30,31,33,35,70],$Vo=[1,48],$Vp=[9,11,14,19,30,31,33,35,37,70],$Vq=[1,49],$Vr=[9,11,14,19,30,31,33,35,37,39,70],$Vs=[1,50],$Vt=[9,11,14,19,30,31,33,35,37,39,41,70],$Vu=[1,51],$Vv=[1,52],$Vw=[9,11,14,19,30,31,33,35,37,39,41,43,44,70],$Vx=[1,53],$Vy=[1,54],$Vz=[1,55],$VA=[1,56],$VB=[9,11,14,19,30,31,33,35,37,39,41,43,44,46,47,48,49,70],$VC=[1,57],$VD=[1,58],$VE=[9,11,14,19,30,31,33,35,37,39,41,43,44,46,47,48,49,51,52,70],$VF=[1,59],$VG=[1,60],$VH=[9,11,14,19,30,31,33,35,37,39,41,43,44,46,47,48,49,51,52,54,55,70],$VI=[1,61],$VJ=[1,62],$VK=[9,11,14,19,30,31,33,35,37,39,41,43,44,46,47,48,49,51,52,54,55,57,58,70],$VL=[2,58],$VM=[1,68],$VN=[1,69],$VO=[1,77],$VP=[9,30,33,35,37,39,41,43,44,46,47,48,49,51,52,54,55,57,58],$VQ=[2,55],$VR=[2,56];
 var parser = {trace: function trace () { },
 yy: {},
-symbols_: {"error":2,"program":3,"statements":4,"statement":5,"block_definition":6,"memory_declaration":7,"assignment":8,"END":9,"exprs":10,"=":11,"id":12,"(":13,")":14,"block":15,"MEM":16,"[":17,"expr":18,"]":19,"type":20,"if_then_elses":21,"IF":22,"branch":23,"elseifs":24,"ELSE":25,"{":26,"}":27,"conditional_expr":28,"logical_or_expr":29,"?":30,":":31,"logical_and_expr":32,"||":33,"inclusive_or_expr":34,"&&":35,"exclusive_or_expr":36,"|":37,"and_expr":38,"^":39,"equality_expr":40,"&":41,"relational_expr":42,"==":43,"!=":44,"shift_expr":45,"<":46,"<=":47,">":48,">=":49,"additive_expr":50,"<<":51,">>":52,"multiplicative_expr":53,"+":54,"-":55,"unary_expr":56,"*":57,"/":58,"postfix_expr":59,"!":60,"~":61,"primary_expr":62,".":63,"_":64,"value":65,"VALUE_INT":66,"VALUE_FLOAT32":67,"VALUE_TRUE":68,"VALUE_FALSE":69,",":70,"ID":71,"TYPE_INT32":72,"TYPE_FLOAT32":73,"TYPE_BOOL":74,"$accept":0,"$end":1},
-terminals_: {2:"error",9:"END",11:"=",13:"(",14:")",16:"MEM",17:"[",19:"]",22:"IF",25:"ELSE",26:"{",27:"}",30:"?",31:":",33:"||",35:"&&",37:"|",39:"^",41:"&",43:"==",44:"!=",46:"<",47:"<=",48:">",49:">=",51:"<<",52:">>",54:"+",55:"-",57:"*",58:"/",60:"!",61:"~",63:".",64:"_",66:"VALUE_INT",67:"VALUE_FLOAT32",68:"VALUE_TRUE",69:"VALUE_FALSE",70:",",71:"ID",72:"TYPE_INT32",73:"TYPE_FLOAT32",74:"TYPE_BOOL"},
+symbols_: {"error":2,"program":3,"statements":4,"statement":5,"block_definition":6,"memory_declaration":7,"assignment":8,"END":9,"exprs":10,"=":11,"id":12,"(":13,")":14,"block":15,"MEM":16,"[":17,"expr":18,"]":19,"type":20,"if_then_elses":21,"IF":22,"branch":23,"elseifs":24,"ELSE":25,"{":26,"}":27,"conditional_expr":28,"logical_or_expr":29,"?":30,":":31,"logical_and_expr":32,"||":33,"inclusive_or_expr":34,"&&":35,"exclusive_or_expr":36,"|":37,"and_expr":38,"^":39,"equality_expr":40,"&":41,"relational_expr":42,"==":43,"!=":44,"shift_expr":45,"<":46,"<=":47,">":48,">=":49,"additive_expr":50,"<<":51,">>":52,"multiplicative_expr":53,"+":54,"-":55,"unary_expr":56,"*":57,"/":58,"postfix_expr":59,"!":60,"~":61,"primary_expr":62,".":63,"_":64,"constant":65,"CONSTANT_INT32":66,"CONSTANT_FLOAT32":67,"CONSTANT_TRUE":68,"CONSTANT_FALSE":69,",":70,"ID":71,"TYPE_INT32":72,"TYPE_FLOAT32":73,"TYPE_BOOL":74,"$accept":0,"$end":1},
+terminals_: {2:"error",9:"END",11:"=",13:"(",14:")",16:"MEM",17:"[",19:"]",22:"IF",25:"ELSE",26:"{",27:"}",30:"?",31:":",33:"||",35:"&&",37:"|",39:"^",41:"&",43:"==",44:"!=",46:"<",47:"<=",48:">",49:">=",51:"<<",52:">>",54:"+",55:"-",57:"*",58:"/",60:"!",61:"~",63:".",64:"_",66:"CONSTANT_INT32",67:"CONSTANT_FLOAT32",68:"CONSTANT_TRUE",69:"CONSTANT_FALSE",70:",",71:"ID",72:"TYPE_INT32",73:"TYPE_FLOAT32",74:"TYPE_BOOL"},
 productions_: [0,[3,1],[4,2],[4,0],[5,1],[5,1],[5,1],[5,1],[6,7],[6,6],[7,7],[8,4],[8,4],[8,4],[21,8],[23,1],[24,7],[24,0],[15,3],[18,1],[28,1],[28,5],[29,1],[29,3],[32,1],[32,3],[34,1],[34,3],[36,1],[36,3],[38,1],[38,3],[40,1],[40,3],[40,3],[42,1],[42,3],[42,3],[42,3],[42,3],[45,1],[45,3],[45,3],[50,1],[50,3],[50,3],[53,1],[53,3],[53,3],[56,1],[56,2],[56,2],[56,2],[56,2],[59,1],[59,3],[59,4],[59,4],[62,1],[62,2],[62,3],[62,1],[62,1],[62,3],[65,1],[65,1],[65,1],[65,1],[10,1],[10,3],[12,1],[20,1],[20,1],[20,1]],
 performAction: function anonymous(yytext, yyleng, yylineno, yy, yystate /* action[1] */, $$ /* vstack */, _$ /* lstack */) {
 /* this == yyval */
@@ -425,21 +425,21 @@ case 63:
 break;
 case 64:
  
-                            this.$ = { name: 'VALUE', type: 'INT', val: parseInt(yytext) };
+                            this.$ = { name: 'CONSTANT', type: 'INT32', val: parseInt(yytext) };
                         
 break;
 case 65:
- this.$ = { name: 'VALUE', type: 'FLOAT', val: parseFloat(yytext) };
+ this.$ = { name: 'CONSTANT', type: 'FLOAT32', val: parseFloat(yytext) };
                         
 break;
 case 66:
  
-                            this.$ = { name: 'VALUE', type:'BOOL', val: true }; 
+                            this.$ = { name: 'CONSTANT', type:'BOOL', val: true }; 
                         
 break;
 case 67:
  
-                            this.$ = { name: 'VALUE', type:'BOOL', val: false }; 
+                            this.$ = { name: 'CONSTANT', type:'BOOL', val: false }; 
                         
 break;
 case 68:
@@ -629,10 +629,6 @@ parse: function parse(input) {
     }
     return true;
 }};
-
-    function printAST () {
-        console.log("asd")
-    }   
 /* generated by jison-lex 0.3.4 */
 var lexer = (function(){
 var lexer = ({
