@@ -15,8 +15,28 @@
 
 (function() {
 
+	const DataType = {};
+	const DataTypeFloat32 = Object.create(DataType);
+	const DataTypeInt32 = Object.create(DataType);
+	const DataTypeBool = Object.create(DataType);
+
+
+	const UpdateRate = {};
+	UpdateRate.level = undefined;
+	const UpdateRateConstant = Object.create(UpdateRate);
+	UpdateRateConstant.level = 0;
+	const UpdateRateFs = Object.create(UpdateRate);
+	UpdateRateFs.level = 1;
+	const UpdateRateControl = Object.create(UpdateRate);
+	UpdateRateControl.level = 2;
+	const UpdateRateAudio = Object.create(UpdateRate);
+	UpdateRateAudio.level = 3;
+
+
 	const Port = {};
 	Port.block = null;
+	Port.datatype = DataType;
+	Port.updaterate = UpdateRate;
 	Port.type = function () {
 		if (this.block.i_ports.includes(this)) return "in";
 		if (this.block.o_ports.includes(this)) return "out";
@@ -25,13 +45,25 @@
 		if (this.type() == "in")  return this.block.i_ports.indexOf(this);
 		if (this.type() == "out") return this.block.o_ports.indexOf(this);
 	};
+	Port.clone = function () {
+		const r = Object.create(this);
+		r.block = null; // Set later externally
+		r.datatype = this.datatype;
+		return r;
+	};
+	Port.validate = function () {
+		if (this.datatype == DataType)
+			throw new Error("Generic datatype");
+		if (this.updaterate == UpdateRate)
+			throw new Error("Generic updaterate");
+	};
 	Port.toString = function () {
 		return this.block.toString() + "[" + this.type() + ": " + this.index() + "]";
 	};
 
 
 	const Block = {};
-	Block.id = null;
+	//Block.id = null;
 	Block.operation = "DEFAULT";
 	Block.i_ports = null; // Array of Ports
 	Block.o_ports = null; // Array of Ports
@@ -42,14 +74,29 @@
 		this.o_ports.forEach(p => p.block = this);
 	};
 	Block.init = function () {
-		this.createPorts();
-	}
+		this.createPorts(0, 0);
+	};
+	Block.setOutputDatatype = function () {
+		// Override
+		this.output_ports.forEach(p => p.datatype = DataType);
+	};
+	Block.setOutputUpdaterate = function () {
+		var m = UpdateRateConstant;
+		this.i_ports.forEach(p => { if (p.updaterate.level > m.level) m = p.updaterate; });
+		this.o_ports.forEach(p => p.updaterate = m);
+	};
+	Block.validate = function () {
+		this.i_ports.forEach(p => p.validate());
+		this.o_ports.forEach(p => p.validate());
+	};
 	Block.toString = function () {
 		return "{ B_" + this.id + ", " + this.operation + " }";
 	};
 	Block.clone = function () { // TODO: Fix
 		let r = Object.create(this);
-		r.createPorts(r, this.i_ports.length, this.o_ports.length); // mmmm...
+		//r.id = this.id + "something"
+		r.operation = this.operation;
+		r.createPorts.apply(r, r.i_ports.length, r.o_ports.length);
 		return r; 
 	};
 	Block.flatten = function () {};
@@ -58,80 +105,200 @@
 
 	const VarBlock = Object.create(Block);
 	VarBlock.operation = "VAR";
-	VarBlock.nInputs = 1;
-	VarBlock.nOutputs = 1;
+	VarBlock.init = function () {
+		this.createPorts(1, 1);
+	};
+	VarBlock.setOutputDatatype = function () {
+		this.o_ports[0].datatype = d;
+	};
 
-	const VarBlock_F32 = Object.create(VarBlock); // Lot of thinkering... is this the right choice?
-	const VarBlock_I32 = Object.create(VarBlock);
-	const VarBlock_BOO = Object.create(VarBlock);
-
-	const MemoryBlock = Object.create(block);
+	
+	const MemoryBlock = Object.create(Block);
 	MemoryBlock.operation = "MEMORY";
-	MemoryBlock.type = null;
-	MemoryBlock.size = 0;
+	MemoryBlock.writers = 0; // E.g.
+	MemoryBlock.readers = 0; // E.g.
+	MemoryBlock.datatype = DataType;
+	MemoryBlock.init = function () {
+		const nInputs = 1 + this.writers * 2 + this.readers; // size, writer indexes, writer values, reader indexes.
+		const nOutputs = this.readers; // reader values
+		this.createPorts(nInputs, nOutputs);
+	}
+	MemoryBlock.setOutputDatatype = function () {
+		this.o_ports.forEach(p => p.datatype = this.datatype);
+	};
+	MemoryBlock.setOutputUpdaterate = function () {
+		var m = UpdateRateConstant;
+		for (let i = 1; i < 1 + this.writers * 2; i++)
+			if (this.i_ports[i].updaterate.level > m.level)
+				m = this.i_ports[i].updaterate;
+		this.o_ports.forEach(p => p.updaterate = m);
+	};
+	MemoryBlock.validate = function () {
+		Block.validate.call(this);
+		if (this.datatype == DataType)
+			throw new Error("Generic datatype");
+		for (let i = 1 + this.writers; i < 1 + this.writers * 2; i++)
+			if (this.i_ports[i].datatype != this.datatype)
+				throw new Error("Unexpected input datatype");
+		if (this.i_ports[0].updaterate.level > UpdateRateFs.level)
+			throw new Error("Memory size must be constant or depenging on fs");
+	};
+	MemoryBlock.clone = function () {
+		const r = Object.create(this);
+		r.writers = this.writers;
+		r.readers = this.readers;
+		r.datatype = this.datatype;
+		r.init();
+		return r;
+	};
+
 
 
 	const ConstantBlock = Object.create(Block);
-	ConstantBlock.operation = "CONSTANT"; 
-
- 
-	ConstantBlock.value = null;
+	ConstantBlock.operation = "CONSTANT";
+	ConstantBlock.datatype = DataType;
+	ConstantBlock.value = undefined;
+	ConstantBlock.init = function () {
+		this.createPorts(0, 1);
+	};
+	ConstantBlock.setOutputDatatype = function () {
+		this.o_ports[0].datatype = this.datatype;
+	};
+	ConstantBlock.setOutputUpdaterate = function () {
+		this.o_ports[0].updaterate = UpdateRateConstant;
+	};
+	ConstantBlock.validate = function () {
+		Block.validate.call(this);
+		if (this.datatype == DataType)
+			throw new Error("Generic datatype");
+		if (this.value == undefined)
+			throw new Error("Undefined constant");
+	};
 	ConstantBlock.toString = function () {
 		return Block.toString().call(this).replace('}', ', ' + this.value + " }");
 	};
 
-	const Float32Block = Object.create(ConstantBlock);
-
-	const Int32Block = Object.create(ConstantBlock);
-
-	const BooleanBlock = Object.create(ConstantBlock);
 
 	const LogicalBlock = Object.create(Block);
+	LogicalBlock.init = function () {
+		this.createPorts(2, 1);
+	};
+	LogicalBlock.setOutputDatatype = function () {
+		this.o_ports[0].datatype = DataTypeBool;
+	};
+	LogicalBlock.validate = function () {
+		Block.validate.call(this);
+		this.i_ports.forEach(p => {
+			if (p.datatype != DataTypeBool)
+				throw new Error("Bad input types");
+		});
+	};
 
 	const LogicalAndBlock = Object.create(LogicalBlock);
 	LogicalAndBlock.operation = "AND";
+
 	const LogicalOrBlock = Object.create(LogicalBlock);
 	LogicalOrBlock.operation = "OR";
 	
-	/*
 	const NotBlock = Object.create(LogicalBlock);
-	NotBlock.operation = "NOT";
-	*/
+	LogicalNotBlock.operation = "NOT";
+	LogicalNotBlock.init = function () {
+		this.createPorts(1, 1);
+	};
 
 	const BitwiseBlock = Object.create(Block);
+	BitwiseBlock.init = function () {
+		this.createPorts(2, 1);
+	};
+	BitwiseBlock.setOutputDatatype = function () {
+		this.o_ports[0].datatype = DataTypeInt32;
+	};
+	BitwiseBlock.validate = function () {
+		Block.validate.call(this);
+		this.i_ports.forEach(p => {
+			if (p.datatype != DataTypeInt32)
+				throw new Error("Bad input types");
+		})
+	};
 
 	const BitwiseOrBlock = Object.create(BitwiseBlock);
-
 	const BitwiseXorBlock = Object.create(BitwiseBlock);
-
 	const BitwiseAndBlock = Object.create(BitwiseBlock);
-
 	const BitwiseNotBlock = Object.create(BitwiseBlock);
-
+	BitwiseNotBlock.init = function () {
+		this.createPorts(1, 1);
+	};
 
 
 	const RelationalBlock = Object.create(Block);
+	RelationalBlock.init = function () {
+		this.createPorts(2, 1);
+	};
+	RelationalBlock.setOutputDatatype = function () {
+		this.o_ports[0].datatype = DataTypeBool;
+	};
+	RelationalBlock.validate = function () {
+		Block.validate.call(this);
+		if (this.i_ports[0].datatype != this.i_ports[1].datatype)
+			throw new Error("Different input types");
+	};
 
 	const EqualityBlock = Object.create(RelationalBlock);
 	EqualityBlock.operation = "EQUAL";
 	const InequalityBlock = Object.create(RelationalBlock);
 	InequalityBlock.operation = "NOTEQUAL";
-	const LessBlock = Object.create(RelationalBlock);
+	
+
+	const RelationalLGBlock = Object.create(RelationalBlock);
+	RelationalLGBlock.validate = function () {
+		RelationalBlock.validate.call(this);
+		const d = this.i_ports[0].datatype;
+		if (d != DataTypeInt32 && d != DataTypeFloat32)
+			throw new Error("Only int32 and float32 can be compared");
+	};
+	const LessBlock = Object.create(RelationalLGBlock);
 	LessBlock.operation = "LESS";
-	const LessEqualBlock = Object.create(RelationalBlock);
-	LessEqualBlock.operation = "LESSEQUAL";
-	const GreaterBlock = Object.create(RelationalBlock);
+	const GreaterBlock = Object.create(RelationalLGBlock);
 	GreaterBlock.operation = "GREATER";
-	const GreaterEqualBlock = Object.create(RelationalBlock);
+	const LessEqualBlock = Object.create(RelationalLGBlock);
+	LessEqualBlock.operation = "LESSEQUAL";
+	const GreaterEqualBlock = Object.create(RelationalLGBlock);
 	GreaterEqualBlock.operation = "GREATEREQUAL";
 
 
-	const ShiftLeftBlock = Object.create(Block);
-
-	const ShiftRightBlock = Object.create(Block);
+	const ShiftBlock = Object.create(Block);
+	ShiftBlock.init = function () {
+		this.createPorts(2, 1);
+	};
+	ShiftBlock.setOutputDatatype = function () {
+		this.o_ports[0].datatype = DataTypeInt32;
+	};
+	ShiftBlock.validate = function () {
+		Block.validate.call(this);
+		if (this.i_ports[0].datatype != DataTypeInt32 || this.i_ports[1].datatype != DataTypeInt32)
+			throw new Error("Shift accepts int32 only");
+	};
+	const ShiftLeftBlock = Object.create(ShiftBlock);
+	const ShiftRightBlock = Object.create(ShiftBlock);
 
 
 	const ArithmeticalBlock = Object.create(Block);
+	ArithmeticalBlock.init = function () {
+		this.createPorts(2, 1);
+	};
+	ArithmeticalBlock.setOutputDatatype = function () {
+		this.o_ports[0].datatype = this.i_ports[0].datatype;
+	};
+	ArithmeticalBlock.validate = function () {
+		Block.validate.call(this);
+		let b = this.i_ports[0].datatype;
+		this.i_ports.forEach(p => {
+			if (p.datatype != DataTypeInt32 || p.datatype != DataTypeFloat32)
+				throw new Error("Invalid input types");
+			if (p.datatype != b)
+				throw new Error("Inconsistent input types");
+		});
+	};
 
 	const SumBlock = Object.create(ArithmeticalBlock);
 	SumBlock.operation = "SUM";
