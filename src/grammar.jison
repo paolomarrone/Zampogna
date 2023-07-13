@@ -328,6 +328,13 @@ multiplicative_expr : unary_expr
                                 args: [$1, $3]
                             }
                         }}
+                    | multiplicative_expr '%' unary_expr
+                        {{
+                            $$ = {
+                                name: 'MODULO_EXPR',
+                                args: [$1, $3]
+                            }
+                        }}
                     ;
 
 unary_expr          : postfix_expr

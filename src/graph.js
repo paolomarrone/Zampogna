@@ -65,8 +65,8 @@
 	const Block = {};
 	//Block.id = null;
 	Block.operation = "DEFAULT";
-	Block.i_ports = null; // Array of Ports
-	Block.o_ports = null; // Array of Ports
+	Block.i_ports = undefined; // Array of Ports
+	Block.o_ports = undefined; // Array of Ports
 	Block.createPorts = function (i_n, o_n) {
 		this.i_ports = new Array(i_n).fill().map(() => Object.create(Port));
 		this.o_ports = new Array(o_n).fill().map(() => Object.create(Port));
@@ -77,7 +77,6 @@
 		this.createPorts(0, 0);
 	};
 	Block.setOutputDatatype = function () {
-		// Override
 		this.output_ports.forEach(p => p.datatype = DataType);
 	};
 	Block.setOutputUpdaterate = function () {
@@ -86,6 +85,8 @@
 		this.o_ports.forEach(p => p.updaterate = m);
 	};
 	Block.validate = function () {
+		if (!this.i_ports || !this.o_ports)
+			throw new Error("Invalid ports");
 		this.i_ports.forEach(p => p.validate());
 		this.o_ports.forEach(p => p.validate());
 	};
@@ -96,7 +97,7 @@
 		let r = Object.create(this);
 		//r.id = this.id + "something"
 		r.operation = this.operation;
-		r.createPorts.apply(r, r.i_ports.length, r.o_ports.length);
+		r.createPorts.apply(r, this.i_ports.length, this.o_ports.length);
 		return r; 
 	};
 	Block.flatten = function () {};
@@ -316,6 +317,64 @@
 	UminusBlock.operation = "UMINUS";
 
 	
+	const ModuloBlock = Object.create(Block);
+	ModuloBlock.init = function () {
+		this.createPorts(2, 1);
+	};
+	ModuloBlock.setOutputDatatype = function () {
+		this.o_ports[0].datatype = DataTypeInt32;
+	};
+	ModuloBlock.validate = function () {
+		Block.validate.call(this);
+		if (this.i_ports[0].datatype != DataTypeInt32 || this.i_ports[1].datatype != DataTypeInt32)
+			throw new Error ("Invalid input types");
+	};
+
+	const CastBlock = Object.create(Block);
+	CastBlock.init = function () {
+		this.createPorts(1, 1);
+	};
+
+	const CastF32Block = Object.create(CastBlock);
+	CastF32Block.setOutputDatatype = function () {
+		this.o_ports[0].datatype = DataTypeFloat32;
+	};
+	
+	const CastI32Block = Object.create(CastBlock);
+	CastI32Block.setOutputDatatype = function () {
+		this.o_ports[0].datatype = DataTypeInt32;
+	};
+
+	const CastBoolBlock = Object.create(CastBlock);
+	CastBoolBlock.setOutputDatatype = function () {
+		this.o_ports[0].datatype = DataTypeBool;
+	};
+
+
+	const IfthenelseBlock = Object.create(Block);
+	IfthenelseBlock.nOutputs = undefined;
+	IfthenelseBlock.init = function () {
+		const nInputs = 1 + this.nOutputs * 2; // Condition, outputs of 1st branch, output of 2nd branch
+		this.createPorts(nInputs, this.nOutputs);
+	};
+	IfthenelseBlock.setOutputDatatype = function () {
+		for (let i = 0; i < this.nOutputs; i++)
+			this.o_ports[i].datatype = this.i_ports[i + 1].datatype;
+	};
+	IfthenelseBlock.validate = function () {
+		Block.validate.call(this);
+		if (this.nOutputs == undefined || this.nOutputs < 1)
+			throw new Error("Unexpected outputs number");
+		if (this.i_ports[0].datatype != DataTypeBool)
+			throw new Error("Ifthenelse condition must return a boolean");
+		for (let i = 0; i < this.nOutputs; i++)
+			if (this.i_ports[1 + i].datatype != this.i_ports[1 + i + this.nOutputs].datatype)
+				throw new Error("Inconsistent inpit datatypes");
+	};
+	IfthenelseBlock.flatten = function () {
+		// TODO
+	};
+
 
 	const Connection = {};
 	Connection.in = null;  // Port
