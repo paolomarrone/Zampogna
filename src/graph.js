@@ -369,10 +369,20 @@
 			throw new Error("Ifthenelse condition must return a boolean");
 		for (let i = 0; i < this.nOutputs; i++)
 			if (this.i_ports[1 + i].datatype != this.i_ports[1 + i + this.nOutputs].datatype)
-				throw new Error("Inconsistent inpit datatypes");
+				throw new Error("Inconsistent input datatypes");
 	};
 	IfthenelseBlock.flatten = function () {
 		// TODO
+		// Idea.
+		// 1. Flattening: Create nOutputs select blocks depending on the same condition. Then flatten branches. ...
+		// 		Maybe we should use decoders and conditional MemoryBlock update too... ?
+		// 2. Normalization: (In case of loops where the branch choice is lost). 
+		// 		2.1. Create graph1 with condition = T (remove all the selects)
+		// 		2.2. Create graph2 with condition = F
+		// 		All the blocks that are in the loop and in both graphes are de facto duplicated
+		// 		All the blocks that are NOT in the loop and in both graphes don't need to be duplicated
+		// 		This "enlarges" the branche blocks so that they can be treated as a black boxes
+		// 		Problem: if the duplicated blocks are used elsewhere, we need another select. TODO: define this better
 	};
 
 
@@ -386,6 +396,7 @@
 	const CompositeBlock = Object.create(Block); // A.k.a. Graph
 	CompositeBlock.blocks = null;        // Array of Blocks
 	CompositeBlock.connections = null;   // Array of Connections
+	// Probably its better to use additional ports. Should be way more consistent
 	CompositeBlock.i_ports = null;       // Array of internal block ports. External input
 	CompositeBlock.o_ports = null;       // Array of internal block ports. External output
 	CompositeBlock.toString() = function {
@@ -464,7 +475,23 @@
 
 
 	exports = {
-
+		"BlockTypes": {
+			Block,
+			VarBlock,
+			MemoryBlock,
+			ConstantBlock,
+			LogicalBlock, LogicalAndBlock, LogicalOrBlock, LogicalNotBlock,
+			BitwiseBlock, BitwiseAndBlock, BitwiseOrBlock, BitwiseXorBlock, BitwiseNotBlock,
+			RelationalBlock, RelationalLGBlock, EqualityBlock, InequalityBlock, GreaterBlock, GreaterEqualBlock, LessBlock, LessEqualBlock,
+			ShiftBlock,
+			ArithmeticalBlock, SumBlock, SubtractionBlock, MulBlock, DivisionBlock, UminusBlock,
+			ModuloBlock,
+			CastBlock, CastF32Block, CastI32Block, CastBoolBlock,
+			IfthenelseBlock,
+			CompositeBlock
+		},
+		// "DataTypes": {}
+		// Probably not the best place for this
 	};
 
 }());
