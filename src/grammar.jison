@@ -52,7 +52,7 @@ block_definition    : exprs '=' id '(' exprs ')' block
                                 id: $3,
                                 inputs: $5,
                                 outputs: $1,
-                                statemetns: $7.statements
+                                statements: $7.statements
                             }
                         }}
                     | exprs '=' id '(' ')' block
@@ -62,7 +62,7 @@ block_definition    : exprs '=' id '(' exprs ')' block
                                 id: $3,
                                 inputs: [],
                                 outputs: $1,
-                                statemetns: $7.statements
+                                statements: $6.statements
                             }
                         }}
                     ;

@@ -1,6 +1,8 @@
 
 A = 1.0
 bool B = true
+_ = 5
+a = _5
 
 y1, float y2, int y3, bool y4 = test1 (float x1, int x2, bool x3) {
 	y1 = x1 * 2.0

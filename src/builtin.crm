@@ -1,0 +1,47 @@
+# Built-in, global scoped blocks
+
+
+float y = delay (float x) {
+    mem[1] float s
+    y = s[0]
+    s[0] = x
+}
+
+int y = delay (int x) {
+    mem[1] int s
+    y = s[0]
+    s[0] = x
+}
+
+bool y = delay (bool x) {
+    mem[1] bool s
+    y = s[0]
+    s[0] = x
+}
+
+
+int i = circular_iterator (int n) {
+    i = delay(i) >= n ? 0 : delay(i) + 1
+    @i = -1
+}
+
+float y = delay(float x, int n) {
+    mem[n] float line
+    int i = circular_iterator(n)
+    y = line[i]
+    line[i] = x
+}
+
+int y = delay(int x, int n) {
+    mem[n] int line
+    int i = circular_iterator(n)
+    y = line[i]
+    line[i] = x
+}
+
+bool y = delay(bool x, int n) {
+    mem[n] bool line
+    int i = circular_iterator(n)
+    y = line[i]
+    line[i] = x
+}

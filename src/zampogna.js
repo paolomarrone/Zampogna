@@ -15,6 +15,8 @@
 
 (function() {
 
+	const fs = require("fs");
+
 	const util   = require("./util");
 
 	const parser   = require("./grammar");
@@ -38,6 +40,12 @@
 		}
 
 		try {
+
+			// Include builtin code
+			const builtin = String(fs.readFileSync("builtin.crm"));
+
+			code = builtin + code;
+
 			// Parsing
 			const AST = parser.parse(code);
 			if (options.debug_mode)

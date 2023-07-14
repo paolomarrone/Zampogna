@@ -43,8 +43,12 @@
 	}
 
 
+	// TODO: make it better
+	function warn (msg) {
+		console.log("***Warning***", msg);
+	}
 
 
-	exports["printAST"] = printAST;
+	exports.printAST = printAST;
 
 }());

@@ -115,7 +115,7 @@ case 8:
                                 id: $$[$0-4],
                                 inputs: $$[$0-2],
                                 outputs: $$[$0-6],
-                                statemetns: $$[$0].statements
+                                statements: $$[$0].statements
                             }
                         
 break;
@@ -126,7 +126,7 @@ case 9:
                                 id: $$[$0-3],
                                 inputs: [],
                                 outputs: $$[$0-5],
-                                statemetns: $$[$01].statements
+                                statements: $$[$0].statements
                             }
                         
 break;
