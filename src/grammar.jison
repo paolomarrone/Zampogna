@@ -16,10 +16,10 @@
 %%
 
 program             : statements
-                        {{ 
+                        {{
                             $$ = {
                                 name: 'PROGRAM',
-                                stmts: $1
+                                statements: $1
                             }; 
                             return $$; 
                         }}
@@ -70,7 +70,7 @@ block_definition    : exprs '=' id '(' exprs ')' block
 memory_declaration  : MEM '[' expr ']' type id END
                         {{
                             $$ = {
-                                name: 'MEMORY_DEFINITION',
+                                name: 'MEMORY_DECLARATION',
                                 type: $5,
                                 amount: $3,
                                 id: $6
@@ -384,24 +384,35 @@ postfix_expr        : primary_expr
                         }}
                     | id '[' expr ']'
                         {{
-                            $1.index = $3
-                            $$ = $1
+                            $$ = {
+                                name: 'MEMORY_ELEMENT',
+                                memory_id: $1,
+                                index: $3
+                            }
                         }}
                     ;
 
 primary_expr        : id
-                        {{ $$ = $1 }}
+                        {{ 
+                            $$ = {
+                                name: 'VARIABLE',
+                                id: $1
+                            } 
+                        }}
                     | type id
                         {{
-                            $2.declaredType = $1
-                            $$ = $2
+                            $$ = {
+                                name: 'VARIABLE',
+                                id: $2,
+                                declaredType: $1
+                            }
                         }}
                     | id '.' id
                         {{
                             $$ = {
-                                name: 'PROPERTY',
-                                var: $1,
-                                property: $3
+                                name: 'VARIABLE_PROPERTY',
+                                var_id: $1,
+                                property_id: $3
                             }
                         }}
                     | '_'
@@ -439,7 +450,7 @@ exprs               : expr
 
 id                  : ID
                         {{ 
-                            $$ = { name: 'ID', value: yytext}; 
+                            $$ = yytext; 
                         }}
                     ;
 

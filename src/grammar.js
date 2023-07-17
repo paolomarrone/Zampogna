@@ -84,10 +84,10 @@ performAction: function anonymous(yytext, yyleng, yylineno, yy, yystate /* actio
 var $0 = $$.length - 1;
 switch (yystate) {
 case 1:
- 
+
                             this.$ = {
                                 name: 'PROGRAM',
-                                stmts: $$[$0]
+                                statements: $$[$0]
                             }; 
                             return this.$; 
                         
@@ -102,7 +102,7 @@ case 3:
                             this.$ = []
                         
 break;
-case 4: case 5: case 6: case 19: case 20: case 22: case 24: case 26: case 28: case 30: case 40: case 50: case 52: case 55: case 59: case 63:
+case 4: case 5: case 6: case 19: case 20: case 22: case 24: case 26: case 28: case 30: case 40: case 50: case 52: case 55: case 63:
  this.$ = $$[$0] 
 break;
 case 7: case 17:
@@ -133,7 +133,7 @@ break;
 case 10:
 
                             this.$ = {
-                                name: 'MEMORY_DEFINITION',
+                                name: 'MEMORY_DECLARATION',
                                 type: $$[$0-2],
                                 amount: $$[$0-4],
                                 id: $$[$0-1]
@@ -406,22 +406,36 @@ case 57:
 break;
 case 58:
 
-                            $$[$0-3].index = $$[$0-1]
-                            this.$ = $$[$0-3]
+                            this.$ = {
+                                name: 'MEMORY_ELEMENT',
+                                memory_id: $$[$0-3],
+                                index: $$[$0-1]
+                            }
+                        
+break;
+case 59:
+ 
+                            this.$ = {
+                                name: 'VARIABLE',
+                                id: $$[$0]
+                            } 
                         
 break;
 case 60:
 
-                            $$[$0].declaredType = $$[$0-1]
-                            this.$ = $$[$0]
+                            this.$ = {
+                                name: 'VARIABLE',
+                                id: $$[$0],
+                                declaredType: $$[$0-1]
+                            }
                         
 break;
 case 61:
 
                             this.$ = {
-                                name: 'PROPERTY',
-                                var: $$[$0-2],
-                                property: $$[$0]
+                                name: 'VARIABLE_PROPERTY',
+                                var_id: $$[$0-2],
+                                property_id: $$[$0]
                             }
                         
 break;
@@ -460,7 +474,7 @@ case 70:
 break;
 case 71:
  
-                            this.$ = { name: 'ID', value: yytext}; 
+                            this.$ = yytext; 
                         
 break;
 case 72:
