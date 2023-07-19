@@ -109,7 +109,7 @@ assignment 			: exprs '=' expr END
 
 if_then_elses       : IF '(' expr ')' branch elseifs ELSE branch
                         {{
-                            $3.condition = $3,
+                            $5.condition = $3,
                             $$ = {
                                 name: 'IF_THEN_ELSES',
                                 branches: [$5, $6, $8].flat()
@@ -130,7 +130,7 @@ branch              : block
 elseifs             : elseifs ELSE IF '(' expr ')' branch
                         {{
                             $7.condition = $5
-                            $$ = [$7].concat($8)
+                            $$ = $1.concat($7)
                         }}
                     |
                         {{ $$ = [] }}
@@ -155,7 +155,7 @@ conditional_expr    : logical_or_expr
                         {{
                             $$ = {
                                 name: 'INLINE_IF_THEN_ELSE',
-                                args: [$2, $4, $6]
+                                args: [$1, $3, $5]
                             }
                         }}
                     ;
@@ -376,6 +376,14 @@ postfix_expr        : primary_expr
                             $$ = {
                                 name: 'CALL_EXPR',
                                 id: $1,
+                                args: $3
+                            }
+                        }}
+                    | type '(' exprs ')'
+                        {{
+                            $$ = {
+                                name: 'CAST_EXPR',
+                                type: $1,
                                 args: $3
                             }
                         }}

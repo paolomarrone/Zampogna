@@ -25,13 +25,15 @@ id                          [_a-zA-Z][_a-zA-Z0-9]*
 "..."[^\n^\n]*[\n\r]+		/* pause comment */
 
 
+">>"						return ">>"
+"<<"						return "<<"
+">="            			return ">="
+"<="            			return "<="
 "+"                         return '+'
 "-"                         return '-'
 "*"                         return '*'
 "/"							return '/'
 "%" 						return '%'
-">="            			return ">="
-"<="            			return "<="
 "<"            				return "<"
 ">"             			return ">"
 "=="            			return "=="
@@ -42,8 +44,6 @@ id                          [_a-zA-Z][_a-zA-Z0-9]*
 "&" 						return "&"
 "|"							return "|"
 "^"							return "^"
-">>"						return ">>"
-"<<"						return "<<"
 "~"							return "~"
 
 "="                         return '='
@@ -77,5 +77,6 @@ id                          [_a-zA-Z][_a-zA-Z0-9]*
 {id}                        return 'ID'
 
 [\n\r;]+					return 'END'
+<<EOF>>						return 'END'
 
 [ \t\v\f]+					/* ignore bad chars */

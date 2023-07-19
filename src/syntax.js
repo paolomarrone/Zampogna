@@ -13,10 +13,13 @@
 	Author: Paolo Marrone
 */
 
+/*
+	TODO: Error messages / system
+*/
+
 (function() {
 
 	const util = require("util");
-
 
 	function ScopeTable (father) {
 		this.elements = [];
@@ -31,7 +34,6 @@
 			return r;
 		};
 		this.add = function (node) {
-			// Implementation check
 			if (!['BLOCK_DEFINITION', 'VARIABLE', 'MEMORY_DECLARATION'].includes(node.name))
 				err("Only BLOCK_DEFINITIONs, VARIABLEs, and MEMORY_DECLARATIONs allowed in ScopeTable");
 			this.elements.push(node);
@@ -45,71 +47,69 @@
 	globalScope.add({ name: "VARIABLE", id: "fs" });
 	
 
-	function validateAST (root) {
-		// TODO: Check initial block: only float input allowed
-
-		analyze_block_statements(root.statements, new ScopeTable(globalScope));
+	function validateAST (root, initial_block) {
+		let scope = new ScopeTable(globalScope);
+		analyze_block_statements(root.statements, scope);
 	}
 
-
 	function analyze_block_statements(statements, scope) {
-
 		statements.filter(s => s.name == 'BLOCK_DEFINITION').forEach(s => analyze_block_signature(s, scope));
 		statements.filter(s => s.name == 'MEMORY_DECLARATION').forEach(s => analyze_memory_declaration(s, scope));
 		statements.filter(s => s.name == "ASSIGNMENT").forEach(s => analyze_assignment_left(s, scope));
-
 		statements.filter(s => s.name == 'ASSIGNMENT').forEach(s => analyze_assignment_right(s, scope));
 		statements.filter(s => s.name == 'BLOCK_DEFINITION').forEach(s => analyze_block_body(s, scope));
 	}
 
-	function analyze_block_signature (node, scope) {
-		if (node.inputs.some(i => i.name != 'VARIABLE'))
+	function analyze_block_signature (bdef, scope) {
+		if (bdef.inputs.some(i => i.name != 'VARIABLE'))
 			err("Block definition inputs must be IDs");
-		if (node.inputs.some(i => reserved_variables.includes(i.id)))
+		if (bdef.inputs.some(i => reserved_variables.includes(i.id)))
 			err("Cannot use reserved variables here");
-		if (node.outputs.some(o => o.name != 'VARIABLE'))
+		if (bdef.outputs.some(o => o.name != 'VARIABLE'))
 			err("Block definition outputs must be IDs");
-		if (node.outputs.some(o => reserved_variables.includes(o.id)))
+		if (bdef.outputs.some(o => reserved_variables.includes(o.id)))
 			err("Cannot use reserved variables here");
 
-		scope.findLocally(node.id).forEach(e => {
+		scope.findLocally(bdef.id).forEach(e => {
 			if (e.name != 'BLOCK_DEFINITION')
 				err("Identifier used locally for both Block definition and variable");
-			if (compare_block_signatures(node, e) > 2) 
+			if (compare_block_signatures(bdef, e) > 2) 
 				err("Block definitions conflict");
 		});
 
-		scope.add(node);
+		scope.add(bdef);
 	}
 
-	function compare_block_signatures(A, B) {
-		if (A.id != B.id)
+	function compare_block_signatures(bdef_A, bdef_B) {
+		if (bdef_A.id != bdef_B.id)
 			return 0;
-		if (A.inputs.length != B.inputs.length)
+		if (bdef_A.inputs.length != bdef_B.inputs.length)
 			return 1;
-		for (let i = 0; i < A.inputs.length; i++)
-			if (A.inputs[i].declaredType != B.inputs[i].declaredType)
+		for (let i = 0; i < bdef_A.inputs.length; i++) {
+			const dA = bdef_A.inputs[i]?.declaredType?.value || 'FLOAT32';
+			const dB = bdef_B.inputs[i]?.declaredType?.value || 'FLOAT32';
+			if (dA != dB)
 				return 2;
-		if (A.outputs.length != B.outputs.length)
+		}
+		if (bdef_A.outputs.length != bdef_B.outputs.length)
 			return 3;
-		for (let o = 0; o < A.outputs.length; o++)
-			if (A.outputs[o].declaredType != B.outputs[o].declaredType)
+		for (let o = 0; o < bdef_A.outputs.length; o++)
+			if (bdef_A.outputs[o].declaredType != bdef_B.outputs[o].declaredType)
 				return 4;
 		return 5;
 	}
 
-	function analyze_memory_declaration (node, scope) {
-		if (scope.findLocally(node.id).length > 0)
+	function analyze_memory_declaration (mdef, scope) {
+		if (scope.findLocally(mdef.id).length > 0)
 			err("ID used more than once");
-		node.writers = [];
-		scope.add(node);
+		mdef.writers = [];
+		scope.add(mdef);
 	}
 
-	function analyze_assignment_left (node, scope) {
+	function analyze_assignment_left (assignment, scope) {
 
-		node.outputs.forEach(o => {
-
-			switch (node.type) {
+		assignment.outputs.forEach(o => {
+			switch (assignment.type) {
 			case 'EXPR':
 				if (!['VARIABLE', 'DISCARD', 'VARIABLE_PROPERTY', 'MEMORY_ELEMENT'].includes(o.name))
 					err("Only 'VARIABLE', 'DISCARD', 'VARIABLE_PROPERTY', 'MEMORY_ELEMENT' allowed when assigning an EXPR");
@@ -166,33 +166,33 @@
 		});
 	}
 
-	function analyze_assignment_right (node, scope) {
-		if (node.type == 'EXPR') {
-			analyze_expr(node.expr, scope, node.outputs.length);
+	function analyze_assignment_right (assignment, scope) {
+		if (assignment.type == 'EXPR') {
+			analyze_expr(assignment.expr, scope, assignment.outputs.length);
 		}
-		if (node.type == 'ANONYMOUS_BLOCK') {
+		if (assignment.type == 'ANONYMOUS_BLOCK') {
 			const newscope = new ScopeTable(scope);
-			node.outputs.forEach(o => {
+			assignment.outputs.forEach(o => {
 				o.assigned = false;
 				newscope.add(o);
 			});
-			analyze_block_statements(node.expr.statements, newscope);
-			node.outputs.forEach(o => {
+			analyze_block_statements(assignment.expr.statements, newscope);
+			assignment.outputs.forEach(o => {
 				if (o.assigned == false)
 					err("Output not assigned");
 			});
 		}
-		if (node.type == 'IF_THEN_ELSES') {
-			node.expr.branches.forEach(b => {
+		if (assignment.type == 'IF_THEN_ELSES') {
+			assignment.expr.branches.forEach(b => {
 				if (b.condition)
 					analyze_expr(b.condition, scope, 1);
 				const newscope = new ScopeTable(scope);
-				node.outputs.forEach(o => {
+				assignment.outputs.forEach(o => {
 					o.assigned = false;
 					newscope.add(o);
 				});
-				analyze_block_statements(b.block.statements);
-				node.outputs.forEach(o => {
+				analyze_block_statements(b.block.statements, newscope);
+				assignment.outputs.forEach(o => {
 					if (o.assigned == false)
 						err("Output not assigned");
 				});
@@ -200,34 +200,35 @@
 		}
 	}
 
-	function analyze_block_body(node, scope) {
+	function analyze_block_body(bdef, scope) {
 		
 		const newscope = new ScopeTable(scope);
-		node.inputs.forEach(i => {
+		bdef.inputs.forEach(i => {
 			i.assigned = true;
 			newscope.add(i);
 		});
-		node.outputs.forEach(o => {
-			i.assigned = false;
+		bdef.outputs.forEach(o => {
+			o.assigned = false;
 			newscope.add(o);
 		});
-		analyze_block_statements(node.statements, newscope);
-		node.outputs.forEach(o => {
+		analyze_block_statements(bdef.statements, newscope);
+		bdef.outputs.forEach(o => {
 			if (o.assigned == false)
 				err("Output not assigned");
 		});
-		node.inputs.forEach(i => {
+		bdef.inputs.forEach(i => {
 			if (!i.used)
 				warn("Input not used");
 		});
 	}
 
-	function analyze_expr(node, scope, outputsN) {
-		switch (node.name) {
-		case "VARIABLE":
-			if (node.declaredType)
+	function analyze_expr(expr, scope, outputsN) {
+		switch (expr.name) {
+		case "VARIABLE": 
+		{
+			if (expr.declaredType)
 				err("Unexpected type declaration in expression");
-			let vs = scope.findGlobally(node.id);
+			let vs = scope.findGlobally(expr.id);
 			let found = false;
 			for (let v of vs) {
 				if (v.name != 'VARIABLE')
@@ -239,13 +240,17 @@
 			if (!found)
 				err("ID not found");
 			break;
+		}
 		case "VARIABLE_PROPERTY":
-			analyze_expr({ name: "VARIABLE", id: node.var_id }, scope, 1);
-			if (!allowed_properties.includes(node.property_id))
+		{
+			analyze_expr({ name: "VARIABLE", id: expr.var_id }, scope, 1);
+			if (!allowed_properties.includes(expr.property_id))
 				err("Property not allowed");
 			break;
+		}
 		case "MEMORY_ELEMENT":
-			let mdefs = scope.findGlobally(node.memory_id);
+		{
+			let mdefs = scope.findGlobally(expr.memory_id);
 			let found = false;
 			for (let m of mdefs) {
 				if (m.name != 'MEMORY_DECLARATION')
@@ -256,11 +261,15 @@
 			if (!found)
 				err("ID not found");
 			break;
+		}
 		case "DISCARD":
+		{
 			err("DISCARD not allowed in expressions");
 			break;
+		}
 		case "CALL_EXPR":
-			let bdefs = scope.findGlobally(node.id); //.filter(d => d.name == 'BLOCK_DEFINITION');
+		{
+			let bdefs = scope.findGlobally(expr.id);
 			if (bdefs.length < 1) {
 				warn("using external function");
 				break;
@@ -269,7 +278,7 @@
 			for (let b of bdefs) {
 				if (b.name != "BLOCK_DEFINITION")
 					err("Calling something that is not callable");
-				if (b.inputs.length != node.args.length)
+				if (b.inputs.length != expr.args.length)
 					continue;
 				if (b.outputs != outputsN)
 					err("Number of outputs accepted != number of block outputs");
@@ -280,8 +289,19 @@
 				err("No matching block found");
 			break;
 		}
+		}
 
-		if (node.args)
-			node.args.forEach(arg => analyze_expr(arg, scope, 1));
+		if (expr.args)
+			expr.args.forEach(arg => analyze_expr(arg, scope, 1));
 	}
+
+	function err (msg) {
+		throw new Error(msg);
+	}
+
+	function warn (msg) {
+		console.warn("*** Warning *** " + msg);
+	}
+
+	exports["validateAST"] = validateAST;
 }());

@@ -455,6 +455,8 @@
 
 	function ASTToGraphes (AST, options) {
 
+		// TODO: check initial block, only float allowed for inputs/outputs
+
 		const graphes = {
 			main: {},
 			init: {}
