@@ -25,10 +25,10 @@
 			return this.elements.filter(e => e.id == id);
 		};
 		this.findGlobally = function (id) {
-			let e = this.findLocally(id);
-			if (e.length > 0) return e;
-			if (this.father) return this.father.findGlobally(id);
-			return [];
+			let r = this.findLocally(id);
+			if (this.father)
+				r = r.concat(this.father.findGlobally(id)); // Order matters
+			return r;
 		};
 		this.add = function (node) {
 			// Implementation check
@@ -49,7 +49,6 @@
 		// TODO: Check initial block: only float input allowed
 
 		analyze_block_statements(root.statements, new ScopeTable(globalScope));
-		
 	}
 
 
@@ -60,7 +59,7 @@
 		statements.filter(s => s.name == "ASSIGNMENT").forEach(s => analyze_assignment_left(s, scope));
 
 		statements.filter(s => s.name == 'ASSIGNMENT').forEach(s => analyze_assignment_right(s, scope));
-		statements.filter(s => s.name == 'BLOCK_DEFINITION').forEach(s => analyze_block_body(s, new ScopeTable(scope)));
+		statements.filter(s => s.name == 'BLOCK_DEFINITION').forEach(s => analyze_block_body(s, scope));
 	}
 
 	function analyze_block_signature (node, scope) {
@@ -116,9 +115,9 @@
 					err("Only 'VARIABLE', 'DISCARD', 'VARIABLE_PROPERTY', 'MEMORY_ELEMENT' allowed when assigning an EXPR");
 				break;
 			case 'ANONYMOUS_BLOCK':
-			case 'IF_THEN_ELSE':
+			case 'IF_THEN_ELSES':
 				if (!['VARIABLE'].includes(o.name))
-					err("Only 'VARIABLE' allowed when assigning an ANONYMOUS_BLOCK or IF_THEN_ELSE");
+					err("Only 'VARIABLE' allowed when assigning an ANONYMOUS_BLOCK or IF_THEN_ELSES");
 				break;
 			default:
 				err("Unexpected Assignment type");
@@ -128,15 +127,20 @@
 				err("Cannot use reserved_variables in assignments");
 			
 			if (o.name == 'VARIABLE') {
-				scope.findLocally(o.id).forEach(e => {
+				let elements = scope.findLocally(o.id); 
+				elements.forEach(e => {
 					if (e.name == 'BLOCK_DEFINITION')
 						err("ID already used for a BLOCK_DEFINITION");
 					if (e.name == 'MEMORY_DECLARATION')
 						err("use [] operator to access memory");
+					if (e.assigned != undefined && o.declaredType != undefined)
+						err("Variable already declared");
 					if (e.assigned)
-						err("Variable assigned twice");
+						err("Variable assigned twice, or you are trying to assign an input");
 					e.assigned = true;
 				});
+				if (elements.length > 1)
+					err("Found ID multiple times");
 				scope.add(o);
 			}
 			if (o.name == 'VARIABLE_PROPERTY') {
@@ -169,23 +173,115 @@
 		if (node.type == 'ANONYMOUS_BLOCK') {
 			const newscope = new ScopeTable(scope);
 			node.outputs.forEach(o => {
-
-			})
+				o.assigned = false;
+				newscope.add(o);
+			});
+			analyze_block_statements(node.expr.statements, newscope);
+			node.outputs.forEach(o => {
+				if (o.assigned == false)
+					err("Output not assigned");
+			});
 		}
-		if (node.type == 'IF_THEN_ELSE') {
-
+		if (node.type == 'IF_THEN_ELSES') {
+			node.expr.branches.forEach(b => {
+				if (b.condition)
+					analyze_expr(b.condition, scope, 1);
+				const newscope = new ScopeTable(scope);
+				node.outputs.forEach(o => {
+					o.assigned = false;
+					newscope.add(o);
+				});
+				analyze_block_statements(b.block.statements);
+				node.outputs.forEach(o => {
+					if (o.assigned == false)
+						err("Output not assigned");
+				});
+			});
 		}
 	}
 
 	function analyze_block_body(node, scope) {
 		
-
-		
+		const newscope = new ScopeTable(scope);
+		node.inputs.forEach(i => {
+			i.assigned = true;
+			newscope.add(i);
+		});
+		node.outputs.forEach(o => {
+			i.assigned = false;
+			newscope.add(o);
+		});
+		analyze_block_statements(node.statements, newscope);
+		node.outputs.forEach(o => {
+			if (o.assigned == false)
+				err("Output not assigned");
+		});
+		node.inputs.forEach(i => {
+			if (!i.used)
+				warn("Input not used");
+		});
 	}
 
 	function analyze_expr(node, scope, outputsN) {
+		switch (node.name) {
+		case "VARIABLE":
+			if (node.declaredType)
+				err("Unexpected type declaration in expression");
+			let vs = scope.findGlobally(node.id);
+			let found = false;
+			for (let v of vs) {
+				if (v.name != 'VARIABLE')
+					err("Not a variable");
+				found = true;
+				v.used = true;
+				break;
+			}
+			if (!found)
+				err("ID not found");
+			break;
+		case "VARIABLE_PROPERTY":
+			analyze_expr({ name: "VARIABLE", id: node.var_id }, scope, 1);
+			if (!allowed_properties.includes(node.property_id))
+				err("Property not allowed");
+			break;
+		case "MEMORY_ELEMENT":
+			let mdefs = scope.findGlobally(node.memory_id);
+			let found = false;
+			for (let m of mdefs) {
+				if (m.name != 'MEMORY_DECLARATION')
+					err("That's not memory");
+				found = true;
+				break;
+			}
+			if (!found)
+				err("ID not found");
+			break;
+		case "DISCARD":
+			err("DISCARD not allowed in expressions");
+			break;
+		case "CALL_EXPR":
+			let bdefs = scope.findGlobally(node.id); //.filter(d => d.name == 'BLOCK_DEFINITION');
+			if (bdefs.length < 1) {
+				warn("using external function");
+				break;
+			}
+			let found = false;
+			for (let b of bdefs) {
+				if (b.name != "BLOCK_DEFINITION")
+					err("Calling something that is not callable");
+				if (b.inputs.length != node.args.length)
+					continue;
+				if (b.outputs != outputsN)
+					err("Number of outputs accepted != number of block outputs");
+				found = true;
+				break;
+			}
+			if (!found)
+				err("No matching block found");
+			break;
+		}
 
+		if (node.args)
+			node.args.forEach(arg => analyze_expr(arg, scope, 1));
 	}
-
-
 }());

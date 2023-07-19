@@ -89,17 +89,15 @@ assignment 			: exprs '=' expr END
                         }}
                     | exprs '=' if_then_elses END
                         {{
-                            $3.outputs = $1
                             $$ = {
                                 name: 'ASSIGNMENT',
-                                type: 'IF_THEN_ELSE',
+                                type: 'IF_THEN_ELSES',
                                 expr: $3,
                                 outputs: $1
                             }
                         }}
                     | exprs '=' block END
                         {{
-                            $3.outputs = $1
                             $$ = {
                                 name: 'ASSIGNMENT',
                                 type: 'ANONYMOUS_BLOCK',
@@ -157,7 +155,6 @@ conditional_expr    : logical_or_expr
                         {{
                             $$ = {
                                 name: 'INLINE_IF_THEN_ELSE',
-                                condition: $2,
                                 args: [$2, $4, $6]
                             }
                         }}
@@ -387,7 +384,7 @@ postfix_expr        : primary_expr
                             $$ = {
                                 name: 'MEMORY_ELEMENT',
                                 memory_id: $1,
-                                index: $3
+                                args: [$3]
                             }
                         }}
                     ;

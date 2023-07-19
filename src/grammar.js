@@ -152,10 +152,9 @@ case 11:
 break;
 case 12:
 
-                            $$[$0-1].outputs = $$[$0-3]
                             this.$ = {
                                 name: 'ASSIGNMENT',
-                                type: 'IF_THEN_ELSE',
+                                type: 'IF_THEN_ELSES',
                                 expr: $$[$0-1],
                                 outputs: $$[$0-3]
                             }
@@ -163,7 +162,6 @@ case 12:
 break;
 case 13:
 
-                            $$[$0-1].outputs = $$[$0-3]
                             this.$ = {
                                 name: 'ASSIGNMENT',
                                 type: 'ANONYMOUS_BLOCK',
@@ -208,7 +206,6 @@ case 21:
 
                             this.$ = {
                                 name: 'INLINE_IF_THEN_ELSE',
-                                condition: $$[$0-3],
                                 args: [$$[$0-3], $$[$0-1], $$[$01]]
                             }
                         
@@ -409,7 +406,7 @@ case 58:
                             this.$ = {
                                 name: 'MEMORY_ELEMENT',
                                 memory_id: $$[$0-3],
-                                index: $$[$0-1]
+                                args: [$$[$0-1]]
                             }
                         
 break;
