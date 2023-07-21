@@ -15,18 +15,15 @@
 
 (function() {
 
-	const ts = require("./types");
-	const bs = require("./blocks").BlockTypes;
+	const DataTypeGeneric = {};
+	const DataTypeFloat32 = Object.create(DataTypeGeneric);
+	const DataTypeInt32 = Object.create(DataTypeGeneric);
+	const DataTypeBool = Object.create(DataTypeGeneric);
 
 
-	function ASTToGraph (root, options) {
-
-		const g = Object.create(bs.CompositeBlock);
-
-		// Pronbably it's better to do definitions first...
-
-	} 
-
-	exports["ASTToGraph"] = ASTToGraph;
+	exports["DataTypeGeneric"] = DataTypeGeneric;
+	exports["DataTypeFloat32"] = DataTypeFloat32;
+	exports["DataTypeInt32"] = DataTypeInt32;
+	exports["DataTypeBool"] = DataTypeBool;
 
 }());

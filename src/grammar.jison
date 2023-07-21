@@ -461,23 +461,14 @@ id                  : ID
 
 type                : TYPE_INT32 
                         {{
-                            $$ = {
-                                name: 'TYPE',
-                                value: 'INT32'
-                            }
+                            $$ = 'INT32'
                         }}
                     | TYPE_FLOAT32 
                         {{
-                            $$ = {
-                                name: 'TYPE',
-                                value: 'FLOAT32'
-                            }
+                            $$ = 'FLOAT32'
                         }}
                     | TYPE_BOOL
                         {{
-                            $$ = {
-                                name: 'TYPE',
-                                value: 'BOOL'
-                            }
+                            $$ = 'BOOL'
                         }}
                     ;

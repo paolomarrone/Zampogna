@@ -19,9 +19,9 @@
 
 	const util   = require("./util");
 
-	const parser   = require("./grammar");
-	const syntaxer = require("./syntaxer");
-	const grapher  = require("./graph");
+	const parser  = require("./grammar");
+	const syntax  = require("./syntaxer");
+	const graph   = require("./graph");
 
 	
 	function compile (code, options_ = {}) {
@@ -48,14 +48,14 @@
 
 			// Parsing
 			const AST = parser.parse(code);
-			if (options.debug_mode)
-				util.printAST(AST);
+			//if (options.debug_mode)
+			//	util.printAST(AST);
 
 			// Extended Syntax analysis
-			syntaxer.validate(AST, options);
+			syntax.validateAST(AST);
 
 			// AST -> Graphes
-			const graphes = grapher.ASTToGraph(AST, options);
+			//const graphes = grapher.ASTToGraph(AST, options);
 
 
 		} catch (e) {

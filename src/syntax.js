@@ -47,7 +47,7 @@
 	globalScope.add({ name: "VARIABLE", id: "fs" });
 	
 
-	function validateAST (root, initial_block) {
+	function validateAST (root) {
 		let scope = new ScopeTable(globalScope);
 		analyze_block_statements(root.statements, scope);
 	}
@@ -86,8 +86,8 @@
 		if (bdef_A.inputs.length != bdef_B.inputs.length)
 			return 1;
 		for (let i = 0; i < bdef_A.inputs.length; i++) {
-			const dA = bdef_A.inputs[i]?.declaredType?.value || 'FLOAT32';
-			const dB = bdef_B.inputs[i]?.declaredType?.value || 'FLOAT32';
+			var dA = bdef_A.inputs[i].declaredType || 'FLOAT32';
+			var dB = bdef_B.inputs[i].declaredType || 'FLOAT32';
 			if (dA != dB)
 				return 2;
 		}

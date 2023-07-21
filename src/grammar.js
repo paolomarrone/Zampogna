@@ -485,26 +485,17 @@ case 72:
 break;
 case 73:
 
-                            this.$ = {
-                                name: 'TYPE',
-                                value: 'INT32'
-                            }
+                            this.$ = 'INT32'
                         
 break;
 case 74:
 
-                            this.$ = {
-                                name: 'TYPE',
-                                value: 'FLOAT32'
-                            }
+                            this.$ = 'FLOAT32'
                         
 break;
 case 75:
 
-                            this.$ = {
-                                name: 'TYPE',
-                                value: 'BOOL'
-                            }
+                            this.$ = 'BOOL'
                         
 break;
 }
