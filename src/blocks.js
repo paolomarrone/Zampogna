@@ -103,11 +103,25 @@
 
 	const VarBlock = Object.create(Block);
 	VarBlock.operation = "VAR";
+	VarBlock.id = "";
 	VarBlock.init = function () {
-		this.createPorts(1, 1);
+		this.createPorts(3, 3); // std, init, fs
 	};
 	VarBlock.setOutputDatatype = function () {
+		const d = this.inputs[0].datatype;
 		this.o_ports[0].datatype = d;
+		this.o_ports[1].datatype = d;
+		this.o_ports[2].datatype = ts.DataTypeFloat32;
+	};
+	VarBlock.setOutputUpdaterate = function () {
+		this.o_ports[0].updaterate = this.i_ports[0].updaterate;
+		this.o_ports[1].updaterate = UpdateRateConstant;
+		this.o_ports[2].updaterate = this.i_ports[2].updaterate;
+	};
+	VarBlock.validate = function () {
+		Block.validate.call(this);
+		if (this.i_ports[1].updaterate != UpdateRateConstant)
+			throw new Error("Init values must be constant");
 	};
 
 	
@@ -391,11 +405,38 @@
 	};
 
 	const CompositeBlock = Object.create(Block); // A.k.a. Graph
-	CompositeBlock.blocks = null;        // Array of Blocks
-	CompositeBlock.connections = null;   // Array of Connections
-	// Probably it's better to use additional ports. Should be way more consistent
-	//CompositeBlock.i_ports = null;       // Array of internal block ports. External input
-	//CompositeBlock.o_ports = null;       // Array of internal block ports. External output
+	CompositeBlock.id = "";
+	CompositeBlock.blocks = undefined;        // Array of Blocks
+	CompositeBlock.connections = undefined;   // Array of Connections
+	CompositeBlock.inputsN = 0;
+	CompositeBlock.inputDataTypes = undefined; // Array of Datatypes
+	CompositeBlock.outputsN = 0;
+	CompositeBlock.outputDataTypes = undefined; // Array of Datatypes
+	CompositeBlock.init = function () {
+		const nInputs = this.inputsN * 3; // std, init, fs, std, init, fs, ...
+		const nOutputs = this.outputsN * 3; // std, init, fs, std, init, fs, ...
+		this.createPorts(nInputs, nOutputs);
+	};
+	CompositeBlock.setOutputDatatype = function () {
+		// TODO: propgate internally first
+		for (let o = 0; o < this.outputsN; o++) {
+			this.o_ports[o * 3 + 0].datatype = this.outputDataTypes[o]; // std
+			this.o_ports[o * 3 + 1].datatype = this.outputDataTypes[o]; // init
+			this.o_ports[o * 3 + 2].datatype = ts.DataTypeFloat32; // fs
+		}
+	};
+	CompositeBlock.setOutputUpdaterate = function () {
+		// TODO: propagate internally first
+		for (let o = 0; o < this.outputsN; o++) {
+			let c = this.connections.find(c => c.out == this.o_ports[o * 3]);
+			
+
+
+		}
+	};
+	CompositeBlock.validate = function () {
+		Block.validate.call(this);
+	};
 	CompositeBlock.toString = function () {
 		let r = "{ G_" + this.id + "\n";
 		this.blocks.forEach(b => r += "\t" + b.toString() + "\n");
@@ -450,29 +491,6 @@
 	};
 
 
-	function ASTToGraphes (AST, options) {
-
-		// TODO: check initial block, only float allowed for inputs/outputs
-
-		const graphes = {
-			main: {},
-			init: {}
-		};
-
-
-
-		return graphes;
-	}
-
-	function flatten (graph) {
-
-	}
-
-	function optimize (graph, options) {
-
-	}
-
-
 	exports["BlockTypes"] = {
 		Block,
 		VarBlock,
@@ -481,7 +499,7 @@
 		LogicalBlock, LogicalAndBlock, LogicalOrBlock, LogicalNotBlock,
 		BitwiseBlock, BitwiseAndBlock, BitwiseOrBlock, BitwiseXorBlock, BitwiseNotBlock,
 		RelationalBlock, RelationalLGBlock, EqualityBlock, InequalityBlock, GreaterBlock, GreaterEqualBlock, LessBlock, LessEqualBlock,
-		ShiftBlock,
+		ShiftBlock, ShiftLeftBlock, ShiftRightBlock,
 		ArithmeticalBlock, SumBlock, SubtractionBlock, MulBlock, DivisionBlock, UminusBlock,
 		ModuloBlock,
 		CastBlock, CastF32Block, CastI32Block, CastBoolBlock,
