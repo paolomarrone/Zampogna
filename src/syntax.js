@@ -144,7 +144,7 @@
 				scope.add(o);
 			}
 			if (o.name == 'PROPERTY') {
-				let elements = scope.findLocally(o.element_id);
+				let elements = scope.findLocally(o.id);
 				if (elements.length != 1)
 					err("Property of undefined");
 				if (!['VARIABLE', 'MEMORY_DECLARATION'].includes(elements[0].name))
@@ -156,7 +156,7 @@
 				elements[0][o.property_id] = o;
 			}
 			if (o.name == 'MEMORY_ELEMENT') {
-				let elements = scope.findLocally(o.memory_id);
+				let elements = scope.findLocally(o.id);
 				if (elements.length != 1)
 					err("Memory element not found");
 				if (elements[0].name != 'MEMORY_DECLARATION')
@@ -249,14 +249,16 @@
 		}
 		case "PROPERTY":
 		{
-			analyze_expr({ name: "VARIABLE", id: expr.element_id }, scope, 1, false);
+			if (reserved_variables.includes(expr.id))
+				err("Cannot access properties of reserved_variables");
+			analyze_expr({ name: "VARIABLE", id: expr.id }, scope, 1, false);
 			if (!allowed_properties.includes(expr.property_id))
 				err("Property not allowed");
 			break;
 		}
 		case "MEMORY_ELEMENT":
 		{
-			let mdefs = scope.findGlobally(expr.memory_id);
+			let mdefs = scope.findGlobally(expr.id);
 			let found = false;
 			for (let m of mdefs) {
 				if (m.name != 'MEMORY_DECLARATION')

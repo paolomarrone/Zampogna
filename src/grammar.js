@@ -414,7 +414,7 @@ case 59:
 
                             this.$ = {
                                 name: 'MEMORY_ELEMENT',
-                                memory_id: $$[$0-3],
+                                id: $$[$0-3],
                                 args: [$$[$0-1]]
                             }
                         
@@ -440,7 +440,7 @@ case 62:
 
                             this.$ = {
                                 name: 'PROPERTY',
-                                element_id: $$[$0-2],
+                                id: $$[$0-2],
                                 property_id: $$[$0]
                             }
                         

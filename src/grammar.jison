@@ -391,7 +391,7 @@ postfix_expr        : primary_expr
                         {{
                             $$ = {
                                 name: 'MEMORY_ELEMENT',
-                                memory_id: $1,
+                                id: $1,
                                 args: [$3]
                             }
                         }}
@@ -416,7 +416,7 @@ primary_expr        : id
                         {{
                             $$ = {
                                 name: 'PROPERTY',
-                                element_id: $1,
+                                id: $1,
                                 property_id: $3
                             }
                         }}

@@ -5,24 +5,27 @@ float y = delay (float x) {
     mem[1] float s
     y = s[0]
     s[0] = x
+    s.init = x
 }
 
 int y = delay (int x) {
     mem[1] int s
     y = s[0]
     s[0] = x
+    s.init = x
 }
 
 bool y = delay (bool x) {
     mem[1] bool s
     y = s[0]
     s[0] = x
+    s.init = x
 }
 
 
 int i = circular_iterator (int n) {
     i = delay(i) >= n ? 0 : delay(i) + 1
-    @i = -1
+    i.init = -1
 }
 
 float y = delay(float x, int n) {
@@ -30,6 +33,7 @@ float y = delay(float x, int n) {
     int i = circular_iterator(n)
     y = line[i]
     line[i] = x
+    line.init = x # implicitly x.init
 }
 
 int y = delay(int x, int n) {
@@ -37,6 +41,7 @@ int y = delay(int x, int n) {
     int i = circular_iterator(n)
     y = line[i]
     line[i] = x
+    line.init = x
 }
 
 bool y = delay(bool x, int n) {
@@ -44,4 +49,5 @@ bool y = delay(bool x, int n) {
     int i = circular_iterator(n)
     y = line[i]
     line[i] = x
+    line.init = x
 }
