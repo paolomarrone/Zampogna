@@ -415,13 +415,20 @@ primary_expr        : id
                     | id '.' id
                         {{
                             $$ = {
-                                name: 'VARIABLE_PROPERTY',
-                                var_id: $1,
+                                name: 'PROPERTY',
+                                element_id: $1,
                                 property_id: $3
                             }
                         }}
                     | '_'
                         {{ $$ = { name: 'DISCARD' } }}
+                    | '[' exprs ']'
+                        {{
+                            $$ = {
+                                name: 'ARRAY_CONST',
+                                args: $2
+                            }
+                        }}
                     | constant
                         {{ $$ = $1 }}
                     | '(' expr ')'

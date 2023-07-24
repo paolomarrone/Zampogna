@@ -111,8 +111,8 @@
 		assignment.outputs.forEach(o => {
 			switch (assignment.type) {
 			case 'EXPR':
-				if (!['VARIABLE', 'DISCARD', 'VARIABLE_PROPERTY', 'MEMORY_ELEMENT'].includes(o.name))
-					err("Only 'VARIABLE', 'DISCARD', 'VARIABLE_PROPERTY', 'MEMORY_ELEMENT' allowed when assigning an EXPR");
+				if (!['VARIABLE', 'DISCARD', 'PROPERTY', 'MEMORY_ELEMENT'].includes(o.name))
+					err("Only 'VARIABLE', 'DISCARD', 'PROPERTY', 'MEMORY_ELEMENT' allowed when assigning an EXPR");
 				break;
 			case 'ANONYMOUS_BLOCK':
 			case 'IF_THEN_ELSES':
@@ -143,8 +143,8 @@
 					err("Found ID multiple times");
 				scope.add(o);
 			}
-			if (o.name == 'VARIABLE_PROPERTY') {
-				let elements = scope.findLocally(o.var_id);
+			if (o.name == 'PROPERTY') {
+				let elements = scope.findLocally(o.element_id);
 				if (elements.length != 1)
 					err("Property of undefined");
 				if (!['VARIABLE', 'MEMORY_DECLARATION'].includes(elements[0].name))
@@ -168,7 +168,12 @@
 
 	function analyze_assignment_right (assignment, scope) {
 		if (assignment.type == 'EXPR') {
-			analyze_expr(assignment.expr, scope, assignment.outputs.length);
+			if (assignment.expr.name == 'ARRAY_CONST') {
+				const o = assignment.outputs[0];
+				if (o.name != 'PROPERTY' || o.property_id != 'init')
+					err("Array can be assigned to init propety only");
+			}
+			analyze_expr(assignment.expr, scope, assignment.outputs.length, true);
 		}
 		if (assignment.type == 'ANONYMOUS_BLOCK') {
 			const newscope = new ScopeTable(scope);
@@ -185,7 +190,7 @@
 		if (assignment.type == 'IF_THEN_ELSES') {
 			assignment.expr.branches.forEach(b => {
 				if (b.condition)
-					analyze_expr(b.condition, scope, 1);
+					analyze_expr(b.condition, scope, 1, false);
 				const newscope = new ScopeTable(scope);
 				assignment.outputs.forEach(o => {
 					o.assigned = false;
@@ -222,7 +227,8 @@
 		});
 	}
 
-	function analyze_expr(expr, scope, outputsN) {
+	function analyze_expr(expr, scope, outputsN, isRoot) {
+		let expr_outputsN = 1;
 		switch (expr.name) {
 		case "VARIABLE": 
 		{
@@ -241,9 +247,9 @@
 				err("ID not found");
 			break;
 		}
-		case "VARIABLE_PROPERTY":
+		case "PROPERTY":
 		{
-			analyze_expr({ name: "VARIABLE", id: expr.var_id }, scope, 1);
+			analyze_expr({ name: "VARIABLE", id: expr.element_id }, scope, 1, false);
 			if (!allowed_properties.includes(expr.property_id))
 				err("Property not allowed");
 			break;
@@ -280,8 +286,7 @@
 					err("Calling something that is not callable");
 				if (b.inputs.length != expr.args.length)
 					continue;
-				if (b.outputs != outputsN)
-					err("Number of outputs accepted != number of block outputs");
+				expr_outputsN = b.outputs.length;
 				found = true;
 				break;
 			}
@@ -289,10 +294,19 @@
 				err("No matching block found");
 			break;
 		}
+		case "ARRAY_CONST":
+		{
+			if (!isRoot)
+				err("Cannot use array in subexpressions");
+			break;
+		}
 		}
 
+		if (expr_outputsN != outputsN)
+			err("Number of outputs accepted != number of block outputs");
+
 		if (expr.args)
-			expr.args.forEach(arg => analyze_expr(arg, scope, 1));
+			expr.args.forEach(arg => analyze_expr(arg, scope, 1, false));
 	}
 
 	function err (msg) {
