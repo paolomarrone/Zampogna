@@ -179,6 +179,29 @@
 			y = fs.fs
 		`, `
 			fs.fs = 5
+		`, `
+			y = A (x) {
+				int y = 5
+			}
+		`, `
+			mem[3] int v;
+			y = A (x) {
+				y = x;
+				v[2] = 0;
+			}
+		`, `
+			A = 5;
+			y = B (x) {
+				y = x;
+				A.init = 5
+			}
+		`, `
+			y = A (x) {
+				y = x;
+				x.init = 0.5
+			}
+		`, `
+			mem[aaa] int v;
 		`
 	];
 

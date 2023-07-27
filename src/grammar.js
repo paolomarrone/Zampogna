@@ -135,7 +135,7 @@ case 10:
                             this.$ = {
                                 name: 'MEMORY_DECLARATION',
                                 type: $$[$0-2],
-                                amount: $$[$0-4],
+                                size: $$[$0-4],
                                 id: $$[$0-1]
                             }
                         

@@ -72,7 +72,7 @@ memory_declaration  : MEM '[' expr ']' type id END
                             $$ = {
                                 name: 'MEMORY_DECLARATION',
                                 type: $5,
-                                amount: $3,
+                                size: $3,
                                 id: $6
                             }
                         }}

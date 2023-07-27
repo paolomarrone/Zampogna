@@ -56,6 +56,7 @@
 		statements.filter(s => s.name == 'BLOCK_DEFINITION').forEach(s => analyze_block_signature(s, scope));
 		statements.filter(s => s.name == 'MEMORY_DECLARATION').forEach(s => analyze_memory_declaration(s, scope));
 		statements.filter(s => s.name == "ASSIGNMENT").forEach(s => analyze_assignment_left(s, scope));
+		statements.filter(s => s.name == 'MEMORY_DECLARATION').forEach(s => analyze_memory_declaration_exprs(s, scope));
 		statements.filter(s => s.name == 'ASSIGNMENT').forEach(s => analyze_assignment_right(s, scope));
 		statements.filter(s => s.name == 'BLOCK_DEFINITION').forEach(s => analyze_block_body(s, scope));
 	}
@@ -106,6 +107,10 @@
 		scope.add(mdef);
 	}
 
+	function analyze_memory_declaration_exprs (mdef, scope) {
+		analyze_expr(mdef.size, scope, 1, false);
+	}
+
 	function analyze_assignment_left (assignment, scope) {
 
 		assignment.outputs.forEach(o => {
@@ -153,6 +158,8 @@
 					err("Property not allowed");
 				if (elements[0][o.property_id])
 					err("Property already assigned");
+				if (elements[0].is_input)
+					err("Cannot set properties of inputs");
 				elements[0][o.property_id] = o;
 			}
 			if (o.name == 'MEMORY_ELEMENT') {
@@ -210,6 +217,7 @@
 		const newscope = new ScopeTable(scope);
 		bdef.inputs.forEach(i => {
 			i.assigned = true;
+			i.is_input = true;
 			newscope.add(i);
 		});
 		bdef.outputs.forEach(o => {

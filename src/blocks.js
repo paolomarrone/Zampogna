@@ -60,7 +60,7 @@
 
 
 	const Block = {};
-	//Block.id = null;
+	Block.Port = Port;
 	Block.operation = "DEFAULT";
 	Block.i_ports = undefined; // Array of Ports
 	Block.o_ports = undefined; // Array of Ports
@@ -104,13 +104,13 @@
 	const VarBlock = Object.create(Block);
 	VarBlock.operation = "VAR";
 	VarBlock.id = "";
+	VarBlock.datatype = ts.DataTypeGeneric;
 	VarBlock.init = function () {
 		this.createPorts(3, 3); // std, init, fs
 	};
 	VarBlock.setOutputDatatype = function () {
-		const d = this.inputs[0].datatype;
-		this.o_ports[0].datatype = d;
-		this.o_ports[1].datatype = d;
+		this.o_ports[0].datatype = this.datatype;
+		this.o_ports[1].datatype = this.datatype;
 		this.o_ports[2].datatype = ts.DataTypeFloat32;
 	};
 	VarBlock.setOutputUpdaterate = function () {
@@ -120,6 +120,10 @@
 	};
 	VarBlock.validate = function () {
 		Block.validate.call(this);
+		if (this.datatype == ts.DataTypeGeneric)
+			throw new Error("Generic variable datatype");
+		if (this.i_ports[0].datatype != this.datatype || this.i_ports[1].datatype != this.datatype)
+			throw new Error("Inconsistent datatypes");
 		if (this.i_ports[1].updaterate != UpdateRateConstant)
 			throw new Error("Init values must be constant");
 	};
@@ -127,6 +131,7 @@
 	
 	const MemoryBlock = Object.create(Block);
 	MemoryBlock.operation = "MEMORY";
+	MemoryBlock.id = "";
 	MemoryBlock.writers = 0; // E.g.
 	MemoryBlock.readers = 0; // E.g.
 	MemoryBlock.datatype = ts.DataTypeGeneric;
@@ -405,21 +410,27 @@
 	};
 
 	const CompositeBlock = Object.create(Block); // A.k.a. Graph
+	CompositeBlock.Connection = Connection;
 	CompositeBlock.id = "";
 	CompositeBlock.blocks = undefined;        // Array of Blocks
 	CompositeBlock.connections = undefined;   // Array of Connections
-	CompositeBlock.inputsN = 0;
+	CompositeBlock.bdefs = undefined;         // Array of CompositeBlocks
+	CompositeBlock.bdef_father = undefined;   // CompositeBlock
+	//CompositeBlock.explicit_inputs_N = 0;
+	//CompositeBlock.implicit_inputs_N = 0;
+	CompositeBlock.inputs_N = 0;
 	CompositeBlock.inputDataTypes = undefined; // Array of Datatypes
-	CompositeBlock.outputsN = 0;
+	CompositeBlock.outputs_N = 0;
 	CompositeBlock.outputDataTypes = undefined; // Array of Datatypes
 	CompositeBlock.init = function () {
-		const nInputs = this.inputsN * 3; // std, init, fs, std, init, fs, ...
-		const nOutputs = this.outputsN * 3; // std, init, fs, std, init, fs, ...
+		//const nInputs = (this.explicit_inputs_N + this.implicit_inputs_N) * 3; // std, init, fs, std, init, fs, ...
+		const nInputs = this.inputs_N * 3;
+		const nOutputs = this.outputs_N * 3; // std, init, fs, std, init, fs, ...
 		this.createPorts(nInputs, nOutputs);
 	};
 	CompositeBlock.setOutputDatatype = function () {
 		// TODO: propgate internally first
-		for (let o = 0; o < this.outputsN; o++) {
+		for (let o = 0; o < this.outputs_N; o++) {
 			this.o_ports[o * 3 + 0].datatype = this.outputDataTypes[o]; // std
 			this.o_ports[o * 3 + 1].datatype = this.outputDataTypes[o]; // init
 			this.o_ports[o * 3 + 2].datatype = ts.DataTypeFloat32; // fs
@@ -427,7 +438,7 @@
 	};
 	CompositeBlock.setOutputUpdaterate = function () {
 		// TODO: propagate internally first
-		for (let o = 0; o < this.outputsN; o++) {
+		for (let o = 0; o < this.outputs_N; o++) {
 			let c = this.connections.find(c => c.out == this.o_ports[o * 3]);
 			
 
@@ -436,6 +447,7 @@
 	};
 	CompositeBlock.validate = function () {
 		Block.validate.call(this);
+		this.blocks.forEach(b => b.validate());
 	};
 	CompositeBlock.toString = function () {
 		let r = "{ G_" + this.id + "\n";
