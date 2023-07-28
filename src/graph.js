@@ -66,7 +66,7 @@
 			v.datatype = getDataType(o.declaredType);
 			v.init();
 			bdef.blocks.push(v);
-		})
+		});
 		bdef_node.statements.filter(s => s.name == "ASSIGNMENT").forEach(s => {
 			s.outputs.filter(o => o.name == 'VARIABLE').forEach(o => {
 				if (bdef.blocks.some(bb => bb.id == o.id)) // Is output
@@ -148,6 +148,8 @@
 
 	function convert_expr (expr_node, bdef) {
 
+		let b;
+
 		switch (expr_node.name) {
 		case 'VARIABLE': {
 
@@ -158,107 +160,128 @@
 			break;
 		}
 		case 'CONSTANT': {
-
+			b = Object.create(bs.ConstantBlock);
+			if (expr_node.type == 'INT32')
+				b.datatype = ts.DataTypeInt32;
+			else if (expr_node.type == 'FLOAT32')
+				b.datatype = ts.DataTypeFloat32;
+			else if (expr_node.type == 'BOOL')
+				b.datatype = ts.DataTypeBool;
+			b.value = expr_node.val;
 			break;
 		}
 		case 'MEMORY_ELEMENT': {
-
+			
 			break;
 		}
 		case 'BITWISE_NOT_EXPR': {
-
+			b = Object.create(bs.BitwiseNotBlock);
 			break;
 		}
 		case 'LOGICAL_NOT_EXPR': {
-
+			b = Object.create(bs.LogicalNotBlock);
 			break;
 		}
 		case 'UMINUS_EXPR': {
-
+			b = Object.create(bs.UminusBlock);
 			break;
 		}
 		case 'MODULO_EXPR': {
-
+			b = Object.create(bs.ModuloBlock);
 			break;
 		}
 		case 'DIV_EXPR': {
-
+			b = Object.create(bs.DivisionBlock);
 			break;
 		}
 		case 'TIMES_EXPR': {
-
+			b = Object.create(bs.MulBlock);
 			break;
 		}
 		case 'MINUS_EXPR': {
-
+			b = Object.create(bs.SubtractionBlock);
 			break;
 		}
 		case 'PLUS_EXPR': {
-
+			b = Object.create(bs.SumBlock);
 			break;
 		}
 		case 'SHIFT_RIGHT_EXPR': {
-
+			b = Object.create(bs.ShiftRightBlock);
 			break;
 		}
 		case 'SHIFT_LEFT_EXPR': {
-
+			b = Object.create(bs.ShiftLeftBlock);
 			break;
 		}
 		case 'GREATEREQUAL_EXPR': {
-
+			b = Object.create(bs.GreaterEqualBlock);
 			break;
 		}
 		case 'GREATER_EXPR': {
-
+			b = Object.create(bs.GreaterBlock);
 			break;
 		}
 		case 'LESSEQUAL_EXPR': {
-
+			b = Object.create(bs.LessEqualBlock);
 			break;
 		}
 		case 'LESS_EXPR': {
-
+			b = Object.create(bs.LessBlock);
 			break;
 		}
 		case 'NOTEQUAL_EXPR': {
-
+			b = Object.create(bs.InequalityBlock);
 			break;
 		}
 		case 'EQUAL_EXPR': {
-
+			b = Object.create(bs.EqualityBlock);
 			break;
 		}
 		case 'BITWISE_AND_EXPR': {
-
+			b = Object.create(bs.BitwiseAndBlock);
 			break;
 		}
 		case 'BITWISE_EXCLUSIVE_OR_EXPR': {
-
+			b = Object.create(bs.BitwiseXOrBlock);
 			break;
 		}
 		case 'BITWISE_INCLUSIVE_OR_EXPR': {
-
+			b = Object.create(bs.BitwiseOrBlock);
 			break;
 		}
 		case 'LOGICAL_AND_EXPR': {
-
+			b = Object.create(bs.LogicalAndBlock);
 			break;
 		}
 		case 'LOGICAL_OR_EXPR': {
-
+			b = Object.create(bs.LogicalOrBlock);
 			break;
 		}
 		case 'INLINE_IF_THEN_ELSE': {
 
 			break;
 		}
+		case 'CAST_EXPR': {
+			if (expr_node.type == 'INT32')
+				b = Object.create(bs.CastI32Block);
+			else if (expr_node.type == 'FLOAT32')
+				b = Object.create(bs.CastF32Block);
+			else if (expr_node.type == 'BOOL')
+				b = Object.create(bs.CastBoolBlock);
+			break;
+		}
+		case 'CALL_EXPR': {
+
+			break;
+		} 
 		default: {
 			throw new Error("Unexpect AST expr node");
 			break;
 		}
-
 		}
+
+		b.init();
 
 	}
 
