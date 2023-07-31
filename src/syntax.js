@@ -132,35 +132,50 @@
 				err("Cannot use reserved_variables in assignments");
 			
 			if (o.name == 'VARIABLE') {
-				let elements = scope.findLocally(o.id); 
-				elements.forEach(e => {
-					if (e.name == 'BLOCK_DEFINITION')
-						err("ID already used for a BLOCK_DEFINITION");
-					if (e.name == 'MEMORY_DECLARATION')
-						err("use [] operator to access memory");
-					if (e.assigned != undefined && o.declaredType != undefined)
-						err("Variable already declared");
-					if (e.assigned)
+				let elements = scope.findLocally(o.id);
+				if (elements.filter(e => e.name == 'BLOCK_DEFINITION').length > 0)
+					err("ID already used for a BLOCK_DEFINITION");
+				if (elements.filter(e => e.name == 'MEMORY_DECLARATION').length > 0)
+					err("use [] operator to access memory");
+				elements = elements.filter(e => e.name == 'VARIABLE');
+				if (elements.length == 0) {
+					o.assigned = true;
+					scope.add(o);
+				}
+				else if (elements.length == 1) {
+					if (elements[0].assigned)
 						err("Variable assigned twice, or you are trying to assign an input");
-					e.assigned = true;
-				});
-				if (elements.length > 1)
-					err("Found ID multiple times");
-				scope.add(o);
+					if (o.declaredType != undefined)
+						err("Redeclaration");
+					elements[0].assigned = true;
+				}
+				else
+					err("Found ID multiple times");				
 			}
 			if (o.name == 'PROPERTY') {
-				let elements = scope.findLocally(o.id);
-				if (elements.length != 1)
-					err("Property of undefined");
-				if (!['VARIABLE', 'MEMORY_DECLARATION'].includes(elements[0].name))
-					err("You can assign properties only to VARIABLEs and MEMORY_DECLARATIONs");
-				if (!allowed_properties.includes(o.property_id))
-					err("Property not allowed");
-				if (elements[0][o.property_id])
-					err("Property already assigned");
-				if (elements[0].is_input)
-					err("Cannot set properties of inputs");
-				elements[0][o.property_id] = o;
+
+				check_property_left(o);
+
+				function check_property_left (p) {
+					if (p.expr.name == 'VARIABLE' || p.expr.name == 'MEMORY_DECLARATION') {
+						let elements = scope.findLocally(p.expr.id);
+						if (elements.length != 1)
+							err("Property of undefined");
+						if (!['VARIABLE', 'MEMORY_DECLARATION'].includes(elements[0].name))
+							err("You can assign properties only to VARIABLEs and MEMORY_DECLARATIONs");
+						if (elements[0].is_input)
+							err("Cannot set properties of inputs");
+						elements[0][p.property_id] = p;
+					}
+					else if (p.expr.name == 'PROPERTY') {
+						check_property_left(p.expr);
+					}
+					else {
+						err("Cannot assign property to this");
+					}
+					if (!allowed_properties.includes(p.property_id))
+						err("Property not allowed");
+				}
 			}
 			if (o.name == 'MEMORY_ELEMENT') {
 				let elements = scope.findLocally(o.id);
@@ -252,14 +267,23 @@
 				break;
 			}
 			if (!found)
-				err("ID not found");
+				err("ID not found" + expr.id +  vs.join(',,'));
 			break;
 		}
 		case "PROPERTY":
 		{
-			if (reserved_variables.includes(expr.id))
-				err("Cannot access properties of reserved_variables");
-			analyze_expr({ name: "VARIABLE", id: expr.id }, scope, 1, false);
+			if (expr.expr.name == 'VARIABLE') {
+				if (reserved_variables.includes(expr.expr.id))
+					err("Cannot access properties of reserved_variables");
+				analyze_expr({ name: "VARIABLE", id: expr.expr.id }, scope, 1, false);
+			}
+			else if (expr.expr.name == 'MEMORY_ELEMENT') {
+				err("Cannot access properties of memory elements");
+			}
+			else {
+				analyze_expr(expr.expr, scope, 1, false);
+			}
+
 			if (!allowed_properties.includes(expr.property_id))
 				err("Property not allowed");
 			break;

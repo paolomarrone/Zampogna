@@ -106,26 +106,20 @@
 	VarBlock.id = "";
 	VarBlock.datatype = ts.DataTypeGeneric;
 	VarBlock.init = function () {
-		this.createPorts(3, 3); // std, init, fs
+		this.createPorts(1, 1);
 	};
 	VarBlock.setOutputDatatype = function () {
 		this.o_ports[0].datatype = this.datatype;
-		this.o_ports[1].datatype = this.datatype;
-		this.o_ports[2].datatype = ts.DataTypeFloat32;
 	};
 	VarBlock.setOutputUpdaterate = function () {
 		this.o_ports[0].updaterate = this.i_ports[0].updaterate;
-		this.o_ports[1].updaterate = UpdateRateConstant;
-		this.o_ports[2].updaterate = this.i_ports[2].updaterate;
 	};
 	VarBlock.validate = function () {
 		Block.validate.call(this);
 		if (this.datatype == ts.DataTypeGeneric)
 			throw new Error("Generic variable datatype");
-		if (this.i_ports[0].datatype != this.datatype || this.i_ports[1].datatype != this.datatype)
+		if (this.i_ports[0].datatype != this.datatype)
 			throw new Error("Inconsistent datatypes");
-		if (this.i_ports[1].updaterate != UpdateRateConstant)
-			throw new Error("Init values must be constant");
 	};
 
 	
@@ -403,43 +397,49 @@
 
 
 	const Connection = {};
-	Connection.in = null;  // Port
-	Connection.out = null; // Port
+	Connection.in = undefined;  // Port
+	Connection.out = undefined; // Port
 	Connection.toString = function () {
 		return this.in.toString() + " => " + this.out.toString();
 	};
 
+	const Property = {};
+	Property.of = undefined; // Block
+	Property.type = undefined; // "fs" or "init"
+	Property.block = undefined; // VarBlock
+
 	const CompositeBlock = Object.create(Block); // A.k.a. Graph
 	CompositeBlock.Connection = Connection;
+	CompositeBlock.Property = Property;
 	CompositeBlock.id = "";
 	CompositeBlock.blocks = undefined;        // Array of Blocks
 	CompositeBlock.connections = undefined;   // Array of Connections
+	CompositeBlock.properties = undefined;    // Array of Properties
 	CompositeBlock.bdefs = undefined;         // Array of CompositeBlocks
 	CompositeBlock.bdef_father = undefined;   // CompositeBlock
-	//CompositeBlock.explicit_inputs_N = 0;
-	//CompositeBlock.implicit_inputs_N = 0;
 	CompositeBlock.inputs_N = 0;
 	CompositeBlock.inputDataTypes = undefined; // Array of Datatypes
 	CompositeBlock.outputs_N = 0;
 	CompositeBlock.outputDataTypes = undefined; // Array of Datatypes
 	CompositeBlock.init = function () {
-		//const nInputs = (this.explicit_inputs_N + this.implicit_inputs_N) * 3; // std, init, fs, std, init, fs, ...
-		const nInputs = this.inputs_N * 3;
-		const nOutputs = this.outputs_N * 3; // std, init, fs, std, init, fs, ...
-		this.createPorts(nInputs, nOutputs);
+		this.createPorts(this.inputs_N, this.outputs_N);
+		this.blocks = [];
+		this.connections = [];
+		this.properties = [];
+		this.bdefs = [];
+		this.inputDataTypes = [];
+		this.outputDataTypes = [];
 	};
 	CompositeBlock.setOutputDatatype = function () {
 		// TODO: propgate internally first
 		for (let o = 0; o < this.outputs_N; o++) {
-			this.o_ports[o * 3 + 0].datatype = this.outputDataTypes[o]; // std
-			this.o_ports[o * 3 + 1].datatype = this.outputDataTypes[o]; // init
-			this.o_ports[o * 3 + 2].datatype = ts.DataTypeFloat32; // fs
+			this.o_ports[o].datatype = this.outputDataTypes[o];
 		}
 	};
 	CompositeBlock.setOutputUpdaterate = function () {
 		// TODO: propagate internally first
 		for (let o = 0; o < this.outputs_N; o++) {
-			let c = this.connections.find(c => c.out == this.o_ports[o * 3]);
+			let c = this.connections.find(c => c.out == this.o_ports[o]);
 			
 
 
@@ -483,14 +483,18 @@
 			this.connections.push(c);
 		});
 		this.removeBlock(block);
-	}
+	};
 	CompositeBlock.removeIntermediateBlocks = function () { // TOO bad
 		this.blocks.filter(b => 
 			(VarBlock.isPrototypeOf(b)) ||
 			(SumBlock.isPrototypeOf(b) && b.i_ports.length == 1 && b.add[0]) ||
 			(MulBlock.isPrototypeOf(b) && b.i_ports.length == 1 && b.over[0])
 		).forEach(b => this.removeIntermediateBlock(b));
-	}
+	};
+	CompositeBlock.getPropertyOf = function (block, type) {
+		return this.properties.find(p => p.of == block && p.type == type);
+	};
+
 	CompositeBlock.flatten = function () {
 		this.blocks.forEach(b => b.flatten());
 

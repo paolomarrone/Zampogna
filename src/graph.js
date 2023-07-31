@@ -21,45 +21,41 @@
 
 	function ASTToGraph (root, options) {
 
-		const g = Object.create(bs.CompositeBlock);
+		const bdef = Object.create(bs.CompositeBlock);
+		bdef.id = "0";
+		bdef.bdef_father = undefined;
+		bdef.inputs_N = 0; // TODO, same as initial_block
+		bdef.outputs_N = 0; // ^
+		bdef.init();
 
-		// Pronbably it's better to do definitions first...
-
+		convert_statements(root.statements, bdef);
 	}
 
-	function convert_statements (statements, block) {
+	
 
-		const bdefs = [];
-		statements.filter(s => s.name == 'BLOCK_DEFINITION').forEach(bdef => {
-			bdefs.push(getBlockDefinition(bdef));
-		});
-
-	}
-
-	function getBlockDefinition (bdef_node, bdef_father) {
+	function convert_block_definition (bdef_node, bdef_father) {
 		
 		const bdef = Object.create(bs.CompositeBlock);
-
 		bdef.id = bdef_node.id;
-		bdef.blocks = [];
-		bdef.connections = [];
-		bdef.bdefs = []; // Internal block definitions
 		bdef.bdef_father = bdef_father;
-		//bdef.explicit_inputs_N = bdef_node.inputs.length;
-		//bdef.implicit_inputs_N = NaN; // Set later
 		bdef.inputs_N = bdef_node.inputs.length;
-		bdef.inputDataTypes = [];
+		bdef.outputs_N = bdef_node.outputs.length;
+		bdef.init();
 		bdef_node.inputs.forEach(i => {
 			bdef.inputDataTypes.push(getDataType(i.declaredType));
-		}); // Set the implicit ones later
-		bdef.outputs_N = bdef_node.outputs.length;
-		bdef.outputDataTypes = [];
+		});
 		bdef_node.outputs.forEach(o => {
 			bdef.outputDataTypes.push(getDataType(o.declaredType));
 		});
 
-
-		// Adding VARIABLE blocks
+		// Adding input/outputs
+		bdef_node.inputs.forEach(i => {
+			const v = Object.create(bs.VarBlock);
+			v.id = i.id;
+			v.datatype = getDataType(i.declaredType);
+			v.init();
+			bdef.blocks.push(v);
+		});
 		bdef_node.outputs.forEach(o => {
 			const v = Object.create(bs.VarBlock);
 			v.id = o.id;
@@ -67,7 +63,15 @@
 			v.init();
 			bdef.blocks.push(v);
 		});
-		bdef_node.statements.filter(s => s.name == "ASSIGNMENT").forEach(s => {
+
+		convert_statements(bdef_node.statements, bdef);
+
+		return bdef;
+	}
+
+	function convert_statements (statements, bdef) {
+
+		statements.filter(s => s.name == "ASSIGNMENT").forEach(s => {
 			s.outputs.filter(o => o.name == 'VARIABLE').forEach(o => {
 				if (bdef.blocks.some(bb => bb.id == o.id)) // Is output
 					return;
@@ -78,16 +82,10 @@
 				bdef.blocks.push(v);
 			});
 		});
-		bdef_node.inputs.forEach(i => {
-			const v = Object.create(bs.VarBlock);
-			v.id = i.id;
-			v.datatype = getDataType(i.declaredType);
-			v.init();
-			bdef.blocks.push(v);
-		});
+		
 
 		// Adding MEMORY DECLARATIONS blocks
-		bdef_node.statements.filter(s => s.name == 'MEMORY_DECLARATION').forEach(s => {
+		statements.filter(s => s.name == 'MEMORY_DECLARATION').forEach(s => {
 			const m = Object.create(bs.MemoryBlock);
 			m.id = s.id;
 			m.datatype = getDataType(s.type);
@@ -96,12 +94,12 @@
 		});
 
 		// Adding inner block definitions
-		bdef_node.statements.filter(s => s.name == 'BLOCK_DEFINITION').forEach(bdef_n => {
-			bdef.bdefs.push(getBlockDefinition(bdef_n, bdef));
+		statements.filter(s => s.name == 'BLOCK_DEFINITION').forEach(bdef_n => {
+			bdef.bdefs.push(convert_block_definition(bdef_n, bdef));
 		});
 
 		// Adding expression blocks and connections
-		bdef_node.statements.filter(s => s.name == 'ASSIGNMENT').forEach((s) => {
+		statements.filter(s => s.name == 'ASSIGNMENT').forEach((s) => {
 			switch (s.type) {
 			case 'ANONYMOUS_BLOCK': {
 				// TODO
@@ -119,7 +117,7 @@
 						let v = findVarById(o.id, bdef);
 						const c = Object.create(bs.CompositeBlock.Connection);
 						c.in = expr_out_ps[oi];
-						c.out = v.i_ports[0]; // Remember/TODO: 3 ports here
+						c.out = v.i_ports[0];
 						bdef.connections.push(c);
 						break;
 					}
@@ -128,7 +126,7 @@
 						break;
 					}
 					case 'PROPERTY': {
-// Thinking needed about multiple named composite block outputs (std, init, fs). How to properly duplicate?
+
 						break;
 					}
 					case 'MEMORY_ELEMENT': {
@@ -142,8 +140,6 @@
 			}
 			}
 		})
-
-		return bdef;
 	}
 
 	function convert_expr (expr_node, bdef) {
@@ -156,7 +152,11 @@
 			break;
 		}
 		case 'PROPERTY': {
-
+			// TODO: 
+			// Convert expr
+			// find existing property of expr
+			// If it doesn't exist, create a BlockVar and bdef.properties.push(new Property)
+			// But beware, the property must be added to the bdef the expr belongs
 			break;
 		}
 		case 'CONSTANT': {
@@ -281,7 +281,13 @@
 		}
 		}
 
-		b.init();
+		//b.init();
+
+		// TODO
+
+		bdef.blocks.push(b);
+
+		return b; // Tmp
 
 	}
 
@@ -289,20 +295,20 @@
 	function findVarById (id, bdef) {
 		let bd = bdef;
 		while (bd) {
-			let r = b.blocks.find(b => bs.VarBlock.isPrototypeOf(b) && b.d == id);
+			let r = bd.blocks.find(b => bs.VarBlock.isPrototypeOf(b) && b.id == id);
 			if (r)
 				return r;
-			bd = bdef.bdef_father;
+			bd = bd.bdef_father;
 		}
 	}
 
 	function findMemById (id, bdef) {
 		let bd = bdef;
 		while (bd) {
-			let r = b.blocks.find(b => bs.MemoryBlock.isPrototypeOf(b) && b.d == id);
+			let r = bd.blocks.find(b => bs.MemoryBlock.isPrototypeOf(b) && b.id == id);
 			if (r)
 				return r;
-			bd = bdef.bdef_father;
+			bd = bd.bdef_father;
 		}
 	}
 
@@ -315,7 +321,7 @@
 				(b.inputDataTypes.every((t, i) => t == inputDataTypes[i])));
 			if (r)
 				return r;
-			bd = bdef.bdef_father;
+			bd = bd.bdef_father;
 		}
 	}
 

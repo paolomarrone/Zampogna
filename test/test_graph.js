@@ -57,7 +57,7 @@
 			syntax.validateAST(AST);
 			const g = graph.ASTToGraph(AST, GoodTests[t].options);
 		} catch (e) {
-			console.log("A", e);
+			//console.log("A", e);
 			res = false;
 			err = e;
 		}
@@ -81,8 +81,9 @@
 
 	for (let r of GoodTestResults) {
 		if (!r.r) {
-			console.log("Good code test n. " + r.i + " failed. Code: ");
-			console.log(GoodTests[r.i]);
+			console.log("Good code test n. " + r.i + " failed");
+			console.log("Code: ", GoodTests[r.i].code);
+			console.log("Options: ", GoodTests[r.i].options);
 			console.log("Error:");
 			console.log(GoodTestResults[r.i].e);
 		}

@@ -101,6 +101,12 @@
 				v.init, y = B (x)
 			}
 			y1, y2 = B (x) {y1 = x; y2 = x;}
+		`, `
+			y = A (x) {
+				y = x * 2
+				y.fs = ((x * x).fs * 2).init
+				y.fs.fs.fs = 0.5
+			}
 		`
 	];
 
@@ -150,10 +156,6 @@
 			A = 5;
 			A.ciao = 5;
 		`, `
-			A = 6.6
-			A.init = 5.0;
-			A.init = 6.0;
-		`, `
 			A = 3.3
 			B = A[0]
 		`, `
@@ -202,6 +204,26 @@
 			}
 		`, `
 			mem[aaa] int v;
+		`, `
+			y = 5;
+			(y + y).fs = 0.5
+		`, `
+			y = A(x) {
+				y = x
+				y.fs = 5
+				y.fs.qwe.init = 4
+			}
+		`, `
+			x = 5
+			y = A () {
+				y = 4
+				x.fs = 5
+			}
+		`, `
+			y = A(x) {
+				y = x
+			}
+			A.init = 5
 		`
 	];
 

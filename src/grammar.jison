@@ -395,6 +395,14 @@ postfix_expr        : primary_expr
                                 args: [$3]
                             }
                         }}
+                    | postfix_expr '.' id
+                        {{
+                            $$ = {
+                                name: 'PROPERTY',
+                                expr: $1,
+                                property_id: $3
+                            }
+                        }}
                     ;
 
 primary_expr        : id
@@ -410,14 +418,6 @@ primary_expr        : id
                                 name: 'VARIABLE',
                                 id: $2,
                                 declaredType: $1
-                            }
-                        }}
-                    | id '.' id
-                        {{
-                            $$ = {
-                                name: 'PROPERTY',
-                                id: $1,
-                                property_id: $3
                             }
                         }}
                     | '_'
