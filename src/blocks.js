@@ -88,7 +88,7 @@
 		this.o_ports.forEach(p => p.validate());
 	};
 	Block.toString = function () {
-		return "{ B_" + this.id + ", " + this.operation + " }";
+		return "{" + this.operation + ":" + this.i_ports.length + ":" + this.o_ports.length + " }";
 	};
 	Block.clone = function () { // TODO: Fix
 		let r = Object.create(this);
@@ -186,7 +186,7 @@
 			throw new Error("Undefined constant");
 	};
 	ConstantBlock.toString = function () {
-		return Block.toString().call(this).replace('}', ', ' + this.value + " }");
+		return "{ " + this.value + " }";
 	};
 
 
@@ -450,10 +450,12 @@
 		this.blocks.forEach(b => b.validate());
 	};
 	CompositeBlock.toString = function () {
-		let r = "{ G_" + this.id + "\n";
+		let r = "{ G " + this.id + "\n";
 		this.blocks.forEach(b => r += "\t" + b.toString() + "\n");
 		r += "\n";
-		this.connections.forEach(c => r += "\t" + b.toString() + "\n");
+		this.connections.forEach(c => r += "\t" + c.toString() + "\n");
+		r += "\n";
+		this.bdefs.forEach(c => r += "\t" + c.toString() + "\n");
 		r += "}";
 		return r;
 	};

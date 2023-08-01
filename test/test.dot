@@ -1,0 +1,44 @@
+digraph D {
+compound=true 
+node [shape=record];
+subgraph clusterA12 { 
+label = "0"; 
+subgraph clusterA16 { 
+label = "asd"; 
+A0[ label = "i_0" ]; 
+subgraph clusterA20 { 
+label = "x"; 
+A3[ label = "i_0" ]; 
+A4[ label = "o_0" ]; 
+} 
+subgraph clusterA24 { 
+label = "y"; 
+A5[ label = "i_0" ]; 
+A6[ label = "o_0" ]; 
+} 
+subgraph clusterA28 { 
+label = "u"; 
+A7[ label = "i_0" ]; 
+A8[ label = "o_0" ]; 
+} 
+subgraph clusterA32 { 
+label = "A"; 
+A9[ label = "i_0" ]; 
+A10[ label = "o_0" ]; 
+} 
+subgraph clusterA36 { 
+label = "123"; 
+A11[ label = "o_0" ]; 
+} 
+A1[ label = "o_0" ]; 
+A2[ label = "o_1" ]; 
+A0 -> A3;
+A6 -> A1;
+A8 -> A2;
+A11 -> A9;
+A10 -> A5;
+A4 -> A7;
+} 
+} 
+
+}

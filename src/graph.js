@@ -29,6 +29,8 @@
 		bdef.init();
 
 		convert_statements(root.statements, bdef);
+
+		return bdef;
 	}
 
 	
@@ -49,28 +51,43 @@
 		});
 
 		// Adding input/outputs
-		bdef_node.inputs.forEach(i => {
+		bdef_node.inputs.forEach((p, i) => {
 			const v = Object.create(bs.VarBlock);
-			v.id = i.id;
-			v.datatype = getDataType(i.declaredType);
+			v.id = p.id;
+			v.datatype = getDataType(p.declaredType);
 			v.init();
+
+			const c = Object.create(bs.CompositeBlock.Connection);
+			c.in = bdef.i_ports[i];
+			c.out = v.i_ports[0];
+
 			bdef.blocks.push(v);
+			bdef.connections.push(c);
 		});
-		bdef_node.outputs.forEach(o => {
+		bdef_node.outputs.forEach((p, i) => {
 			const v = Object.create(bs.VarBlock);
-			v.id = o.id;
-			v.datatype = getDataType(o.declaredType);
+			v.id = p.id;
+			v.datatype = getDataType(p.declaredType);
 			v.init();
+
+			const c = Object.create(bs.CompositeBlock.Connection);
+			c.in = v.o_ports[0];
+			c.out = bdef.o_ports[i];
+
 			bdef.blocks.push(v);
+			bdef.connections.push(c);
 		});
 
 		convert_statements(bdef_node.statements, bdef);
+
+		// TODO: probably attack ports?
 
 		return bdef;
 	}
 
 	function convert_statements (statements, bdef) {
 
+		// Adding variables
 		statements.filter(s => s.name == "ASSIGNMENT").forEach(s => {
 			s.outputs.filter(o => o.name == 'VARIABLE').forEach(o => {
 				if (bdef.blocks.some(bb => bb.id == o.id)) // Is output
@@ -83,7 +100,6 @@
 			});
 		});
 		
-
 		// Adding MEMORY DECLARATIONS blocks
 		statements.filter(s => s.name == 'MEMORY_DECLARATION').forEach(s => {
 			const m = Object.create(bs.MemoryBlock);
@@ -110,13 +126,13 @@
 				break;
 			}
 			case 'EXPR': {
-				let expr_out_ps = convert_expr(s.expr, bdef);
+				const expr_ports = convert_expr(s.expr, bdef);
 				s.outputs.forEach((o, oi) => {
 					switch (o.name) {
 					case 'VARIABLE': {
 						let v = findVarById(o.id, bdef);
 						const c = Object.create(bs.CompositeBlock.Connection);
-						c.in = expr_out_ps[oi];
+						c.in = expr_ports[1][oi];
 						c.out = v.i_ports[0];
 						bdef.connections.push(c);
 						break;
@@ -148,8 +164,8 @@
 
 		switch (expr_node.name) {
 		case 'VARIABLE': {
-
-			break;
+			const v = findVarById(expr_node.id, bdef);
+			return [v.i_ports, v.o_ports];
 		}
 		case 'PROPERTY': {
 			// TODO: 
@@ -168,7 +184,9 @@
 			else if (expr_node.type == 'BOOL')
 				b.datatype = ts.DataTypeBool;
 			b.value = expr_node.val;
-			break;
+			b.init();
+			bdef.blocks.push(b);
+			return [[], b.o_ports];
 		}
 		case 'MEMORY_ELEMENT': {
 			

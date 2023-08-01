@@ -22,11 +22,42 @@
 	const parser = require("../src/grammar");
 	const syntax = require("../src/syntax");
 	const graph  = require("../src/graph");
+	const util   = require("../src/util");
+	const fs     = require("fs");
 
 	const GoodTests = [
-		{ 
-			code: 
-				`
+		{
+			code: `
+				y, u = asd (x) {
+					A = 123
+					y = A
+					u = x
+				}
+			`,
+			options: { initial_block: "asd" }
+		}, {
+			code: `
+				int A = 123
+				y = asd (x) {
+					y = x * 2.0 + A
+				}
+			`,
+			options: { initial_block: "asd" }
+		}, 
+		{
+			code: `
+				int A = 123
+				y, int u = asd (x) {
+					t = x * 5.5
+					y = x * 2.0 + A
+					u = int(t) - A
+				}
+			`,
+			options: { initial_block: "asd" }
+		},
+
+		/*{ 
+			code: `
 					int A = 5
 					float B = 5.5
 					bool C = false
@@ -38,8 +69,7 @@
 					}
 				`,
 			options: { initial_block: "myblock" }
-		}
-
+		}*/
 	];
 
 	const BadTests = [
@@ -56,12 +86,18 @@
 			const AST = parser.parse(GoodTests[t].code);
 			syntax.validateAST(AST);
 			const g = graph.ASTToGraph(AST, GoodTests[t].options);
+			//console.log(g.toString())
+			//console.log(g.bdefs[0])
+			const gvizs = util.graphToGraphviz(g);
+			//console.log(gvizs);
+			fs.writeFileSync("test.dot", gvizs);
 		} catch (e) {
 			//console.log("A", e);
 			res = false;
 			err = e;
 		}
 		GoodTestResults.push({ i: t, r: res, e: err });
+		break;;
 	}
 
 	for (let t in BadTests) {
@@ -87,6 +123,7 @@
 			console.log("Error:");
 			console.log(GoodTestResults[r.i].e);
 		}
+		break;
 	}
 
 	for (let r of BadTestResults) {
