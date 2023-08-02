@@ -206,13 +206,13 @@
 	};
 
 	const LogicalAndBlock = Object.create(LogicalBlock);
-	LogicalAndBlock.operation = "AND";
+	LogicalAndBlock.operation = "&&";
 
 	const LogicalOrBlock = Object.create(LogicalBlock);
-	LogicalOrBlock.operation = "OR";
+	LogicalOrBlock.operation = "||";
 	
 	const LogicalNotBlock = Object.create(LogicalBlock);
-	LogicalNotBlock.operation = "NOT";
+	LogicalNotBlock.operation = "!";
 	LogicalNotBlock.init = function () {
 		this.createPorts(1, 1);
 	};
@@ -233,9 +233,13 @@
 	};
 
 	const BitwiseOrBlock = Object.create(BitwiseBlock);
+	BitwiseOrBlock.operation = "|";
 	const BitwiseXorBlock = Object.create(BitwiseBlock);
+	BitwiseXorBlock.operation = "^";
 	const BitwiseAndBlock = Object.create(BitwiseBlock);
+	BitwiseAndBlock.operation = "&";
 	const BitwiseNotBlock = Object.create(BitwiseBlock);
+	BitwiseNotBlock.operation = "~";
 	BitwiseNotBlock.init = function () {
 		this.createPorts(1, 1);
 	};
@@ -255,9 +259,9 @@
 	};
 
 	const EqualityBlock = Object.create(RelationalBlock);
-	EqualityBlock.operation = "EQUAL";
+	EqualityBlock.operation = "==";
 	const InequalityBlock = Object.create(RelationalBlock);
-	InequalityBlock.operation = "NOTEQUAL";
+	InequalityBlock.operation = "!=";
 	
 
 	const RelationalLGBlock = Object.create(RelationalBlock);
@@ -268,13 +272,13 @@
 			throw new Error("Only int32 and float32 can be compared");
 	};
 	const LessBlock = Object.create(RelationalLGBlock);
-	LessBlock.operation = "LESS";
+	LessBlock.operation = "<";
 	const GreaterBlock = Object.create(RelationalLGBlock);
-	GreaterBlock.operation = "GREATER";
+	GreaterBlock.operation = ">";
 	const LessEqualBlock = Object.create(RelationalLGBlock);
-	LessEqualBlock.operation = "LESSEQUAL";
+	LessEqualBlock.operation = "<=";
 	const GreaterEqualBlock = Object.create(RelationalLGBlock);
-	GreaterEqualBlock.operation = "GREATEREQUAL";
+	GreaterEqualBlock.operation = ">=";
 
 
 	const ShiftBlock = Object.create(Block);
@@ -290,7 +294,9 @@
 			throw new Error("Shift accepts int32 only");
 	};
 	const ShiftLeftBlock = Object.create(ShiftBlock);
+	ShiftLeftBlock.operation = "<<";
 	const ShiftRightBlock = Object.create(ShiftBlock);
+	ShiftRightBlock.operation = ">>";
 
 
 	const ArithmeticalBlock = Object.create(Block);
@@ -312,22 +318,23 @@
 	};
 
 	const SumBlock = Object.create(ArithmeticalBlock);
-	SumBlock.operation = "SUM";
+	SumBlock.operation = "+";
 
 	const SubtractionBlock = Object.create(ArithmeticalBlock);
-	SubtractionBlock.operation = "MINUS";
+	SubtractionBlock.operation = "-";
 
 	const MulBlock = Object.create(ArithmeticalBlock);
-	MulBlock.operation = "MUL";
+	MulBlock.operation = "*";
 
 	const DivisionBlock = Object.create(ArithmeticalBlock);
-	DivisionBlock.operation = "DIV";
+	DivisionBlock.operation = "/";
 
 	const UminusBlock = Object.create(ArithmeticalBlock);
-	UminusBlock.operation = "UMINUS";
+	UminusBlock.operation = "-";
 
 	
 	const ModuloBlock = Object.create(Block);
+	ModuloBlock.operation = "%";
 	ModuloBlock.init = function () {
 		this.createPorts(2, 1);
 	};
@@ -346,22 +353,26 @@
 	};
 
 	const CastF32Block = Object.create(CastBlock);
+	CastF32Block.operation = "(f32)";
 	CastF32Block.setOutputDatatype = function () {
 		this.o_ports[0].datatype = ts.DataTypeFloat32;
 	};
 	
 	const CastI32Block = Object.create(CastBlock);
+	CastI32Block.operation = "(i32)";
 	CastI32Block.setOutputDatatype = function () {
 		this.o_ports[0].datatype = ts.DataTypeInt32;
 	};
 
 	const CastBoolBlock = Object.create(CastBlock);
+	CastBoolBlock.operation = "(bool)";
 	CastBoolBlock.setOutputDatatype = function () {
 		this.o_ports[0].datatype = ts.DataTypeBool;
 	};
 
 
 	const IfthenelseBlock = Object.create(Block);
+	IfthenelseBlock.operation = "???";
 	IfthenelseBlock.nOutputs = undefined;
 	IfthenelseBlock.init = function () {
 		const nInputs = 1 + this.nOutputs * 2; // Condition, outputs of 1st branch, output of 2nd branch

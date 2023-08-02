@@ -49,55 +49,47 @@
 		}
 		function convertCompositeBlock (bdef) {
 			let s = "";
+			let conns = "";
+			let props = "";
 			s += "subgraph cluster" + getUID() + " { \n";
 			s += "label = \"" + bdef.id + "\"; \n";
 			let ips = getUID();
 			let bod = getUID();
 			let ops = getUID();
-			//s += "subgraph cluster" + ips + " { \n";
 			bdef.i_ports.forEach((p, i) => {
-				s += p.__gvizid__ + "[ label = \"i_" + i + "\" ]; \n";
+				s += p.__gvizid__ + "[ label = \"i_" + i + "\" style=filled,color=lightgrey ]; \n";
 			});
-			//s += "} \n";
-			//s += "subgraph cluster" + bod + " { \n";
 			bdef.blocks.forEach(b => {
 				s += convertBlock(b);
 			});
 			bdef.bdefs.forEach(bd => {
-				s += convertCompositeBlock(bd);
+				let r = convertCompositeBlock(bd);
+				s += r[0];
+				conns += r[1];
+				props += r[2];
 			});
-			//s += "} \n";
-			//s += "subgraph cluster" + ops + " { \n";
 			bdef.o_ports.forEach((p, i) => {
-				s += p.__gvizid__ + "[ label = \"o_" + i + "\" ]; \n";
+				s += p.__gvizid__ + "[ label = \"o_" + i + "\" style=filled,color=darkgrey ]; \n";
 			});
-			//s += "} \n";
 			bdef.connections.forEach(c => {
 				if (!c.in || !c.out || !c.in.__gvizid__ || !c.out.__gvizid__)
 					console.warn("Invalid connection, ", c.toString());
-				s += c.in.__gvizid__ + " -> " + c.out.__gvizid__ + ";\n";
+				conns += c.in.__gvizid__ + " -> " + c.out.__gvizid__ + ";\n";
+			});
+			bdef.properties.forEach(p => {
+				props += p.block.o_ports[0].__gvizid__ + " -> " + p.of.o_ports[0].__gvizid__ + "[style=\"dotted\", color=\"purple\", arrowhead=none];\n";
 			});
 			s += "} \n";
-			return s;
+			return [s, conns, props];
 		}
 		function convertBlock (b) {
 			let s = "";
-			s += "subgraph cluster" + getUID() + " { \n";
-			s += "label = \"" + (b.id || b.value || b.operation || ".") + "\"; \n";
-			let ips = getUID();
-			let bod = getUID();
-			let ops = getUID();
-			//s += "subgraph cluster" + ips + " { \n";
-			b.i_ports.forEach((p, i) => {
-				s += p.__gvizid__ + "[ label = \"i_" + i + "\" ]; \n";
-			});
-			//s += "} \n";
-			//s += "subgraph cluster" + ops + " { \n";
-			b.o_ports.forEach((p, i) => {
-				s += p.__gvizid__ + "[ label = \"o_" + i + "\" ]; \n";
-			});
-			//s += "} \n";
-			s += "} \n";
+			// same uid for every port
+			let u = b.o_ports[0].__gvizid__;
+			b.i_ports.forEach(p => p.__gvizid__ = u);
+			b.o_ports.forEach(p => p.__gvizid__ = u);
+
+			s += u + "[" + "label = \"" + (b.id || b.value || b.operation || ".") + "\"" + "]; \n";
 			return s;
 		}
 
@@ -124,9 +116,13 @@
 
 		let s = "";
 		s += "digraph D {\n";
+		s += "rankdir=LR; \n";
 		s += "compound=true \n";
 		s += "node [shape=record];\n";
-		s += convertCompositeBlock(g);
+		let r = convertCompositeBlock(g);
+		s += r[0];
+		s += r[1];
+		s += r[2];
 		s += "\n}\n";
 
 		bdefremUID(g);

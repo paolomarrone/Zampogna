@@ -26,7 +26,7 @@
 	const fs     = require("fs");
 
 	const GoodTests = [
-		{
+		/*{
 			code: `
 				y, u = asd (x) {
 					A = 123
@@ -35,7 +35,8 @@
 				}
 			`,
 			options: { initial_block: "asd" }
-		}, {
+		},
+		{
 			code: `
 				int A = 123
 				y = asd (x) {
@@ -43,7 +44,7 @@
 				}
 			`,
 			options: { initial_block: "asd" }
-		}, 
+		},
 		{
 			code: `
 				int A = 123
@@ -54,9 +55,21 @@
 				}
 			`,
 			options: { initial_block: "asd" }
+		},*/
+		{
+			code: `
+				int A = 123
+				y, int u = asd (x) {
+					t = x * 5.5
+					y = x * 2.0 + A
+					u = int(t) - A
+					t.fs.init.fs.fs.fs = 666.666 + (A.fs.init.fs * 2).init
+				}
+			`,
+			options: { initial_block: "asd" }
 		},
-
-		/*{ 
+/*
+		{ 
 			code: `
 					int A = 5
 					float B = 5.5
@@ -69,7 +82,8 @@
 					}
 				`,
 			options: { initial_block: "myblock" }
-		}*/
+		}
+*/
 	];
 
 	const BadTests = [

@@ -80,8 +80,6 @@
 
 		convert_statements(bdef_node.statements, bdef);
 
-		// TODO: probably attack ports?
-
 		return bdef;
 	}
 
@@ -130,7 +128,7 @@
 				s.outputs.forEach((o, oi) => {
 					switch (o.name) {
 					case 'VARIABLE': {
-						let v = findVarById(o.id, bdef);
+						let v = findVarById(o.id, bdef).r;
 						const c = Object.create(bs.CompositeBlock.Connection);
 						c.in = expr_ports[1][oi];
 						c.out = v.i_ports[0];
@@ -142,7 +140,11 @@
 						break;
 					}
 					case 'PROPERTY': {
-
+						let r = convert_property_left(o, bdef);
+						const c = Object.create(bs.CompositeBlock.Connection);
+						c.in = expr_ports[1][oi];
+						c.out = r.p.i_ports[0];
+						bdef.connections.push(c);
 						break;
 					}
 					case 'MEMORY_ELEMENT': {
@@ -158,22 +160,66 @@
 		})
 	}
 
+	function convert_property_left (property_node, bdef) {
+		let x = property_node.expr;
+		if (x.name == 'VARIABLE') {
+			let r = findVarById(x.id, bdef) || findMemById(x.id, bdef);
+			return { p: convert_property(r.r, property_node.property_id, r.bd), bdef: r.bd };
+		}
+		else if (x.name == 'PROPERTY') {
+			let r = convert_property_left(x, bdef);
+			return { p: convert_property(r.p, property_node.property_id, bdef), bdef: r.bdef };
+		}
+	}
+
+	function convert_property_right (property_node, bdef) {
+
+	}
+
+	function convert_property (block, property, bdef) {
+		const props = bdef.properties.filter(p => p.of == block && p.type == property);
+		if (props.length == 0) {
+			const v = Object.create(bs.VarBlock);
+			v.id = (block.id || block.operation) + "." + property;
+			v.datatype = property == "fs" ? ts.DataTypeFloat32 : ts.DataTypeGeneric; // Must be inferred later.
+			v.init();
+			const p = Object.create(bs.CompositeBlock.Property);
+			p.of = block;
+			p.type = property;
+			p.block = v;
+			bdef.properties.push(p);
+			bdef.blocks.push(v);
+			return v;
+		}
+		if (props.length == 1) {
+			return props[0].block;
+		}
+		throw new Error("Too many properties found");
+	}
+
 	function convert_expr (expr_node, bdef) {
 
 		let b;
 
 		switch (expr_node.name) {
 		case 'VARIABLE': {
-			const v = findVarById(expr_node.id, bdef);
+			const v = findVarById(expr_node.id, bdef).r;
 			return [v.i_ports, v.o_ports];
 		}
 		case 'PROPERTY': {
-			// TODO: 
-			// Convert expr
-			// find existing property of expr
-			// If it doesn't exist, create a BlockVar and bdef.properties.push(new Property)
-			// But beware, the property must be added to the bdef the expr belongs
-			break;
+			const x = expr_node.expr;
+			if (x.name == 'VARIABLE') {
+				const r = findVarById(x.id, bdef) || findMemById(x.id, bdef);
+				const p = convert_property(r.r, expr_node.property_id, r.bd);
+				return [[], p.o_ports];
+			}
+			else {
+				const ps = convert_expr(x, bdef);
+				const of = ps[1][0].block;
+				const bd = findBdefByBlock(of, bdef);
+				const p  = convert_property(of, expr_node.property_id, bd);
+				return [[], p.o_ports];
+			}
 		}
 		case 'CONSTANT': {
 			b = Object.create(bs.ConstantBlock);
@@ -190,8 +236,21 @@
 		}
 		case 'MEMORY_ELEMENT': {
 			
-			break;
+			return;
 		}
+		case 'INLINE_IF_THEN_ELSE': {
+
+			return;
+		}
+		case 'CALL_EXPR': {
+
+			return;
+		}
+		}
+
+
+		// Regular args exprs
+		switch (expr_node.name) { 
 		case 'BITWISE_NOT_EXPR': {
 			b = Object.create(bs.BitwiseNotBlock);
 			break;
@@ -276,10 +335,6 @@
 			b = Object.create(bs.LogicalOrBlock);
 			break;
 		}
-		case 'INLINE_IF_THEN_ELSE': {
-
-			break;
-		}
 		case 'CAST_EXPR': {
 			if (expr_node.type == 'INT32')
 				b = Object.create(bs.CastI32Block);
@@ -289,24 +344,25 @@
 				b = Object.create(bs.CastBoolBlock);
 			break;
 		}
-		case 'CALL_EXPR': {
-
-			break;
-		} 
 		default: {
 			throw new Error("Unexpect AST expr node");
 			break;
 		}
 		}
 
-		//b.init();
+		b.init();
 
-		// TODO
+		for (let argi = 0; argi < expr_node.args.length; argi++) {
+			const ports = convert_expr(expr_node.args[argi], bdef);
+			const c = Object.create(bs.CompositeBlock.Connection);
+			c.in = ports[1][0];
+			c.out = b.i_ports[argi];
+			bdef.connections.push(c);
+		}
 
 		bdef.blocks.push(b);
 
-		return b; // Tmp
-
+		return [[], b.o_ports];
 	}
 
 
@@ -315,7 +371,7 @@
 		while (bd) {
 			let r = bd.blocks.find(b => bs.VarBlock.isPrototypeOf(b) && b.id == id);
 			if (r)
-				return r;
+				return {r, bd};
 			bd = bd.bdef_father;
 		}
 	}
@@ -325,7 +381,18 @@
 		while (bd) {
 			let r = bd.blocks.find(b => bs.MemoryBlock.isPrototypeOf(b) && b.id == id);
 			if (r)
-				return r;
+				return {r, bd};
+			bd = bd.bdef_father;
+		}
+	}
+
+	// Hierarchly find bdef that contains block
+	function findBdefByBlock (block, bdef) {
+		let bd = bdef;
+		while (bd) {
+			let r = bd.blocks.find(b => b == block);
+			if (r)
+				return bd;
 			bd = bd.bdef_father;
 		}
 	}
@@ -338,7 +405,7 @@
 				(b.inputs.length == inputDataTypes.length) &&
 				(b.inputDataTypes.every((t, i) => t == inputDataTypes[i])));
 			if (r)
-				return r;
+				return {r, bd};
 			bd = bd.bdef_father;
 		}
 	}

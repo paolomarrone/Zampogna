@@ -157,7 +157,7 @@
 				check_property_left(o);
 
 				function check_property_left (p) {
-					if (p.expr.name == 'VARIABLE' || p.expr.name == 'MEMORY_DECLARATION') {
+					if (p.expr.name == 'VARIABLE') {
 						let elements = scope.findLocally(p.expr.id);
 						if (elements.length != 1)
 							err("Property of undefined");
