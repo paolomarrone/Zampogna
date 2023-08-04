@@ -33,8 +33,6 @@
 		return bdef;
 	}
 
-	
-
 	function convert_block_definition (bdef_node, bdef_father) {
 		
 		const bdef = Object.create(bs.CompositeBlock);
@@ -88,7 +86,7 @@
 		// Adding variables
 		statements.filter(s => s.name == "ASSIGNMENT").forEach(s => {
 			s.outputs.filter(o => o.name == 'VARIABLE').forEach(o => {
-				if (bdef.blocks.some(bb => bb.id == o.id)) // Is output
+				if (bdef.blocks.some(bb => bb.id == o.id)) // is output
 					return;
 				const v = Object.create(bs.VarBlock);
 				v.id = o.id
@@ -103,7 +101,11 @@
 			const m = Object.create(bs.MemoryBlock);
 			m.id = s.id;
 			m.datatype = getDataType(s.type);
+			m.writers_N = s.writers_N;
+			m.readers_N = s.readers_N;
 			m.init();
+			m.__raedersAdded__ = 0; // Helper
+			m.__writersAdded__ = 0;
 			bdef.blocks.push(m);
 		});
 
@@ -112,15 +114,25 @@
 			bdef.bdefs.push(convert_block_definition(bdef_n, bdef));
 		});
 
+		// Connect memory size expr
+		statements.filter(s => s.name == 'MEMORY_DECLARATION').forEach(s => {
+			const m = findMemById(s.id, bdef).r;
+			const size_expr_ports = convert_expr(s.size, bdef);
+			const c = Object.create(bs.CompositeBlock.Connection);
+			c.in = size_expr_ports[1][0];
+			c.out = m.getSizePort();
+			bdef.connections.push(c);
+		});
+
 		// Adding expression blocks and connections
 		statements.filter(s => s.name == 'ASSIGNMENT').forEach((s) => {
 			switch (s.type) {
 			case 'ANONYMOUS_BLOCK': {
-				// TODO
+				throw "Not imeplemented yet"
 				break;
 			}
 			case 'IF_THEN_ELSE': {
-				// TODO
+				throw "Not imeplemented yet"
 				break;
 			}
 			case 'EXPR': {
@@ -128,7 +140,7 @@
 				s.outputs.forEach((o, oi) => {
 					switch (o.name) {
 					case 'VARIABLE': {
-						let v = findVarById(o.id, bdef).r;
+						const v = findVarById(o.id, bdef).r;
 						const c = Object.create(bs.CompositeBlock.Connection);
 						c.in = expr_ports[1][oi];
 						c.out = v.i_ports[0];
@@ -140,7 +152,7 @@
 						break;
 					}
 					case 'PROPERTY': {
-						let r = convert_property_left(o, bdef);
+						const r = convert_property_left(o, bdef);
 						const c = Object.create(bs.CompositeBlock.Connection);
 						c.in = expr_ports[1][oi];
 						c.out = r.p.i_ports[0];
@@ -148,16 +160,32 @@
 						break;
 					}
 					case 'MEMORY_ELEMENT': {
-						let m = findMemById(o.id, bdef);
-						// TODO: send input to mem and get output 
+						const m = findMemById(o.id, bdef).r;
+						const index_expr_ports = convert_expr(o.args[0], bdef);
+						const mem_writer_ports = m.getWriterPorts(m.__writersAdded__++);
+						const ci = Object.create(bs.CompositeBlock.Connection);
+						const cv = Object.create(bs.CompositeBlock.Connection);
+						ci.in  = index_expr_ports[1][0];
+						ci.out = mem_writer_ports[0];
+						cv.in  = expr_ports[1][oi];
+						cv.out = mem_writer_ports[1];
+						bdef.connections.push(ci);
+						bdef.connections.push(cv);
 						break;
 					}
 					}
-				})
+				});
 				break;
 			}
 			}
-		})
+		});
+
+		// Cleaning
+		bdef.blocks.filter(b => bs.MemoryBlock.isPrototypeOf(b)).forEach(m => {
+			delete m.__raedersAdded__;
+			delete m.__writersAdded__;
+		});
+
 	}
 
 	function convert_property_left (property_node, bdef) {
@@ -170,10 +198,6 @@
 			let r = convert_property_left(x, bdef);
 			return { p: convert_property(r.p, property_node.property_id, bdef), bdef: r.bdef };
 		}
-	}
-
-	function convert_property_right (property_node, bdef) {
-
 	}
 
 	function convert_property (block, property, bdef) {
@@ -199,8 +223,6 @@
 
 	function convert_expr (expr_node, bdef) {
 
-		let b;
-
 		switch (expr_node.name) {
 		case 'VARIABLE': {
 			const v = findVarById(expr_node.id, bdef).r;
@@ -222,7 +244,7 @@
 			}
 		}
 		case 'CONSTANT': {
-			b = Object.create(bs.ConstantBlock);
+			const b = Object.create(bs.ConstantBlock);
 			if (expr_node.type == 'INT32')
 				b.datatype = ts.DataTypeInt32;
 			else if (expr_node.type == 'FLOAT32')
@@ -235,120 +257,88 @@
 			return [[], b.o_ports];
 		}
 		case 'MEMORY_ELEMENT': {
-			
-			return;
+			const r = findMemById(expr_node.id, bdef);
+			const m = r.r;
+			const mem_reader_ports = m.getReaderPorts(m.__raedersAdded__++);
+			const index_expr_ports = convert_expr(expr_node.args[0], bdef);
+			const ci = Object.create(bs.CompositeBlock.Connection);
+			ci.in  = index_expr_ports[1][0];
+			ci.out = mem_reader_ports[0];
+			bdef.connections.push(ci);
+			return [[], [mem_reader_ports[1]]];
 		}
 		case 'INLINE_IF_THEN_ELSE': {
-
-			return;
-		}
-		case 'CALL_EXPR': {
-
+			throw "Not imeplemented yet"
 			return;
 		}
 		}
-
 
 		// Regular args exprs
-		switch (expr_node.name) { 
-		case 'BITWISE_NOT_EXPR': {
-			b = Object.create(bs.BitwiseNotBlock);
-			break;
-		}
-		case 'LOGICAL_NOT_EXPR': {
-			b = Object.create(bs.LogicalNotBlock);
-			break;
-		}
-		case 'UMINUS_EXPR': {
-			b = Object.create(bs.UminusBlock);
-			break;
-		}
-		case 'MODULO_EXPR': {
-			b = Object.create(bs.ModuloBlock);
-			break;
-		}
-		case 'DIV_EXPR': {
-			b = Object.create(bs.DivisionBlock);
-			break;
-		}
-		case 'TIMES_EXPR': {
-			b = Object.create(bs.MulBlock);
-			break;
-		}
-		case 'MINUS_EXPR': {
-			b = Object.create(bs.SubtractionBlock);
-			break;
-		}
-		case 'PLUS_EXPR': {
-			b = Object.create(bs.SumBlock);
-			break;
-		}
-		case 'SHIFT_RIGHT_EXPR': {
-			b = Object.create(bs.ShiftRightBlock);
-			break;
-		}
-		case 'SHIFT_LEFT_EXPR': {
-			b = Object.create(bs.ShiftLeftBlock);
-			break;
-		}
-		case 'GREATEREQUAL_EXPR': {
-			b = Object.create(bs.GreaterEqualBlock);
-			break;
-		}
-		case 'GREATER_EXPR': {
-			b = Object.create(bs.GreaterBlock);
-			break;
-		}
-		case 'LESSEQUAL_EXPR': {
-			b = Object.create(bs.LessEqualBlock);
-			break;
-		}
-		case 'LESS_EXPR': {
-			b = Object.create(bs.LessBlock);
-			break;
-		}
-		case 'NOTEQUAL_EXPR': {
-			b = Object.create(bs.InequalityBlock);
-			break;
-		}
-		case 'EQUAL_EXPR': {
-			b = Object.create(bs.EqualityBlock);
-			break;
-		}
-		case 'BITWISE_AND_EXPR': {
-			b = Object.create(bs.BitwiseAndBlock);
-			break;
-		}
-		case 'BITWISE_EXCLUSIVE_OR_EXPR': {
-			b = Object.create(bs.BitwiseXOrBlock);
-			break;
-		}
-		case 'BITWISE_INCLUSIVE_OR_EXPR': {
-			b = Object.create(bs.BitwiseOrBlock);
-			break;
-		}
-		case 'LOGICAL_AND_EXPR': {
-			b = Object.create(bs.LogicalAndBlock);
-			break;
-		}
-		case 'LOGICAL_OR_EXPR': {
-			b = Object.create(bs.LogicalOrBlock);
-			break;
-		}
-		case 'CAST_EXPR': {
-			if (expr_node.type == 'INT32')
-				b = Object.create(bs.CastI32Block);
-			else if (expr_node.type == 'FLOAT32')
-				b = Object.create(bs.CastF32Block);
-			else if (expr_node.type == 'BOOL')
-				b = Object.create(bs.CastBoolBlock);
-			break;
-		}
-		default: {
-			throw new Error("Unexpect AST expr node");
-			break;
-		}
-		}
+
+		const b = (function () {
+			switch (expr_node.name) { 
+			case 'BITWISE_NOT_EXPR':
+				return Object.create(bs.BitwiseNotBlock);
+			case 'LOGICAL_NOT_EXPR':
+				return Object.create(bs.LogicalNotBlock);
+			case 'UMINUS_EXPR':
+				return Object.create(bs.UminusBlock);
+			case 'MODULO_EXPR':
+				return Object.create(bs.ModuloBlock);
+			case 'DIV_EXPR':
+				return Object.create(bs.DivisionBlock);
+			case 'TIMES_EXPR':
+				return Object.create(bs.MulBlock);
+			case 'MINUS_EXPR':
+				return Object.create(bs.SubtractionBlock);
+			case 'PLUS_EXPR':
+				return Object.create(bs.SumBlock);
+			case 'SHIFT_RIGHT_EXPR':
+				return Object.create(bs.ShiftRightBlock);
+			case 'SHIFT_LEFT_EXPR':
+				return Object.create(bs.ShiftLeftBlock);
+			case 'GREATEREQUAL_EXPR':
+				return Object.create(bs.GreaterEqualBlock);
+			case 'GREATER_EXPR':
+				return Object.create(bs.GreaterBlock);
+			case 'LESSEQUAL_EXPR':
+				return Object.create(bs.LessEqualBlock);
+			case 'LESS_EXPR':
+				return Object.create(bs.LessBlock);
+			case 'NOTEQUAL_EXPR':
+				return Object.create(bs.InequalityBlock);
+			case 'EQUAL_EXPR':
+				return Object.create(bs.EqualityBlock);
+			case 'BITWISE_AND_EXPR':
+				return Object.create(bs.BitwiseAndBlock);
+			case 'BITWISE_EXCLUSIVE_OR_EXPR':
+				return Object.create(bs.BitwiseXOrBlock);
+			case 'BITWISE_INCLUSIVE_OR_EXPR':
+				return Object.create(bs.BitwiseOrBlock);
+			case 'LOGICAL_AND_EXPR':
+				return Object.create(bs.LogicalAndBlock);
+			case 'LOGICAL_OR_EXPR':
+				return Object.create(bs.LogicalOrBlock);
+			case 'CAST_EXPR':
+				if (expr_node.type == 'INT32')
+					return Object.create(bs.CastI32Block);
+				else if (expr_node.type == 'FLOAT32')
+					return Object.create(bs.CastF32Block);
+				else if (expr_node.type == 'BOOL')
+					return Object.create(bs.CastBoolBlock);
+				else 
+					throw new Error("Unexpect cast type: " + expr_node.type);
+			case 'CALL_EXPR': {
+				const b = Object.create(bs.CallBlock);
+				b.inputs_N = expr_node.args.length;
+				b.outputs_N = expr_node.outputs_N;
+				b.id = expr_node.id;
+				return b;
+			}
+			default:
+				throw new Error("Unexpected AST expr node");
+			}
+		})();
 
 		b.init();
 
@@ -365,13 +355,12 @@
 		return [[], b.o_ports];
 	}
 
-
 	function findVarById (id, bdef) {
 		let bd = bdef;
 		while (bd) {
 			let r = bd.blocks.find(b => bs.VarBlock.isPrototypeOf(b) && b.id == id);
 			if (r)
-				return {r, bd};
+				return { r, bd };
 			bd = bd.bdef_father;
 		}
 	}
@@ -381,7 +370,7 @@
 		while (bd) {
 			let r = bd.blocks.find(b => bs.MemoryBlock.isPrototypeOf(b) && b.id == id);
 			if (r)
-				return {r, bd};
+				return { r, bd };
 			bd = bd.bdef_father;
 		}
 	}
@@ -405,7 +394,7 @@
 				(b.inputs.length == inputDataTypes.length) &&
 				(b.inputDataTypes.every((t, i) => t == inputDataTypes[i])));
 			if (r)
-				return {r, bd};
+				return { r, bd };
 			bd = bd.bdef_father;
 		}
 	}

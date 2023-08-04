@@ -26,7 +26,7 @@
 	const fs     = require("fs");
 
 	const GoodTests = [
-		/*{
+		{
 			code: `
 				y, u = asd (x) {
 					A = 123
@@ -55,7 +55,7 @@
 				}
 			`,
 			options: { initial_block: "asd" }
-		},*/
+		},
 		{
 			code: `
 				int A = 123
@@ -68,7 +68,27 @@
 			`,
 			options: { initial_block: "asd" }
 		},
-/*
+		{
+			code: `
+				int A = 123
+				mem[A * 2] float U
+				U.init = 0
+				y, int u = asd (x) {
+					mem[5] float V
+					V.init = 0.0
+					V[0] = x
+					V[1] = x * 2 / V[3]
+					V[int(x)] = 0.5 * t
+					t = x * 5.5 + uff(t / 2)
+					y = x * 2.0 + float(A) / (V[2] + V[3])
+					u = int(t) - A % int(U[3])
+				}
+				y = uff (x) {
+					y = x - 1.0
+				}
+			`,
+			options: { initial_block: "asd" }
+		},/*
 		{ 
 			code: `
 					int A = 5
@@ -82,8 +102,7 @@
 					}
 				`,
 			options: { initial_block: "myblock" }
-		}
-*/
+		}*/
 	];
 
 	const BadTests = [
@@ -93,6 +112,10 @@
 	const GoodTestResults = [];
 	const BadTestResults = [];
 
+	const outputDir = './output';
+	if (!fs.existsSync(outputDir))
+		fs.mkdirSync(outputDir);
+
 	for (let t in GoodTests) {
 		let res = true;
 		let err = "";
@@ -100,18 +123,14 @@
 			const AST = parser.parse(GoodTests[t].code);
 			syntax.validateAST(AST);
 			const g = graph.ASTToGraph(AST, GoodTests[t].options);
-			//console.log(g.toString())
-			//console.log(g.bdefs[0])
 			const gvizs = util.graphToGraphviz(g);
-			//console.log(gvizs);
-			fs.writeFileSync("test.dot", gvizs);
+			fs.writeFileSync(outputDir + "/T" + t + ".dot", gvizs);
 		} catch (e) {
 			//console.log("A", e);
 			res = false;
 			err = e;
 		}
 		GoodTestResults.push({ i: t, r: res, e: err });
-		break;;
 	}
 
 	for (let t in BadTests) {

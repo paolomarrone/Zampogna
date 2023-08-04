@@ -53,9 +53,6 @@
 			let props = "";
 			s += "subgraph cluster" + getUID() + " { \n";
 			s += "label = \"" + bdef.id + "\"; \n";
-			let ips = getUID();
-			let bod = getUID();
-			let ops = getUID();
 			bdef.i_ports.forEach((p, i) => {
 				s += p.__gvizid__ + "[ label = \"i_" + i + "\" style=filled,color=lightgrey ]; \n";
 			});
@@ -77,7 +74,7 @@
 				conns += c.in.__gvizid__ + " -> " + c.out.__gvizid__ + ";\n";
 			});
 			bdef.properties.forEach(p => {
-				props += p.block.o_ports[0].__gvizid__ + " -> " + p.of.o_ports[0].__gvizid__ + "[style=\"dotted\", color=\"purple\", arrowhead=none];\n";
+				props += (p.block.o_ports[0] || p.block.i_ports[0]).__gvizid__ + " -> " + (p.of.o_ports[0] || p.of.i_ports[0]).__gvizid__ + "[style=\"dotted\", color=\"purple\", arrowhead=none];\n";
 			});
 			s += "} \n";
 			return [s, conns, props];
@@ -85,11 +82,11 @@
 		function convertBlock (b) {
 			let s = "";
 			// same uid for every port
-			let u = b.o_ports[0].__gvizid__;
+			let u = (b.o_ports[0] || b.i_ports[0]).__gvizid__;
 			b.i_ports.forEach(p => p.__gvizid__ = u);
 			b.o_ports.forEach(p => p.__gvizid__ = u);
 
-			s += u + "[" + "label = \"" + (b.id || b.value || b.operation || ".") + "\"" + "]; \n";
+			s += u + "[" + "label = \"" + (b.id || (b.value != undefined ? b.value + "" : null ) || b.operation || ".") + "\"" + "]; \n";
 			return s;
 		}
 

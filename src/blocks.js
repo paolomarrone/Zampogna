@@ -126,14 +126,30 @@
 	const MemoryBlock = Object.create(Block);
 	MemoryBlock.operation = "MEMORY";
 	MemoryBlock.id = "";
-	MemoryBlock.writers = 0; // E.g.
-	MemoryBlock.readers = 0; // E.g.
+	MemoryBlock.writers_N = 0; // E.g.
+	MemoryBlock.readers_N = 0; // E.g.
 	MemoryBlock.datatype = ts.DataTypeGeneric;
 	MemoryBlock.init = function () {
-		const nInputs = 1 + this.writers * 2 + this.readers; // size, writer indexes, writer values, reader indexes.
-		const nOutputs = this.readers; // reader values
+		const nInputs = 1 + 1 + this.writers_N * 2 + this.readers_N; // size, init, writer indexes, writer values, reader indexes.
+		const nOutputs = this.readers_N; // reader values
 		this.createPorts(nInputs, nOutputs);
-	}
+	};
+	MemoryBlock.getSizePort = function () {
+		return this.i_ports[0];
+	};
+	MemoryBlock.getInitPort = function () {
+		return this.i_ports[1];
+	};
+	MemoryBlock.getWriterPorts = function (i) {
+		if (this.writers_N <= 0 || i >= this.writers_N)
+			throw new Error("Memory has not so many writers");
+		return [this.i_ports[2 + i], this.i_ports[2 + this.writers_N + i]];
+	};
+	MemoryBlock.getReaderPorts = function (i) {
+		if (this.readers_N <= 0 || i >= this.readers_N)
+			throw new Error("Memory has not so many readers");
+		return [this.i_ports[2 + this.writers_N + i], this.o_ports[i]];
+	};
 	MemoryBlock.setOutputDatatype = function () {
 		this.o_ports.forEach(p => p.datatype = this.datatype);
 	};
@@ -370,6 +386,22 @@
 		this.o_ports[0].datatype = ts.DataTypeBool;
 	};
 
+	const CallBlock = Object.create(Block);
+	CallBlock.operation = "CALL";
+	CallBlock.id = undefined;
+	CallBlock.inputs_N = undefined;
+	CallBlock.outputs_N = undefined;
+	CallBlock.init = function () {
+		this.createPorts(this.inputs_N, this.outputs_N);
+	};
+	CallBlock.setOutputDatatype = function () {
+		// TODO. Maybe from outside?
+	};
+	CallBlock.setOutputUpdaterate = function () {
+		// TODO.
+	};
+	// Maybe CallBlock needs to be specialized in Extern and block instantiation
+
 
 	const IfthenelseBlock = Object.create(Block);
 	IfthenelseBlock.operation = "???";
@@ -532,6 +564,7 @@
 		ArithmeticalBlock, SumBlock, SubtractionBlock, MulBlock, DivisionBlock, UminusBlock,
 		ModuloBlock,
 		CastBlock, CastF32Block, CastI32Block, CastBoolBlock,
+		CallBlock,
 		IfthenelseBlock,
 		CompositeBlock
 	};

@@ -103,7 +103,8 @@
 	function analyze_memory_declaration (mdef, scope) {
 		if (scope.findLocally(mdef.id).length > 0)
 			err("ID used more than once");
-		mdef.writers = [];
+		mdef.writers_N = 0;
+		mdef.readers_N = 0;
 		scope.add(mdef);
 	}
 
@@ -183,7 +184,7 @@
 					err("Memory element not found");
 				if (elements[0].name != 'MEMORY_DECLARATION')
 					err("[] is allowed only for memory");
-				elements[0].writers.push(o);
+				elements[0].writers_N++;
 			}
 		});
 	}
@@ -296,6 +297,7 @@
 				if (m.name != 'MEMORY_DECLARATION')
 					err("That's not memory");
 				found = true;
+				m.readers_N++;
 				break;
 			}
 			if (!found)
@@ -321,6 +323,7 @@
 				if (b.inputs.length != expr.args.length)
 					continue;
 				expr_outputsN = b.outputs.length;
+				expr.outputs_N = expr_outputsN;
 				found = true;
 				break;
 			}
