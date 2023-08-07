@@ -224,6 +224,12 @@
 				y = x
 			}
 			A.init = 5
+		`, `
+			y1, y2 = A (x) {
+				y1 = x;
+				y2 = x
+			}
+			B = A(5).fs;
 		`
 	];
 
@@ -249,7 +255,7 @@
 		try {
 			syntax.validateAST(parser.parse(BadCodes[c]));
 		} catch (e) {
-			//console.log("B", e.message);
+			console.log("B", e.message);
 			res = true;
 			err = e;
 		}

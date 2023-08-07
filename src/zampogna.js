@@ -28,7 +28,8 @@
 
 		const options = {
 			debug_mode: false,
-			initial_block: "",
+			initial_block_id: "",
+			initial_block_inputs_n: -1, // Optional (and not checked) if there's a unique bdef with that id. All input types must be float32
 			control_inputs: [],
 			initial_values: [],
 			optimizations: [],

@@ -21,15 +21,52 @@
 
 	function ASTToGraph (root, options) {
 
+
 		const bdef = Object.create(bs.CompositeBlock);
 		bdef.id = "0";
 		bdef.bdef_father = undefined;
-		bdef.inputs_N = 0; // TODO, same as initial_block
+		bdef.inputs_N = 0; // set later
 		bdef.outputs_N = 0; // ^
 		bdef.init();
 
 		convert_statements(root.statements, bdef);
 
+		// Find initial block
+		let i_bdef = (function () {
+			let bds = bdef.bdefs
+				.filter(bd => bd.id == options.initial_block_id)
+				.filter(bd => bd.inputDataTypes.every(d => d == ts.DataTypeFloat32))
+				.filter(bd => bd.outputDataTypes.every(d => d == ts.DataTypeFloat32));
+			if (bds.length == 1)
+				return bds[0];
+			bds = bds.filter(bd => bd.inputs_N == options.initial_block_inputs_n);
+			if (bds.length == 1)
+				return bds[0];
+			throw new Error("Initial block not found");
+		})();
+
+		i_bdef.__is_initial_block__ = true;
+
+		bdef.inputs_N = i_bdef.inputs_N;
+		bdef.outputs_N = i_bdef.outputs_N;
+		bdef.createPorts(bdef.inputs_N, bdef.outputs_N);
+		bdef.inputDataTypes = new Array(bdef.inputs_N).fill().map(() => ts.DataTypeFloat32);
+		bdef.i_ports.forEach(p => p.datatype = ts.DataTypeFloat32);
+		bdef.outputDataTypes = new Array(bdef.outputs_N).fill().map(() => ts.DataTypeFloat32);
+		bdef.o_ports.forEach(p => p.datatype = ts.DataTypeFloat32);
+
+		bdef.setOutputDatatype();
+		bdef.validate();
+
+/*
+		console.log("main connections")
+		bdef.connections.forEach(c => console.log(c.toString()))
+		console.log("sons connections")
+		bdef.bdefs.forEach(bd => {
+			console.log("son ", bd.id)
+			bd.connections.forEach(c => console.log(c.toString()))
+		})
+*/
 		return bdef;
 	}
 
@@ -41,11 +78,15 @@
 		bdef.inputs_N = bdef_node.inputs.length;
 		bdef.outputs_N = bdef_node.outputs.length;
 		bdef.init();
-		bdef_node.inputs.forEach(i => {
-			bdef.inputDataTypes.push(getDataType(i.declaredType));
+		bdef_node.inputs.forEach((input, i) => {
+			const t = getDataType(input.declaredType);
+			bdef.inputDataTypes.push(t);
+			bdef.i_ports[i].datatype = t;
 		});
-		bdef_node.outputs.forEach(o => {
-			bdef.outputDataTypes.push(getDataType(o.declaredType));
+		bdef_node.outputs.forEach((output, i) => {
+			const t = getDataType(output.declaredType);
+			bdef.outputDataTypes.push(t);
+			bdef.o_ports[i].datatype = t;
 		});
 
 		// Adding input/outputs
@@ -205,7 +246,19 @@
 		if (props.length == 0) {
 			const v = Object.create(bs.VarBlock);
 			v.id = (block.id || block.operation) + "." + property;
-			v.datatype = property == "fs" ? ts.DataTypeFloat32 : ts.DataTypeGeneric; // Must be inferred later.
+			if (property == 'fs')
+				v.datatype = ts.DataTypeFloat32;
+			else {
+				v.getOutputDatatypeDeps = function () {
+					return block.getOutputDatatypeDeps(); // Is this nice? No, most probably
+				};
+				v.setOutputDatatype = function () {
+					block.setOutputDatatype(); // Is this nice? No, most probably
+					this.datatype = block.o_ports[0].datatype;
+					this.o_ports[0].datatype = this.datatype;
+				};
+				v.datatype = ts.DataTypeGeneric;
+			}
 			v.init();
 			const p = Object.create(bs.CompositeBlock.Property);
 			p.of = block;
@@ -312,7 +365,7 @@
 			case 'BITWISE_AND_EXPR':
 				return Object.create(bs.BitwiseAndBlock);
 			case 'BITWISE_EXCLUSIVE_OR_EXPR':
-				return Object.create(bs.BitwiseXOrBlock);
+				return Object.create(bs.BitwiseXorBlock);
 			case 'BITWISE_INCLUSIVE_OR_EXPR':
 				return Object.create(bs.BitwiseOrBlock);
 			case 'LOGICAL_AND_EXPR':
@@ -320,11 +373,11 @@
 			case 'LOGICAL_OR_EXPR':
 				return Object.create(bs.LogicalOrBlock);
 			case 'CAST_EXPR':
-				if (expr_node.type == 'INT32')
+				if (expr_node.type == 'TYPE_INT32')
 					return Object.create(bs.CastI32Block);
-				else if (expr_node.type == 'FLOAT32')
+				else if (expr_node.type == 'TYPE_FLOAT32')
 					return Object.create(bs.CastF32Block);
-				else if (expr_node.type == 'BOOL')
+				else if (expr_node.type == 'TYPE_BOOL')
 					return Object.create(bs.CastBoolBlock);
 				else 
 					throw new Error("Unexpect cast type: " + expr_node.type);
@@ -333,6 +386,17 @@
 				b.inputs_N = expr_node.args.length;
 				b.outputs_N = expr_node.outputs_N;
 				b.id = expr_node.id;
+				// Identification of the instantiated bdef must be done later, after setting output datatypes
+				b.setOutputDatatype = function () {
+					const inputDataTypes = b.i_ports.map(p => p.datatype);
+					const r = findBdefBySignature(b.id, inputDataTypes, b.outputs_N, bdef);
+					if (!r)
+						throw new Error("No callable bdef found with that signature");
+					b.bdef = r.r;
+					b.bdef.outputDataTypes.forEach((d, i) => {
+						b.o_ports[i].datatype = d;
+					});
+				};
 				return b;
 			}
 			default:
@@ -353,6 +417,18 @@
 		bdef.blocks.push(b);
 
 		return [[], b.o_ports];
+	}
+
+	function flatten (bdef) {
+
+	}
+
+	function setOutputDatatype (bdef) {
+		bdef.setOutputDatatype();
+	}
+
+	function validate (bdef) {
+		bdef.validate();
 	}
 
 	function findVarById (id, bdef) {
@@ -386,13 +462,14 @@
 		}
 	}
 
-	function findBdefBySignature (id, inputDataTypes, bdef) {
+	function findBdefBySignature (id, inputDataTypes, outputs_N, bdef) {
 		let bd = bdef;
 		while (bd) {
 			let r = bd.bdefs.find(b => 
 				(b.id == id) && 
-				(b.inputs.length == inputDataTypes.length) &&
-				(b.inputDataTypes.every((t, i) => t == inputDataTypes[i])));
+				(b.i_ports.length == inputDataTypes.length) &&
+				(b.inputDataTypes.every((t, i) => t == inputDataTypes[i])) &&
+				(b.o_ports.length == outputs_N));
 			if (r)
 				return { r, bd };
 			bd = bd.bdef_father;
@@ -407,8 +484,10 @@
 			return ts.DataTypeFloat32;
 		case "TYPE_BOOL":
 			return ts.DataTypeBool;
-		default:
+		case undefined:
 			return ts.DataTypeFloat32;
+		default:
+			throw new Error("Unexpected datatype " + s);
 		}
 	}
 

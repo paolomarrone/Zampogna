@@ -472,14 +472,14 @@ id                  : ID
 
 type                : TYPE_INT32 
                         {{
-                            $$ = 'INT32'
+                            $$ = 'TYPE_INT32'
                         }}
                     | TYPE_FLOAT32 
                         {{
-                            $$ = 'FLOAT32'
+                            $$ = 'TYPE_FLOAT32'
                         }}
                     | TYPE_BOOL
                         {{
-                            $$ = 'BOOL'
+                            $$ = 'TYPE_BOOL'
                         }}
                     ;

@@ -29,51 +29,51 @@
 		{
 			code: `
 				y, u = asd (x) {
-					A = 123
+					A = 123.0
 					y = A
 					u = x
 				}
 			`,
-			options: { initial_block: "asd" }
+			options: { initial_block_id: "asd" }
 		},
 		{
 			code: `
 				int A = 123
 				y = asd (x) {
-					y = x * 2.0 + A
+					y = x * 2.0 + float(A)
 				}
 			`,
-			options: { initial_block: "asd" }
+			options: { initial_block_id: "asd" }
 		},
 		{
 			code: `
-				int A = 123
-				y, int u = asd (x) {
+				float A = 123
+				y, u = asd (x) {
 					t = x * 5.5
 					y = x * 2.0 + A
 					u = int(t) - A
 				}
 			`,
-			options: { initial_block: "asd" }
+			options: { initial_block_id: "asd" }
 		},
 		{
 			code: `
 				int A = 123
-				y, int u = asd (x) {
+				y, u = asd (x) {
 					t = x * 5.5
 					y = x * 2.0 + A
 					u = int(t) - A
-					t.fs.init.fs.fs.fs = 666.666 + (A.fs.init.fs * 2).init
+					t.fs.init.fs.fs.fs = 666.666 + (A.fs.init.fs * 2).init ^ 5.init
 				}
 			`,
-			options: { initial_block: "asd" }
+			options: { initial_block_id: "asd" }
 		},
 		{
 			code: `
 				int A = 123
 				mem[A * 2] float U
 				U.init = 0
-				y, int u = asd (x) {
+				y, u = asd (x) {
 					mem[5] float V
 					V.init = 0.0
 					V[0] = x
@@ -87,7 +87,7 @@
 					y = x - 1.0
 				}
 			`,
-			options: { initial_block: "asd" }
+			options: { initial_block_id: "asd" }
 		},/*
 		{ 
 			code: `
@@ -101,7 +101,7 @@
 						y4 = y2
 					}
 				`,
-			options: { initial_block: "myblock" }
+			options: { initial_block_id: "myblock" }
 		}*/
 	];
 
@@ -117,6 +117,7 @@
 		fs.mkdirSync(outputDir);
 
 	for (let t in GoodTests) {
+		console.log("AA..\n\n", t)
 		let res = true;
 		let err = "";
 		try {
@@ -156,7 +157,6 @@
 			console.log("Error:");
 			console.log(GoodTestResults[r.i].e);
 		}
-		break;
 	}
 
 	for (let r of BadTestResults) {

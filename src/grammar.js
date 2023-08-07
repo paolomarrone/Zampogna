@@ -497,17 +497,17 @@ case 73:
 break;
 case 74:
 
-                            this.$ = 'INT32'
+                            this.$ = 'TYPE_INT32'
                         
 break;
 case 75:
 
-                            this.$ = 'FLOAT32'
+                            this.$ = 'TYPE_FLOAT32'
                         
 break;
 case 76:
 
-                            this.$ = 'BOOL'
+                            this.$ = 'TYPE_BOOL'
                         
 break;
 }

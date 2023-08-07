@@ -50,12 +50,12 @@
 	};
 	Port.validate = function () {
 		if (this.datatype == ts.DataTypeGeneric)
-			throw new Error("Generic datatype");
+			throw new Error("Generic port datatype: " + this.toString());
 		if (this.updaterate == UpdateRateGeneric)
-			throw new Error("Generic updaterate");
+			;//throw new Error("Generic updaterate");
 	};
 	Port.toString = function () {
-		return this.block.toString() + "[" + this.type() + ": " + this.index() + "]";
+		return this.block.toString() + "[" + this.type() + ": " + this.index() + ": " + this.datatype.toString() + "]";
 	};
 
 
@@ -73,8 +73,12 @@
 	Block.init = function () {
 		this.createPorts(0, 0);
 	};
+	Block.getOutputDatatypeDeps = function () {
+		return []; // Must return input ports needed to set output ports datatypes
+	};
 	Block.setOutputDatatype = function () {
-		this.output_ports.forEach(p => p.datatype = ts.DataTypeGeneric);
+		throw new Error("Generic setOutputDatatype");
+		//this.output_ports.forEach(p => p.datatype = ts.DataTypeGeneric);
 	};
 	Block.setOutputUpdaterate = function () {
 		var m = UpdateRateConstant;
@@ -119,8 +123,11 @@
 		if (this.datatype == ts.DataTypeGeneric)
 			throw new Error("Generic variable datatype");
 		if (this.i_ports[0].datatype != this.datatype)
-			throw new Error("Inconsistent datatypes");
+			throw new Error("Inconsistent datatypes: " + this.toString());
 	};
+	VarBlock.toString = function () {
+		return "{ VAR: " + this.id + " }";
+	}
 
 	
 	const MemoryBlock = Object.create(Block);
@@ -319,6 +326,9 @@
 	ArithmeticalBlock.init = function () {
 		this.createPorts(2, 1);
 	};
+	ArithmeticalBlock.getOutputDatatypeDeps = function () {
+		return this.i_ports;
+	};
 	ArithmeticalBlock.setOutputDatatype = function () {
 		this.o_ports[0].datatype = this.i_ports[0].datatype;
 	};
@@ -326,8 +336,8 @@
 		Block.validate.call(this);
 		let b = this.i_ports[0].datatype;
 		this.i_ports.forEach(p => {
-			if (p.datatype != ts.DataTypeInt32 || p.datatype != ts.DataTypeFloat32)
-				throw new Error("Invalid input types");
+			if (p.datatype != ts.DataTypeInt32 && p.datatype != ts.DataTypeFloat32)
+				throw new Error("Invalid input types: " + this.toString());
 			if (p.datatype != b)
 				throw new Error("Inconsistent input types");
 		});
@@ -346,6 +356,9 @@
 	DivisionBlock.operation = "/";
 
 	const UminusBlock = Object.create(ArithmeticalBlock);
+	UminusBlock.init = function () {
+		this.createPorts(1, 1);
+	};
 	UminusBlock.operation = "-";
 
 	
@@ -391,11 +404,16 @@
 	CallBlock.id = undefined;
 	CallBlock.inputs_N = undefined;
 	CallBlock.outputs_N = undefined;
+	CallBlock.bdef = undefined; // Tmp here. Refers to the called bdef
 	CallBlock.init = function () {
 		this.createPorts(this.inputs_N, this.outputs_N);
 	};
+	CallBlock.getOutputDatatypeDeps = function () {
+		return this.i_ports;
+	};
 	CallBlock.setOutputDatatype = function () {
-		// TODO. Maybe from outside?
+		// Override this
+		throw new Error("Call, generic setOutputDatatype");
 	};
 	CallBlock.setOutputUpdaterate = function () {
 		// TODO.
@@ -474,33 +492,62 @@
 		this.outputDataTypes = [];
 	};
 	CompositeBlock.setOutputDatatype = function () {
-		// TODO: propgate internally first
+		const f = b => {
+			if (b.__visiting__)
+				throw new Error("Found loop while setting output datatype");
+			b.__visiting__ = true;
+			if (b.o_ports.some(p => !p.__visited__)) {
+				b.getOutputDatatypeDeps().forEach(p => {
+					if (p.__visited__)
+						return;
+					const conns = this.connections.filter(c => c.out == p);
+					if (conns.length == 0)
+						throw new Error("Found a number of connections toward port != 1: " + conns.length);
+					else 
+						f (conns[0].in.block);	
+				});
+				b.setOutputDatatype();
+				b.o_ports.forEach(p => p.__visited__ = true);
+			}
+			this.connections.filter(c => c.in.block == b).forEach(c => {
+				c.out.datatype = c.in.datatype;
+				c.out.__visited__ = true;
+			});
+			b.__visiting__ = false;
+		}
+
+		this.connections.filter(c => c.in.block == this).forEach(c => {
+			c.out.datatype = c.in.datatype;
+		});
 		for (let o = 0; o < this.outputs_N; o++) {
 			this.o_ports[o].datatype = this.outputDataTypes[o];
 		}
+		this.blocks.forEach(b => f(b)); // Order matters
+		this.bdefs.forEach(bd => bd.setOutputDatatype());
+
+		// Cleaning
+		this.blocks.forEach(b => {
+			delete b.__visiting__;
+			b.i_ports.forEach(p => delete p.__visited__);
+			b.o_ports.forEach(p => delete p.__visited__);
+		});
+		this.i_ports.forEach(p => delete p.__visited__);
+		this.o_ports.forEach(p => delete p.__visited__);
 	};
 	CompositeBlock.setOutputUpdaterate = function () {
 		// TODO: propagate internally first
 		for (let o = 0; o < this.outputs_N; o++) {
 			let c = this.connections.find(c => c.out == this.o_ports[o]);
 			
-
-
 		}
 	};
 	CompositeBlock.validate = function () {
 		Block.validate.call(this);
 		this.blocks.forEach(b => b.validate());
+		this.bdefs.forEach(bd => bd.validate());
 	};
 	CompositeBlock.toString = function () {
-		let r = "{ G " + this.id + "\n";
-		this.blocks.forEach(b => r += "\t" + b.toString() + "\n");
-		r += "\n";
-		this.connections.forEach(c => r += "\t" + c.toString() + "\n");
-		r += "\n";
-		this.bdefs.forEach(c => r += "\t" + c.toString() + "\n");
-		r += "}";
-		return r;
+		return "{ CompositeBlock: " + this.id + " }"
 	};
 	CompositeBlock.getInputPorts = function (o_port) {
 		return this.connections.filter(c => c.out == o_port).map(c => c.in); // Should be max 1

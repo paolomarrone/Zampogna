@@ -16,10 +16,21 @@
 (function() {
 
 	const DataTypeGeneric = {};
+	DataTypeGeneric.toString = function () {
+		return "GenericType";
+	};
 	const DataTypeFloat32 = Object.create(DataTypeGeneric);
+	DataTypeFloat32.toString = function () {
+		return "float32";
+	};
 	const DataTypeInt32 = Object.create(DataTypeGeneric);
+	DataTypeInt32.toString = function () {
+		return "int32";
+	};
 	const DataTypeBool = Object.create(DataTypeGeneric);
-
+	DataTypeBool.toString = function () {
+		return "bool";
+	};
 
 	exports["DataTypeGeneric"] = DataTypeGeneric;
 	exports["DataTypeFloat32"] = DataTypeFloat32;
