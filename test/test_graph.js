@@ -47,23 +47,23 @@
 		},
 		{
 			code: `
-				float A = 123
+				float A = 123.4
 				y, u = asd (x) {
 					t = x * 5.5
 					y = x * 2.0 + A
-					u = int(t) - A
+					u = float(int(t)) - A
 				}
 			`,
 			options: { initial_block_id: "asd" }
 		},
 		{
 			code: `
-				int A = 123
+				int A = 1234
 				y, u = asd (x) {
 					t = x * 5.5
-					y = x * 2.0 + A
-					u = int(t) - A
-					t.fs.init.fs.fs.fs = 666.666 + (A.fs.init.fs * 2).init ^ 5.init
+					y = x * 2.0 + float(A)
+					u = float(int(t) - A)
+					t.fs.init.fs.fs.fs = float(int(666.666 + (A.fs.init.fs * 2.0).init) ^ 5.init)
 				}
 			`,
 			options: { initial_block_id: "asd" }
@@ -72,16 +72,16 @@
 			code: `
 				int A = 123
 				mem[A * 2] float U
-				U.init = 0
+				U.init = 0.1
 				y, u = asd (x) {
 					mem[5] float V
 					V.init = 0.0
 					V[0] = x
-					V[1] = x * 2 / V[3]
+					V[1] = x * 2.0 / V[33]
 					V[int(x)] = 0.5 * t
-					t = x * 5.5 + uff(t / 2)
-					y = x * 2.0 + float(A) / (V[2] + V[3])
-					u = int(t) - A % int(U[3])
+					t = x * 5.5 + uff(t / 2.2)
+					y = x * 2.0 + float(A) / (V[44] + V[55])
+					u = float(int(t) - A % int(U[3]))
 				}
 				y = uff (x) {
 					y = x - 1.0
@@ -117,7 +117,6 @@
 		fs.mkdirSync(outputDir);
 
 	for (let t in GoodTests) {
-		console.log("AA..\n\n", t)
 		let res = true;
 		let err = "";
 		try {

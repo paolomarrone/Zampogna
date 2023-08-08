@@ -21,7 +21,6 @@
 
 	function ASTToGraph (root, options) {
 
-
 		const bdef = Object.create(bs.CompositeBlock);
 		bdef.id = "0";
 		bdef.bdef_father = undefined;
@@ -51,22 +50,21 @@
 		bdef.outputs_N = i_bdef.outputs_N;
 		bdef.createPorts(bdef.inputs_N, bdef.outputs_N);
 		bdef.inputDataTypes = new Array(bdef.inputs_N).fill().map(() => ts.DataTypeFloat32);
-		bdef.i_ports.forEach(p => p.datatype = ts.DataTypeFloat32);
+		bdef.i_ports.forEach(p => p.datatype = () => ts.DataTypeFloat32);
 		bdef.outputDataTypes = new Array(bdef.outputs_N).fill().map(() => ts.DataTypeFloat32);
-		bdef.o_ports.forEach(p => p.datatype = ts.DataTypeFloat32);
+		bdef.o_ports.forEach(p => p.datatype = () => ts.DataTypeFloat32);
 
-		bdef.setOutputDatatype();
+		bdef.propagateDataTypes();
+
+		// set CallBlock proper bdefs
+		(function f (bdef) {
+			bdef.blocks.filter(b => bs.CallBlock.isPrototypeOf(b)).forEach(b => {
+				adjust_call_block(b, bdef);
+			});
+			bdef.bdefs.forEach(bd => f(bd));
+		})(bdef);
+
 		bdef.validate();
-
-/*
-		console.log("main connections")
-		bdef.connections.forEach(c => console.log(c.toString()))
-		console.log("sons connections")
-		bdef.bdefs.forEach(bd => {
-			console.log("son ", bd.id)
-			bd.connections.forEach(c => console.log(c.toString()))
-		})
-*/
 		return bdef;
 	}
 
@@ -81,19 +79,20 @@
 		bdef_node.inputs.forEach((input, i) => {
 			const t = getDataType(input.declaredType);
 			bdef.inputDataTypes.push(t);
-			bdef.i_ports[i].datatype = t;
+			bdef.i_ports[i].datatype = () => t;
 		});
 		bdef_node.outputs.forEach((output, i) => {
 			const t = getDataType(output.declaredType);
 			bdef.outputDataTypes.push(t);
-			bdef.o_ports[i].datatype = t;
+			bdef.o_ports[i].datatype = () => t;
 		});
 
 		// Adding input/outputs
 		bdef_node.inputs.forEach((p, i) => {
 			const v = Object.create(bs.VarBlock);
 			v.id = p.id;
-			v.datatype = getDataType(p.declaredType);
+			const t = getDataType(p.declaredType);
+			v.datatype = () => t;
 			v.init();
 
 			const c = Object.create(bs.CompositeBlock.Connection);
@@ -106,7 +105,8 @@
 		bdef_node.outputs.forEach((p, i) => {
 			const v = Object.create(bs.VarBlock);
 			v.id = p.id;
-			v.datatype = getDataType(p.declaredType);
+			const t = getDataType(p.declaredType);
+			v.datatype = () => t;
 			v.init();
 
 			const c = Object.create(bs.CompositeBlock.Connection);
@@ -131,7 +131,8 @@
 					return;
 				const v = Object.create(bs.VarBlock);
 				v.id = o.id
-				v.datatype = getDataType(o.declaredType);
+				const t = getDataType(o.declaredType);
+				v.datatype = () => t;
 				v.init();
 				bdef.blocks.push(v);
 			});
@@ -141,10 +142,11 @@
 		statements.filter(s => s.name == 'MEMORY_DECLARATION').forEach(s => {
 			const m = Object.create(bs.MemoryBlock);
 			m.id = s.id;
-			m.datatype = getDataType(s.type);
+			const t = getDataType(s.type);
 			m.writers_N = s.writers_N;
 			m.readers_N = s.readers_N;
 			m.init();
+			m.datatype = () => t;
 			m.__raedersAdded__ = 0; // Helper
 			m.__writersAdded__ = 0;
 			bdef.blocks.push(m);
@@ -245,21 +247,20 @@
 		const props = bdef.properties.filter(p => p.of == block && p.type == property);
 		if (props.length == 0) {
 			const v = Object.create(bs.VarBlock);
-			v.id = (block.id || block.operation) + "." + property;
-			if (property == 'fs')
-				v.datatype = ts.DataTypeFloat32;
-			else {
-				v.getOutputDatatypeDeps = function () {
-					return block.getOutputDatatypeDeps(); // Is this nice? No, most probably
-				};
-				v.setOutputDatatype = function () {
-					block.setOutputDatatype(); // Is this nice? No, most probably
-					this.datatype = block.o_ports[0].datatype;
-					this.o_ports[0].datatype = this.datatype;
-				};
-				v.datatype = ts.DataTypeGeneric;
-			}
+			v.id = (block.id || block.value || block.operation) + "." + property;
 			v.init();
+			if (property == 'fs') {
+				v.datatype = () => ts.DataTypeFloat32;
+				v.i_ports[0].datatype = () => ts.DataTypeFloat32;
+			}
+			else {
+				v.datatype = function () {
+					return block.o_ports[0].datatype();
+				};
+				v.i_ports[0].datatype = function () {
+					return this.block.datatype();
+				};
+			}
 			const p = Object.create(bs.CompositeBlock.Property);
 			p.of = block;
 			p.type = property;
@@ -298,14 +299,14 @@
 		}
 		case 'CONSTANT': {
 			const b = Object.create(bs.ConstantBlock);
-			if (expr_node.type == 'INT32')
-				b.datatype = ts.DataTypeInt32;
-			else if (expr_node.type == 'FLOAT32')
-				b.datatype = ts.DataTypeFloat32;
-			else if (expr_node.type == 'BOOL')
-				b.datatype = ts.DataTypeBool;
 			b.value = expr_node.val;
 			b.init();
+			if (expr_node.type == 'INT32')
+				b.datatype = () => ts.DataTypeInt32;
+			else if (expr_node.type == 'FLOAT32')
+				b.datatype = () => ts.DataTypeFloat32;
+			else if (expr_node.type == 'BOOL')
+				b.datatype = () => ts.DataTypeBool;
 			bdef.blocks.push(b);
 			return [[], b.o_ports];
 		}
@@ -319,6 +320,26 @@
 			ci.out = mem_reader_ports[0];
 			bdef.connections.push(ci);
 			return [[], [mem_reader_ports[1]]];
+		}
+		case 'CALL_EXPR': {
+			const b = Object.create(bs.CallBlock);
+			b.inputs_N = expr_node.args.length;
+			b.outputs_N = expr_node.outputs_N;
+			b.id = expr_node.id;
+			b.bdef = undefined; // Identification of the instantiated bdef must be done later, after setting output datatypes
+			b.init();
+			b.o_ports.forEach((p, i) => p.datatype = function () {
+				return this.block.bdef.outputDataTypes[i];
+			});
+			for (let argi = 0; argi < expr_node.args.length; argi++) {
+				const ports = convert_expr(expr_node.args[argi], bdef);
+				const c = Object.create(bs.CompositeBlock.Connection);
+				c.in = ports[1][0];
+				c.out = b.i_ports[argi];
+				bdef.connections.push(c);
+			}
+			bdef.blocks.push(b);
+			return [[], b.o_ports];
 		}
 		case 'INLINE_IF_THEN_ELSE': {
 			throw "Not imeplemented yet"
@@ -381,24 +402,6 @@
 					return Object.create(bs.CastBoolBlock);
 				else 
 					throw new Error("Unexpect cast type: " + expr_node.type);
-			case 'CALL_EXPR': {
-				const b = Object.create(bs.CallBlock);
-				b.inputs_N = expr_node.args.length;
-				b.outputs_N = expr_node.outputs_N;
-				b.id = expr_node.id;
-				// Identification of the instantiated bdef must be done later, after setting output datatypes
-				b.setOutputDatatype = function () {
-					const inputDataTypes = b.i_ports.map(p => p.datatype);
-					const r = findBdefBySignature(b.id, inputDataTypes, b.outputs_N, bdef);
-					if (!r)
-						throw new Error("No callable bdef found with that signature");
-					b.bdef = r.r;
-					b.bdef.outputDataTypes.forEach((d, i) => {
-						b.o_ports[i].datatype = d;
-					});
-				};
-				return b;
-			}
 			default:
 				throw new Error("Unexpected AST expr node");
 			}
@@ -419,16 +422,12 @@
 		return [[], b.o_ports];
 	}
 
-	function flatten (bdef) {
-
-	}
-
-	function setOutputDatatype (bdef) {
-		bdef.setOutputDatatype();
-	}
-
-	function validate (bdef) {
-		bdef.validate();
+	function adjust_call_block (b, bdef) {
+		const inputDataTypes = b.i_ports.map(p => p.datatype());
+		const r = findBdefBySignature(b.id, inputDataTypes, b.outputs_N, bdef);
+		if (!r)
+			throw new Error("No callable bdef found with that signature");
+		b.bdef = r.r;
 	}
 
 	function findVarById (id, bdef) {
