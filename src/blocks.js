@@ -46,8 +46,8 @@
 	};
 	Port.clone = function () {
 		const r = Object.create(this);
-		r.block = null; // Set later externally
-		r.datatype = this.datatype;
+		r.block = undefined; // set from outside
+		this.__clone__ = r;
 		return r;
 	};
 	Port.validate = function () {
@@ -91,9 +91,19 @@
 	};
 	Block.clone = function () { // TODO: Fix
 		let r = Object.create(this);
-		//r.id = this.id + "something"
-		r.operation = this.operation;
-		r.createPorts.apply(r, this.i_ports.length, this.o_ports.length);
+		r.i_ports = [];
+		r.o_ports = [];
+		this.i_ports.forEach(p => {
+			const pc = p.clone();
+			pc.block == r;
+			r.i_ports.push(pc);
+		});
+		this.o_ports.forEach(p => {
+			const pc = p.clone();
+			pc.block == r;
+			r.o_ports.push(pc);
+		});
+		this.__clone__ = r;
 		return r; 
 	};
 	Block.flatten = function () {};
@@ -205,7 +215,51 @@
 		r.init();
 		return r;
 	};
-	
+
+	// MemoryBlock2 is the new MemoryBlock
+	const MemoryBlock2 = Object.create(Block);
+	MemoryBlock2.operation = "MEMORY";
+	MemoryBlock2.id = "";
+	MemoryBlock2.init = function () {
+		this.createPorts(2, 0); // size, init
+	};
+	MemoryBlock2.validate = function () {
+		if (this.datatype() == ts.DataTypeGeneric)
+			throw new Error("Generic datatype");
+		if (this.i_ports[0].datatype() != ts.DataTypeInt32)
+			throw new Error("Memory size must be int");
+		if (this.i_ports[1].datatype() != this.datatype())
+			throw new Error("Memory init must carry the same datatype");
+	};
+
+	const MemoryReaderBlock = Object.create(Block);
+	MemoryReaderBlock.operation = "MEMORY_READ";
+	MemoryReaderBlock.memoryblock = undefined;
+	MemoryReaderBlock.init = function () {
+		this.createPorts(1, 1); // index, value
+		this.o_ports[0].datatype = function () {
+			return this.block.memoryblock.datatype();
+		};
+	};
+	MemoryReaderBlock.validate = function () {
+		Block.validate.call(this);
+		if (this.i_ports[0].datatype() != ts.DataTypeInt32)
+			throw new Error("Only int can be used to access memory");
+	};
+
+	const MemoryWriterBlock = Object.create(Block);
+	MemoryWriterBlock.operation = "MEMORY_WRITE";
+	MemoryWriterBlock.memoryblock = undefined;
+	MemoryWriterBlock.init = function () {
+		this.createPorts(2, 0); // index, value
+	};
+	MemoryWriterBlock.validate = function () {
+		Block.validate.call(this);
+		if (this.i_ports[0].datatype() != ts.DataTypeInt32)
+			throw new Error("Only int can be used to access memory");
+		if (this.i_ports[1].datatype() != this.memoryblock.datatype())
+			throw new Error("Inconsistent datatype");
+	};
 
 	const ConstantBlock = Object.create(Block);
 	ConstantBlock.operation = "CONSTANT";
@@ -487,6 +541,10 @@
 	const Connection = {};
 	Connection.in = undefined;  // Port
 	Connection.out = undefined; // Port
+	Connection.validate = function () {
+		if (this.in.datatype() != this.out.datatype())
+			throw new Error("Connection got different datatypes");
+	};
 	Connection.toString = function () {
 		return this.in.toString() + " => " + this.out.toString();
 	};
@@ -537,6 +595,18 @@
 	CompositeBlock.validate = function () {
 		Block.validate.call(this);
 		this.blocks.forEach(b => b.validate());
+		/*
+		this.blocks.forEach(b => {
+			b.o_ports.forEach(p => {
+				const cs = this.connections.filter(c => c.out == p)
+				if (cs > 1)
+					throw new Error("Too many connections toward port: " + p.toString());
+				if (cs < 1)
+					throw new Error("Too few connections toward port: " + p.toString());
+			});
+		});
+		*/
+		this.connections.forEach(c => c.validate());
 		this.bdefs.forEach(bd => bd.validate());
 	};
 	CompositeBlock.toString = function () {
@@ -590,12 +660,17 @@
 		})
 
 	};
+	CompositeBlock.clone = function () {
+
+
+
+	};
 
 
 	exports["BlockTypes"] = {
 		Block,
 		VarBlock,
-		MemoryBlock,
+		MemoryBlock, MemoryReaderBlock, MemoryWriterBlock,
 		ConstantBlock,
 		LogicalBlock, LogicalAndBlock, LogicalOrBlock, LogicalNotBlock,
 		BitwiseBlock, BitwiseAndBlock, BitwiseOrBlock, BitwiseXorBlock, BitwiseNotBlock,

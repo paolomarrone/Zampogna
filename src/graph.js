@@ -59,12 +59,13 @@
 		// set CallBlock proper bdefs
 		(function f (bdef) {
 			bdef.blocks.filter(b => bs.CallBlock.isPrototypeOf(b)).forEach(b => {
-				adjust_call_block(b, bdef);
+				resolve_call_block(b, bdef);
 			});
 			bdef.bdefs.forEach(bd => f(bd));
 		})(bdef);
 
 		bdef.validate();
+
 		return bdef;
 	}
 
@@ -118,6 +119,8 @@
 		});
 
 		convert_statements(bdef_node.statements, bdef);
+
+		bdef.__bdefnode__ = bdef_node;
 
 		return bdef;
 	}
@@ -228,7 +231,6 @@
 			delete m.__raedersAdded__;
 			delete m.__writersAdded__;
 		});
-
 	}
 
 	function convert_property_left (property_node, bdef) {
@@ -249,13 +251,14 @@
 			const v = Object.create(bs.VarBlock);
 			v.id = (block.id || block.value || block.operation) + "." + property;
 			v.init();
+			v.__isPropertyOf__ = block;
 			if (property == 'fs') {
 				v.datatype = () => ts.DataTypeFloat32;
 				v.i_ports[0].datatype = () => ts.DataTypeFloat32;
 			}
 			else {
 				v.datatype = function () {
-					return block.o_ports[0].datatype();
+					return this.__isPropertyOf__.o_ports[0].datatype();
 				};
 				v.i_ports[0].datatype = function () {
 					return this.block.datatype();
@@ -422,12 +425,50 @@
 		return [[], b.o_ports];
 	}
 
-	function adjust_call_block (b, bdef) {
+	function resolve_call_block (b, bdef) {
 		const inputDataTypes = b.i_ports.map(p => p.datatype());
 		const r = findBdefBySignature(b.id, inputDataTypes, b.outputs_N, bdef);
 		if (!r)
 			throw new Error("No callable bdef found with that signature");
 		b.bdef = r.r;
+	}
+
+	function flatten (bdef_root) {
+		// check for recurive calls
+		(function check (bdef, stack = []) {
+			if (stack.find(b => b == bdef))
+				throw new Error("Recursive block calls");
+			const nstack = stack.concat(bdef);
+			bdef.blocks.filter(b => bs.CallBlock.isPrototypeOf(b)).forEach(b => {
+				check(b.bdef, nstack);
+			});
+			bdef.bdefs.forEach(bd => check(bd, nstack));
+		})(bdef_root, []);
+
+
+		function substitute_call (call_block, bdef) {
+			// Adjust father
+			const b = convert_block_definition(call_block.bdef.__bdefnode__, call_block.bdef.bdef_father);
+
+			/*
+				Problems:
+				- Shared memory blocks need more inputs/outputs according to
+				  how many times inner blocks that read/write get instantiated
+				  -- Probably it's better to have MemoryReaderBlock and MemoryWriterBlock
+				- Might this happen in other cases?
+
+			*/
+
+		}
+
+		function f (bdef) {
+			bdef.bdefs.forEach(bd => f(bd));
+			bdef.blocks.filter(b => bs.CallBlock.isPrototypeOf(b)).forEach(b => {
+
+			});
+		}
+
+
 	}
 
 	function findVarById (id, bdef) {
@@ -491,5 +532,6 @@
 	}
 
 	exports["ASTToGraph"] = ASTToGraph;
+	exports["flatten"] = flatten;
 
 }());
