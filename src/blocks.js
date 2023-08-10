@@ -45,9 +45,13 @@
 		if (this.type() == "out") return this.block.o_ports.indexOf(this);
 	};
 	Port.clone = function () {
-		const r = Object.create(this);
-		r.block = undefined; // set from outside
+		if (this.__clone__)
+			return this.__clone__;
+		const r = Object.create(Port);
 		this.__clone__ = r;
+		r.block = this.block.clone();
+		r.datatype = this.datatype;
+		r.updaterate = this.updaterate;
 		return r;
 	};
 	Port.validate = function () {
@@ -63,6 +67,7 @@
 
 	const Block = {};
 	Block.Port = Port;
+	Block.id = undefined;
 	Block.operation = "DEFAULT";
 	Block.i_ports = undefined; // Array of Ports
 	Block.o_ports = undefined; // Array of Ports
@@ -89,21 +94,24 @@
 	Block.toString = function () {
 		return "{" + this.operation + ":" + this.i_ports.length + ":" + this.o_ports.length + " }";
 	};
-	Block.clone = function () { // TODO: Fix
-		let r = Object.create(this);
+	Block.clone = function () {
+		if (this.__clone__)
+			return this.__clone__;
+		let r = Object.create(Object.getPrototypeOf(this));
+		this.__clone__ = r;
+		r.operation = this.operation;
 		r.i_ports = [];
 		r.o_ports = [];
 		this.i_ports.forEach(p => {
 			const pc = p.clone();
-			pc.block == r;
+			//pc.block = r;
 			r.i_ports.push(pc);
 		});
 		this.o_ports.forEach(p => {
 			const pc = p.clone();
-			pc.block == r;
+			//pc.block = r;
 			r.o_ports.push(pc);
 		});
-		this.__clone__ = r;
 		return r; 
 	};
 	Block.flatten = function () {};
@@ -134,17 +142,23 @@
 	};
 	VarBlock.toString = function () {
 		return "{ VAR: " + this.id + " }";
-	}
+	};
+	VarBlock.clone = function () {
+		const r = Block.clone.call(this);
+		r.id = this.id;
+		r.datatype = this.datatype;
+		return r;
+	};
 
 
 	const MemoryBlock = Object.create(Block);
 	MemoryBlock.operation = "MEMORY";
 	MemoryBlock.id = "";
+	MemoryBlock.datatype = function () {
+		return ts.DataTypeGeneric;
+	};
 	MemoryBlock.init = function () {
 		this.createPorts(2, 0); // size, init
-		this.datatype = function () {
-			return ts.DataTypeGeneric;
-		};
 	};
 	MemoryBlock.validate = function () {
 		if (this.datatype() == ts.DataTypeGeneric)
@@ -153,6 +167,11 @@
 			throw new Error("Memory size must be int");
 		if (this.i_ports[1].datatype() != this.datatype())
 			throw new Error("Memory init must carry the same datatype");
+	};
+	MemoryBlock.clone = function () {
+		const r = Block.clone.call(this);
+		r.datatype = this.datatype;
+		return r;
 	};
 
 	const MemoryReaderBlock = Object.create(Block);
@@ -169,6 +188,11 @@
 		if (this.i_ports[0].datatype() != ts.DataTypeInt32)
 			throw new Error("Only int can be used to access memory");
 	};
+	MemoryReaderBlock.clone = function () {
+		const r = Block.clone.call(this);
+		r.memoryblock = this.memoryblock.clone();
+		return r;
+	};
 
 	const MemoryWriterBlock = Object.create(Block);
 	MemoryWriterBlock.operation = "MEMORY_WRITE";
@@ -183,15 +207,20 @@
 		if (this.i_ports[1].datatype() != this.memoryblock.datatype())
 			throw new Error("Inconsistent datatype");
 	};
+	MemoryWriterBlock.clone = function () {
+		const r = Block.clone.call(this);
+		r.memoryblock = this.memoryblock.clone();
+		return r;
+	};
 
 	const ConstantBlock = Object.create(Block);
 	ConstantBlock.operation = "CONSTANT";
 	ConstantBlock.value = undefined;
+	ConstantBlock.datatype = function () {
+		return ts.DataTypeGeneric;
+	};
 	ConstantBlock.init = function () {
 		this.createPorts(0, 1);
-		this.datatype = function () {
-			return ts.DataTypeGeneric;
-		};
 		this.o_ports[0].datatype = function () {
 			return this.block.datatype();
 		};
@@ -208,6 +237,12 @@
 	};
 	ConstantBlock.toString = function () {
 		return "{ " + this.value + " }";
+	};
+	ConstantBlock.clone = function () {
+		const r = Block.clone.call(this);
+		r.value = this.value;
+		r.datatype = this.datatype;
+		return r;
 	};
 
 
@@ -409,6 +444,7 @@
 		};
 	};
 
+	// Maybe CallBlock needs to be specialized in Extern and block instantiation
 	const CallBlock = Object.create(Block);
 	CallBlock.operation = "CALL";
 	CallBlock.id = undefined;
@@ -422,7 +458,13 @@
 	CallBlock.setOutputUpdaterate = function () {
 		// TODO.
 	};
-	// Maybe CallBlock needs to be specialized in Extern and block instantiation
+	CallBlock.clone = function () {
+		const r = Block.clone.call(this);
+		r.inputs_N = this.inputs_N;
+		r.outputs_N = this.outputs_N;
+		r.bdef = this.bdef.clone();
+		return r;
+	};
 
 
 	const IfthenelseBlock = Object.create(Block);
@@ -476,28 +518,36 @@
 	Property.of = undefined; // Block
 	Property.type = undefined; // "fs" or "init"
 	Property.block = undefined; // VarBlock
+	Property.validate = function () {
+		if (!this.of || !this.block)
+			throw new Error("Invalid Property");
+	};
+	Property.clone = function () {
+		const r = Object.create(Property);
+		r.of = this.of.clone();
+		r.type = this.type;
+		r.block = this.block.clone();
+		return r;
+	};
 
 	const CompositeBlock = Object.create(Block); // A.k.a. Graph
 	CompositeBlock.Connection = Connection;
 	CompositeBlock.Property = Property;
 	CompositeBlock.id = "";
+	CompositeBlock.operation = "COMPOSITE_BLOCK";
 	CompositeBlock.blocks = undefined;        // Array of Blocks
 	CompositeBlock.connections = undefined;   // Array of Connections
 	CompositeBlock.properties = undefined;    // Array of Properties
 	CompositeBlock.bdefs = undefined;         // Array of CompositeBlocks
 	CompositeBlock.bdef_father = undefined;   // CompositeBlock
 	CompositeBlock.inputs_N = 0;
-	CompositeBlock.inputDataTypes = undefined; // Array of Datatypes
 	CompositeBlock.outputs_N = 0;
-	CompositeBlock.outputDataTypes = undefined; // Array of Datatypes
 	CompositeBlock.init = function () {
 		this.createPorts(this.inputs_N, this.outputs_N);
 		this.blocks = [];
 		this.connections = [];
 		this.properties = [];
 		this.bdefs = [];
-		this.inputDataTypes = [];
-		this.outputDataTypes = [];
 	};
 	CompositeBlock.propagateDataTypes = function () {
 		this.connections.forEach(c => {
@@ -585,8 +635,37 @@
 	};
 	CompositeBlock.clone = function () {
 
+		if (this.__clone__)
+			return this.__clone__;
+		const r = Block.clone.call(this);
+		this.__clone__ = r;
+		r.id = this.id;
+		r.inputs_N = this.inputs_N;
+		r.outputs_N = this.outputs_N;
+		r.blocks = this.blocks.map(b => b.clone());
+		r.connections = this.connections.map(c =>  {
+			const rr = Object.create(Connection);
+			// To handle implicit inputs
+			rr.in  = this.blocks.find(x => x == c.in.block)  ? c.in.clone()  : (c.in.__clone__  || c.in);
+			rr.out = this.blocks.find(x => x == c.out.block) ? c.out.clone() : (c.out.__clone__ || c.out);
+			return rr;
+		});
+		r.properties = this.properties.map(p => p.clone()); // properties are granted to refer to local blocks only
+		r.bdef_father = this.bdef_father; // Check this
+		r.bdefs = this.bdefs.map(bd => bd.clone());
+		return r;
+	};
 
-
+	CompositeBlock.clean = function () {
+		this.blocks.forEach(b => {
+			b.i_ports.forEach(p => p.__clone__ = undefined);
+			b.o_ports.forEach(p => p.__clone__ = undefined);
+			b.__clone__ = undefined;
+		});
+		this.bdefs.forEach(bd => bd.clean());
+		this.i_ports.forEach(p => p.__clone__ = undefined);
+		this.o_ports.forEach(p => p.__clone__ = undefined);
+		this.__clone__ = undefined;
 	};
 
 

@@ -34,8 +34,8 @@
 		let i_bdef = (function () {
 			let bds = bdef.bdefs
 				.filter(bd => bd.id == options.initial_block_id)
-				.filter(bd => bd.inputDataTypes.every(d => d == ts.DataTypeFloat32))
-				.filter(bd => bd.outputDataTypes.every(d => d == ts.DataTypeFloat32));
+				.filter(bd => bd.i_ports.map(p => p.datatype()).every(d => d == ts.DataTypeFloat32))
+				.filter(bd => bd.o_ports.map(p => p.datatype()).every(d => d == ts.DataTypeFloat32));
 			if (bds.length == 1)
 				return bds[0];
 			bds = bds.filter(bd => bd.inputs_N == options.initial_block_inputs_n);
@@ -49,14 +49,12 @@
 		bdef.inputs_N = i_bdef.inputs_N;
 		bdef.outputs_N = i_bdef.outputs_N;
 		bdef.createPorts(bdef.inputs_N, bdef.outputs_N);
-		bdef.inputDataTypes = new Array(bdef.inputs_N).fill().map(() => ts.DataTypeFloat32);
 		bdef.i_ports.forEach(p => p.datatype = () => ts.DataTypeFloat32);
-		bdef.outputDataTypes = new Array(bdef.outputs_N).fill().map(() => ts.DataTypeFloat32);
 		bdef.o_ports.forEach(p => p.datatype = () => ts.DataTypeFloat32);
 
 		bdef.propagateDataTypes();
 
-		// set CallBlock proper bdefs
+		// resolve call blocks
 		(function f (bdef) {
 			bdef.blocks.filter(b => bs.CallBlock.isPrototypeOf(b)).forEach(b => {
 				resolve_call_block(b, bdef);
@@ -79,12 +77,10 @@
 		bdef.init();
 		bdef_node.inputs.forEach((input, i) => {
 			const t = getDataType(input.declaredType);
-			bdef.inputDataTypes.push(t);
 			bdef.i_ports[i].datatype = () => t;
 		});
 		bdef_node.outputs.forEach((output, i) => {
 			const t = getDataType(output.declaredType);
-			bdef.outputDataTypes.push(t);
 			bdef.o_ports[i].datatype = () => t;
 		});
 
@@ -327,8 +323,10 @@
 			b.id = expr_node.id;
 			b.bdef = undefined; // Identification of the instantiated bdef must be done later, after setting output datatypes
 			b.init();
-			b.o_ports.forEach((p, i) => p.datatype = function () {
-				return this.block.bdef.outputDataTypes[i];
+			b.o_ports.forEach((p, i) => {
+				p.datatype = function () {
+					return this.block.bdef.o_ports[i].datatype();
+				};
 			});
 			for (let argi = 0; argi < expr_node.args.length; argi++) {
 				const ports = convert_expr(expr_node.args[argi], bdef);
@@ -430,6 +428,7 @@
 	}
 
 	function flatten (bdef_root) {
+
 		// check for recurive calls
 		(function check (bdef, stack = []) {
 			if (stack.find(b => b == bdef))
@@ -443,18 +442,8 @@
 
 
 		function substitute_call (call_block, bdef) {
-			// Adjust father
-			const b = convert_block_definition(call_block.bdef.__bdefnode__, call_block.bdef.bdef_father);
-
-			/*
-				Problems:
-				- Shared memory blocks need more inputs/outputs according to
-				  how many times inner blocks that read/write get instantiated
-				  -- Probably it's better to have MemoryReaderBlock and MemoryWriterBlock
-				- Might this happen in other cases?
-
-			*/
-
+			
+			
 		}
 
 		function f (bdef) {
@@ -504,7 +493,7 @@
 			let r = bd.bdefs.find(b => 
 				(b.id == id) && 
 				(b.i_ports.length == inputDataTypes.length) &&
-				(b.inputDataTypes.every((t, i) => t == inputDataTypes[i])) &&
+				(b.i_ports.map(p => p.datatype()).every((t, i) => t == inputDataTypes[i])) &&
 				(b.o_ports.length == outputs_N));
 			if (r)
 				return { r, bd };
