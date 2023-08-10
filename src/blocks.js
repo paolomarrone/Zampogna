@@ -104,12 +104,10 @@
 		r.o_ports = [];
 		this.i_ports.forEach(p => {
 			const pc = p.clone();
-			//pc.block = r;
 			r.i_ports.push(pc);
 		});
 		this.o_ports.forEach(p => {
 			const pc = p.clone();
-			//pc.block = r;
 			r.o_ports.push(pc);
 		});
 		return r; 
