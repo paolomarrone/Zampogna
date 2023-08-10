@@ -146,12 +146,9 @@
 			const m = Object.create(bs.MemoryBlock);
 			m.id = s.id;
 			const t = getDataType(s.type);
-			m.writers_N = s.writers_N;
-			m.readers_N = s.readers_N;
 			m.init();
 			m.datatype = () => t;
-			m.__raedersAdded__ = 0; // Helper
-			m.__writersAdded__ = 0;
+			m.i_ports[1].datatype = () => t;
 			bdef.blocks.push(m);
 		});
 
@@ -166,7 +163,7 @@
 			const size_expr_ports = convert_expr(s.size, bdef);
 			const c = Object.create(bs.CompositeBlock.Connection);
 			c.in = size_expr_ports[1][0];
-			c.out = m.getSizePort();
+			c.out = m.i_ports[0];
 			bdef.connections.push(c);
 		});
 
@@ -207,14 +204,17 @@
 					}
 					case 'MEMORY_ELEMENT': {
 						const m = findMemById(o.id, bdef).r;
+						const mw = Object.create(bs.MemoryWriterBlock);
+						mw.memoryblock = m;
+						mw.init();
 						const index_expr_ports = convert_expr(o.args[0], bdef);
-						const mem_writer_ports = m.getWriterPorts(m.__writersAdded__++);
 						const ci = Object.create(bs.CompositeBlock.Connection);
 						const cv = Object.create(bs.CompositeBlock.Connection);
 						ci.in  = index_expr_ports[1][0];
-						ci.out = mem_writer_ports[0];
+						ci.out = mw.i_ports[0];
 						cv.in  = expr_ports[1][oi];
-						cv.out = mem_writer_ports[1];
+						cv.out = mw.i_ports[1];
+						bdef.blocks.push(mw);
 						bdef.connections.push(ci);
 						bdef.connections.push(cv);
 						break;
@@ -224,12 +224,6 @@
 				break;
 			}
 			}
-		});
-
-		// Cleaning
-		bdef.blocks.filter(b => bs.MemoryBlock.isPrototypeOf(b)).forEach(m => {
-			delete m.__raedersAdded__;
-			delete m.__writersAdded__;
 		});
 	}
 
@@ -251,14 +245,14 @@
 			const v = Object.create(bs.VarBlock);
 			v.id = (block.id || block.value || block.operation) + "." + property;
 			v.init();
-			v.__isPropertyOf__ = block;
 			if (property == 'fs') {
 				v.datatype = () => ts.DataTypeFloat32;
 				v.i_ports[0].datatype = () => ts.DataTypeFloat32;
 			}
 			else {
+				const dto = (block.o_ports[0] || block);
 				v.datatype = function () {
-					return this.__isPropertyOf__.o_ports[0].datatype();
+					return dto.datatype();
 				};
 				v.i_ports[0].datatype = function () {
 					return this.block.datatype();
@@ -314,15 +308,17 @@
 			return [[], b.o_ports];
 		}
 		case 'MEMORY_ELEMENT': {
-			const r = findMemById(expr_node.id, bdef);
-			const m = r.r;
-			const mem_reader_ports = m.getReaderPorts(m.__raedersAdded__++);
+			const m = findMemById(expr_node.id, bdef).r;
+			const mr = Object.create(bs.MemoryReaderBlock);
+			mr.memoryblock = m;
+			mr.init();
 			const index_expr_ports = convert_expr(expr_node.args[0], bdef);
 			const ci = Object.create(bs.CompositeBlock.Connection);
 			ci.in  = index_expr_ports[1][0];
-			ci.out = mem_reader_ports[0];
+			ci.out = mr.i_ports[0];
+			bdef.blocks.push(mr);
 			bdef.connections.push(ci);
-			return [[], [mem_reader_ports[1]]];
+			return [[], [mr.o_ports[0]]];
 		}
 		case 'CALL_EXPR': {
 			const b = Object.create(bs.CallBlock);

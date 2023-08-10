@@ -73,8 +73,6 @@ memory_declaration  : MEM '[' expr ']' type id END
                                 name: 'MEMORY_DECLARATION',
                                 type: $5,
                                 size: $3,
-                                readers_N: 0,
-                                writers_M: 0,
                                 id: $6
                             }
                         }}

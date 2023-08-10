@@ -136,94 +136,17 @@
 		return "{ VAR: " + this.id + " }";
 	}
 
-	
+
 	const MemoryBlock = Object.create(Block);
 	MemoryBlock.operation = "MEMORY";
 	MemoryBlock.id = "";
-	MemoryBlock.writers_N = 0; // E.g.
-	MemoryBlock.readers_N = 0; // E.g.
 	MemoryBlock.init = function () {
-		const nInputs = 1 + 1 + this.writers_N * 2 + this.readers_N; // size, init, writer indexes, writer values, reader indexes.
-		const nOutputs = this.readers_N; // reader values
-		this.createPorts(nInputs, nOutputs);
+		this.createPorts(2, 0); // size, init
 		this.datatype = function () {
 			return ts.DataTypeGeneric;
 		};
-		this.o_ports.forEach(p => {
-			p.datatype = function () {
-				return this.block.datatype();
-			};
-		});
-		this.getInitPort().datatype = () => this.datatype(); //MMM
-	};
-	MemoryBlock.getSizePort = function () {
-		return this.i_ports[0];
-	};
-	MemoryBlock.getInitPort = function () {
-		return this.i_ports[1];
-	};
-	MemoryBlock.getWriterPorts = function (i) {
-		if (this.writers_N <= 0 || i >= this.writers_N)
-			throw new Error("Memory has not so many writers");
-		return [this.i_ports[2 + i], this.i_ports[2 + this.writers_N + i]];
-	};
-	MemoryBlock.getReaderPorts = function (i) {
-		if (this.readers_N <= 0 || i >= this.readers_N)
-			throw new Error("Memory has not so many readers");
-		return [this.i_ports[2 + this.writers_N * 2 + i], this.o_ports[i]];
-	};
-	MemoryBlock.setOutputUpdaterate = function () {
-		var m = UpdateRateConstant;
-		for (let i = 1; i < 1 + this.writers * 2; i++)
-			if (this.i_ports[i].updaterate.level > m.level)
-				m = this.i_ports[i].updaterate;
-		this.o_ports.forEach(p => p.updaterate = m);
 	};
 	MemoryBlock.validate = function () {
-		Block.validate.call(this);
-		if (this.datatype() == ts.DataTypeGeneric)
-			throw new Error("Generic datatype");
-		if (this.getSizePort().datatype() != ts.DataTypeInt32)
-			throw new Error("Memory size must be int");
-		if (this.getInitPort().datatype() != this.datatype())
-			throw new Error("Memory init must carry the same datatype");
-		for (let i = 0; i < this.readers_N; i++) {
-			const rps = this.getReaderPorts(i);
-			if (rps[0].datatype() != ts.DataTypeInt32)
-				throw new Error("Only int can be used to access memory");
-			if (rps[1].datatype() != this.datatype())
-				throw new Error("inconsitent Output datatype");
-		}
-		for (let i = 0; i < this.writers_N; i++) {
-			const wps = this.getWriterPorts(i);
-			if (wps[0].datatype() != ts.DataTypeInt32)
-				throw new Error("Only int can be used to access memory");
-			if (wps[1].datatype() != this.datatype())
-				throw new Error("Inconsistent input datatype");
-		}
-		if (this.i_ports[0].updaterate.level > UpdateRateFs.level)
-			throw new Error("Memory size must be constant or depenging on fs");
-	};
-	MemoryBlock.toString = function () {
-		return "{ MEM: " + this.id + ":" + this.datatype() + ":" + this.readers_N + ":" + this.writers_N + " }";
-	};
-	MemoryBlock.clone = function () {
-		const r = Object.create(this);
-		r.writers = this.writers;
-		r.readers = this.readers;
-		r.datatype = this.datatype;
-		r.init();
-		return r;
-	};
-
-	// MemoryBlock2 is the new MemoryBlock
-	const MemoryBlock2 = Object.create(Block);
-	MemoryBlock2.operation = "MEMORY";
-	MemoryBlock2.id = "";
-	MemoryBlock2.init = function () {
-		this.createPorts(2, 0); // size, init
-	};
-	MemoryBlock2.validate = function () {
 		if (this.datatype() == ts.DataTypeGeneric)
 			throw new Error("Generic datatype");
 		if (this.i_ports[0].datatype() != ts.DataTypeInt32)

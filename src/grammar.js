@@ -136,8 +136,6 @@ case 10:
                                 name: 'MEMORY_DECLARATION',
                                 type: $$[$0-2],
                                 size: $$[$0-4],
-                                readers_N: 0,
-                                writers_M: 0,
                                 id: $$[$0-1]
                             }
                         
