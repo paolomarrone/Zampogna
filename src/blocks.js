@@ -624,14 +624,37 @@
 	};
 
 	CompositeBlock.flatten = function () {
-		this.blocks.forEach(b => b.flatten());
+		this.blocks.filter(b => CallBlock.isPrototypeOf(b)).forEach(b => {
+			const bb = b.bdef.clone();
+			bb.flatten();
+			this.blocks = this.blocks.concat(bb.blocks);
+			this.connections = this.connections.concat(bb.connections);
+			this.properties = this.properties.concat(bb.properties);
+			b.bdef.clean();
 
-		this.blocks.filter(b => CompositeBlock.isPrototypeOf(b)).forEach(b => {
-			
-			// TODO: ....
+			b.i_ports.forEach((p, i) => {
+				const np = bb.i_ports[i];
+				const csext = this.connections.filter(c => c.out == p); // Should be max 1 btw
+				const csint = this.connections.filter(c => c.in == np);
+				if (csext.length != 1)
+					throw new Error("Found invalid number of connectrions toward input");
+				this.connections.splice(this.connections.indexOf(csext[0]), 1);
+				csint.forEach(c => c.in = csext[0].in );
+			});
 
-		})
+			b.o_ports.forEach((p, i) => {
+				const np = bb.o_ports[i];
+				const csext = this.connections.filter(c => c.in == p); 
+				const csint = this.connections.filter(c => c.out == np); // Should be max 1 btw
+				if (csint.length != 1)
+					throw new Error("Found invalid number of connectrions toward output");
+				this.connections.splice(this.connections.indexOf(csint[0]), 1);
+				csext.forEach(c => c.in = csint[0].in);
+			});
 
+			this.blocks.splice(this.blocks.indexOf(b), 1);
+		});
+		this.bdefs = [];
 	};
 	CompositeBlock.clone = function () {
 

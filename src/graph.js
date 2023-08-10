@@ -30,28 +30,6 @@
 
 		convert_statements(root.statements, bdef);
 
-		// Find initial block
-		let i_bdef = (function () {
-			let bds = bdef.bdefs
-				.filter(bd => bd.id == options.initial_block_id)
-				.filter(bd => bd.i_ports.map(p => p.datatype()).every(d => d == ts.DataTypeFloat32))
-				.filter(bd => bd.o_ports.map(p => p.datatype()).every(d => d == ts.DataTypeFloat32));
-			if (bds.length == 1)
-				return bds[0];
-			bds = bds.filter(bd => bd.inputs_N == options.initial_block_inputs_n);
-			if (bds.length == 1)
-				return bds[0];
-			throw new Error("Initial block not found");
-		})();
-
-		i_bdef.__is_initial_block__ = true;
-
-		bdef.inputs_N = i_bdef.inputs_N;
-		bdef.outputs_N = i_bdef.outputs_N;
-		bdef.createPorts(bdef.inputs_N, bdef.outputs_N);
-		bdef.i_ports.forEach(p => p.datatype = () => ts.DataTypeFloat32);
-		bdef.o_ports.forEach(p => p.datatype = () => ts.DataTypeFloat32);
-
 		bdef.propagateDataTypes();
 
 		// resolve call blocks
@@ -63,6 +41,7 @@
 		})(bdef);
 
 		bdef.validate();
+		check_recursive_calls(bdef);
 
 		return bdef;
 	}
@@ -427,33 +406,60 @@
 		b.bdef = r.r;
 	}
 
-	function flatten (bdef_root) {
+	function check_recursive_calls (bdef, stack = []) {
+		if (stack.find(b => b == bdef))
+			throw new Error("Recursive block calls");
+		const nstack = stack.concat(bdef);
+		bdef.blocks.filter(b => bs.CallBlock.isPrototypeOf(b)).forEach(b => {
+			check_recursive_calls(b.bdef, nstack);
+		});
+		bdef.bdefs.forEach(bd => check_recursive_calls(bd, nstack));
+	}
 
-		// check for recurive calls
-		(function check (bdef, stack = []) {
-			if (stack.find(b => b == bdef))
-				throw new Error("Recursive block calls");
-			const nstack = stack.concat(bdef);
-			bdef.blocks.filter(b => bs.CallBlock.isPrototypeOf(b)).forEach(b => {
-				check(b.bdef, nstack);
-			});
-			bdef.bdefs.forEach(bd => check(bd, nstack));
-		})(bdef_root, []);
+	function find_initial_bdef (bdef, options) {
+		let bds = bdef.bdefs
+			.filter(bd => bd.id == options.initial_block_id)
+			.filter(bd => bd.i_ports.map(p => p.datatype()).every(d => d == ts.DataTypeFloat32))
+			.filter(bd => bd.o_ports.map(p => p.datatype()).every(d => d == ts.DataTypeFloat32));
+		if (bds.length == 1)
+			return bds[0];
+		bds = bds.filter(bd => bd.inputs_N == options.initial_block_inputs_n);
+		if (bds.length == 1)
+			return bds[0];
+		throw new Error("Initial block not found");
+	}
 
+	function flatten (bdef, options) {
 
-		function substitute_call (call_block, bdef) {
-			
-			
+		const i_bdef = find_initial_bdef(bdef, options);
+
+		bdef.inputs_N = i_bdef.inputs_N;
+		bdef.outputs_N = i_bdef.outputs_N;
+		bdef.createPorts(bdef.inputs_N, bdef.outputs_N);
+		bdef.i_ports.forEach(p => p.datatype = () => ts.DataTypeFloat32);
+		bdef.o_ports.forEach(p => p.datatype = () => ts.DataTypeFloat32);
+
+		const b = Object.create(bs.CallBlock);
+		b.id = i_bdef.id;
+		b.inputs_N = bdef.inputs_N;
+		b.outputs_N = bdef.outputs_N;
+		b.bdef = i_bdef;
+		b.init();
+		for (let i = 0; i < bdef.inputs_N; i++) {
+			const c = Object.create(bs.CompositeBlock.Connection);
+			c.in = bdef.i_ports[i];
+			c.out = b.i_ports[i];
+			bdef.connections.push(c);
 		}
-
-		function f (bdef) {
-			bdef.bdefs.forEach(bd => f(bd));
-			bdef.blocks.filter(b => bs.CallBlock.isPrototypeOf(b)).forEach(b => {
-
-			});
+		for (let i = 0; i < bdef.outputs_N; i++) {
+			const c = Object.create(bs.CompositeBlock.Connection);
+			c.in = b.o_ports[i];
+			c.out = bdef.o_ports[i];
+			bdef.connections.push(c);
 		}
+		bdef.blocks.push(b);
 
-
+		bdef.flatten();
 	}
 
 	function findVarById (id, bdef) {
@@ -518,5 +524,4 @@
 
 	exports["ASTToGraph"] = ASTToGraph;
 	exports["flatten"] = flatten;
-
 }());

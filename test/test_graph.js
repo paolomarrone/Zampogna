@@ -84,7 +84,16 @@
 					u = float(int(t) - A % int(U[3]))
 				}
 				y = uff (x) {
-					y = x - 1.0
+					y = x - 1.111111 + float(A) + u + p
+					u = u1 + u2 + u3
+					p = p1 + p2 + p3
+					u1, p1 = aff(666, x - 1.0)
+					u2, p2 = aff(666 + 666, x)
+					u3, p3 = aff(666, x * p1)
+				}
+				y1, y2 = aff (int x, t) {
+					y1 = y2 * float(x) + float(A)
+					y2 = t + float(x)
 				}
 			`,
 			options: { initial_block_id: "asd" }
@@ -123,8 +132,12 @@
 			const AST = parser.parse(GoodTests[t].code);
 			syntax.validateAST(AST);
 			const g = graph.ASTToGraph(AST, GoodTests[t].options);
-			const gvizs = util.graphToGraphviz(g);
+			var gvizs = util.graphToGraphviz(g);
 			fs.writeFileSync(outputDir + "/T" + t + ".dot", gvizs);
+			graph.flatten(g, GoodTests[t].options);
+			var gvizs = util.graphToGraphviz(g);
+			fs.writeFileSync(outputDir + "/T" + t + "Flattened.dot", gvizs);
+			
 		} catch (e) {
 			//console.log("A", e);
 			res = false;
