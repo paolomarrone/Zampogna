@@ -70,6 +70,21 @@
 		},
 		{
 			code: `
+				int A = 1234
+				y, u = asd (x) {
+					mem[1] float V
+					V[0] = V[0] + 0.01 * y
+					V.init = y #implicit y.init
+					t = x * 5.5
+					u = t.fs
+					y = t.init + t.fs.init + t.fs / V[0]
+					t.fs.init = float(int(666.666 + (A.fs.init.fs * 2.0).init) ^ 5.init)
+				}
+			`,
+			options: { initial_block_id: "asd" }
+		},
+		{
+			code: `
 				int A = 123
 				mem[A * 2] float U
 				U.init = 0.1
@@ -115,7 +130,14 @@
 	];
 
 	const BadTests = [
-		
+		/*
+		{
+			code: `
+				A = 5
+				A.init = A.init
+			`,
+			options: {}
+		},*/
 	];
 
 	const GoodTestResults = [];
@@ -154,7 +176,7 @@
 			syntax.validateAST(AST);
 			const g = graph.ASTToGraph(AST, BadTests[t].options);
 		} catch (e) {
-			//console.log("B", e.message);
+			console.log("B", e.message);
 			res = true;
 			err = e;
 		}

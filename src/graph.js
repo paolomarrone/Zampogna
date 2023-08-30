@@ -32,16 +32,17 @@
 
 		bdef.propagateDataTypes();
 
-		// resolve call blocks
-		(function f (bdef) {
+		(function resolve_call_blocks (bdef) {
 			bdef.blocks.filter(b => bs.CallBlock.isPrototypeOf(b)).forEach(b => {
 				resolve_call_block(b, bdef);
 			});
-			bdef.bdefs.forEach(bd => f(bd));
+			bdef.bdefs.forEach(bd => resolve_call_blocks(bd));
 		})(bdef);
 
-		bdef.validate();
-		check_recursive_calls(bdef);
+		(function validate (bdef) {
+			bdef.validate();
+			check_recursive_calls(bdef);
+		})(bdef);
 
 		return bdef;
 	}
@@ -123,7 +124,7 @@
 			const t = getDataType(s.type);
 			m.init();
 			m.datatype = () => t;
-			m.i_ports[1].datatype = () => t;
+			//m.i_ports[1].datatype = () => t;
 			bdef.blocks.push(m);
 		});
 
@@ -205,11 +206,11 @@
 	function convert_property_left (property_node, bdef) {
 		let x = property_node.expr;
 		if (x.name == 'VARIABLE') {
-			let r = findVarById(x.id, bdef) || findMemById(x.id, bdef);
+			const r = findVarById(x.id, bdef) || findMemById(x.id, bdef);
 			return { p: convert_property(r.r, property_node.property_id, r.bd), bdef: r.bd };
 		}
 		else if (x.name == 'PROPERTY') {
-			let r = convert_property_left(x, bdef);
+			const r = convert_property_left(x, bdef);
 			return { p: convert_property(r.p, property_node.property_id, bdef), bdef: r.bdef };
 		}
 	}
@@ -460,6 +461,35 @@
 		bdef.blocks.push(b);
 
 		bdef.flatten();
+
+		(function validate (bdef) {
+			const mems = bdef.blocks.filter(b => bs.MemoryBlock.isPrototypeOf(b));
+			mems.forEach(m => {
+				const p = bdef.properties.find(p => p.of == m && p.type == 'init');
+				if (!p)
+					throw new Error("Memory init not assiged");
+			});
+		})(bdef);
+	}
+
+	// replace properties with blocks
+	function normalize_properties (bdef) {
+		// Assuming bdef flattened
+
+		// Lot of thinkering.
+		// Problem when mixing fs and init
+		// Problem when assuming x.init = t as x.init = t.init
+		//  What when x.init = t.fs ? t.fs or t.fs.init? Depends of updaterate?
+		//   updaterate should be set after this
+
+		function norm_fs () {
+
+		}
+
+		function norm_init () {
+
+		}
+
 	}
 
 	function findVarById (id, bdef) {
