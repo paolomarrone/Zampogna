@@ -430,7 +430,7 @@
 		if (this.datatype() == ts.DataTypeGeneric)
 			throw new Error("Generic MAX datatype");
 		if (this.i_ports.some(p => p.datatype() != this.datatype()))
-			throw new Error("Inconsistent datatypes: " + this.toString());
+			throw new Error("Inconsistent MAX datatypes: " + this.toString());
 	};
 
 	// Maybe CallBlock needs to be specialized in Extern and block instantiation
@@ -611,7 +611,6 @@
 	CompositeBlock.getPropertyOf = function (block, type) {
 		return this.properties.find(p => p.of == block && p.type == type);
 	};
-
 	CompositeBlock.flatten = function () {
 		this.blocks.filter(b => CallBlock.isPrototypeOf(b)).forEach(b => {
 			const bb = b.bdef.clone();
@@ -666,7 +665,6 @@
 		r.bdefs = this.bdefs.map(bd => bd.clone());
 		return r;
 	};
-
 	CompositeBlock.clean = function () {
 		this.blocks.forEach(b => {
 			b.i_ports.forEach(p => p.__clone__ = undefined);

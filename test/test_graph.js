@@ -77,6 +77,7 @@
 					V.init = y #implicit y.init
 					t = x * 5.5
 					u = t.fs
+					u.init = t
 					y = t.init + t.fs.init + t.fs / V[0]
 					t.fs.init = float(int(666.666 + (A.fs.init.fs * 2.0).init) ^ 5.init)
 				}
@@ -91,7 +92,7 @@
 				y, u = asd (x) {
 					mem[5] float V
 					V.init = 0.0
-					V[0] = x
+					V[0] = x + fs
 					V[1] = x * 2.0 / V[33]
 					V[int(x)] = 0.5 * t
 					t = x * 5.5 + uff(t / 2.2)

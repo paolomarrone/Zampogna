@@ -28,6 +28,13 @@
 		bdef.outputs_N = 0; // ^
 		bdef.init();
 
+		const fs = Object.create(bs.VarBlock);
+		fs.id = "fs";
+		fs.datatype = () => ts.DataTypeFloat32;
+		fs.init();
+		fs.i_ports[0].datatype = () => ts.DataTypeFloat32; // Trick, maybe set as system input
+		bdef.blocks.push(fs);
+
 		convert_statements(root.statements, bdef);
 
 		bdef.propagateDataTypes();
@@ -172,6 +179,8 @@
 					}
 					case 'PROPERTY': {
 						const r = convert_property_left(o, bdef);
+						if (bdef.connections.find(c => c.out == r.p.i_ports[0]))
+							throw new Error("Property assiged multiple times");
 						const c = Object.create(bs.CompositeBlock.Connection);
 						c.in = expr_ports[1][oi];
 						c.out = r.p.i_ports[0];
@@ -223,7 +232,7 @@
 			v.init();
 			if (property == 'fs') {
 				v.datatype = () => ts.DataTypeFloat32;
-				v.i_ports[0].datatype = () => ts.DataTypeFloat32;
+				v.i_ports[0].datatype = () => ts.DataTypeFloat32; // Check this
 			}
 			else {
 				const dto = (block.o_ports[0] || block);
@@ -462,12 +471,18 @@
 
 		bdef.flatten();
 
+		normalize_properties(bdef);
+
 		(function validate (bdef) {
 			const mems = bdef.blocks.filter(b => bs.MemoryBlock.isPrototypeOf(b));
 			mems.forEach(m => {
 				const p = bdef.properties.find(p => p.of == m && p.type == 'init');
 				if (!p)
 					throw new Error("Memory init not assiged");
+			});
+			bdef.properties.forEach(p => {
+				if (bdef.properties.filter(pp => pp.of == p.of && pp.type == p.type).length > 1)
+					throw new Error("Cannot assign property multiple times");
 			});
 		})(bdef);
 	}
@@ -476,17 +491,65 @@
 	function normalize_properties (bdef) {
 		// Assuming bdef flattened
 
-		// Lot of thinkering.
-		// Problem when mixing fs and init
-		// Problem when assuming x.init = t as x.init = t.init
-		//  What when x.init = t.fs ? t.fs or t.fs.init? Depends of updaterate?
-		//   updaterate should be set after this
+		(function explicitize_init (bdef) {
+			// y.init = x -> y.init = x.init
+			bdef.properties.filter(p => p.type == 'init').forEach(p => {
+				const c = bdef.connections.find(c => c.out == p.block.i_ports[0]);
+				if (!c)
+					return;
+				const v = convert_property(c.in.block, "init", bdef);
+				c.in = v.o_ports[0];
+			});
+		})(bdef);
 
-		function norm_fs () {
+
+		function dispatch (b, ptype) {
+			const p = bdef.properties.find(p => p.block == b && p.type == ptype);
+			if (!p)
+				; // Idk
+			if (ptype == "fs")
+				norm_fs(b);
+			if (ptype == "init")
+				norm_init(b);
+		}
+
+		function norm_fs (b) {
+			const c = bdef.connections.find(c => c.out == b.i_ports[0]);
+			if (c)
+				return c.in.block; // We should say it's already connected sir
+			
+		}
+
+		function norm_init (b) {
 
 		}
 
-		function norm_init () {
+		// When fs is not explicitly assigned
+		function derive_fs (property_block) {
+			const p = bdef.properties.find(p => p.block == property_block && p.type == 'fs');
+			const o = p.of;
+			if (bs.ConstantBlock.isPrototypeOf(o))
+				return ; // Should return 0;  No, we should probably return 0... depends on if it is inferred or explicit... heck
+			if (o == bdef)
+				return findVarById("fs", bdef).r;
+			// Cannot be memory/element by syntax
+			// Now take the max of imput fss
+			const max = Object.create(bs.MaxBlock);
+			max.datatype = () => ts.DataTypeFloat32;
+			const ins = [];
+			o.i_ports.forEach(p => {
+				const bb = bdef.connections.find(c => c.out == p).in.block;
+				ins.push(dispatch(bb, "fs"));
+			});
+			max.createPorts(ins.length, 1);
+			max.init();
+			// TODO: connect ins to max
+
+
+		}
+
+		// When init is not explicitly assiged
+		function derive_init (b) {
 
 		}
 
