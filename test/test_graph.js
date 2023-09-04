@@ -58,6 +58,17 @@
 		},
 		{
 			code: `
+				y = asd (x) {
+					y = t.fs
+					t = x + 5.0 + u
+					u = 1.0
+					u.fs = 2.0
+				}
+			`,
+			options: { initial_block_id: "asd" }
+		},
+		{
+			code: `
 				int A = 1234
 				y, u = asd (x) {
 					t = x * 5.5
@@ -70,7 +81,7 @@
 		},
 		{
 			code: `
-				int A = 1234
+				int A = 123456
 				y, u = asd (x) {
 					mem[1] float V
 					V[0] = V[0] + 0.01 * y

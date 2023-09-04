@@ -569,6 +569,9 @@
 		});
 		*/
 		this.connections.forEach(c => c.validate());
+		const t = this.properties.map(p => p.block);
+		if (t.length != new Set(t).size)
+			throw new Error("A block can be used for only one property");
 		this.bdefs.forEach(bd => bd.validate());
 	};
 	CompositeBlock.toString = function () {

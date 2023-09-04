@@ -502,57 +502,118 @@
 			});
 		})(bdef);
 
+		const b0 = Object.create(bs.ConstantBlock);
+		b0.value = 0;
+		b0.datatype = () => ts.DataTypeFloat32;
+		b0.init();
+		bdef.blocks.push(b0);
 
-		function dispatch (b, ptype) {
-			const p = bdef.properties.find(p => p.block == b && p.type == ptype);
+		const fs = findVarById("fs", bdef).r;
+
+		bdef.properties.forEach(p => normalize(p.block));
+
+		function normalize (b) {
+			if (bdef.connections.find(c => c.out == b.i_ports[0]))
+				return; // Already defined // Oh, shoudln't we remove the prop?
+			// Otherwise inference is needed
+
+			const p = bdef.properties.find(p => p.block == b);
 			if (!p)
-				; // Idk
-			if (ptype == "fs")
-				norm_fs(b);
-			if (ptype == "init")
-				norm_init(b);
+				return; //throw new Error("No propery found..." + b.toString());
+
+			if (p.type == "fs")
+				infer_fs(p);
+			if (p.type == "init")
+				infer_init(p);
+
+			bdef.properties.splice(bdef.properties.indexOf(p), 1);
 		}
 
-		function norm_fs (b) {
-			const c = bdef.connections.find(c => c.out == b.i_ports[0]);
-			if (c)
-				return c.in.block; // We should say it's already connected sir
-			
+		function infer_fs (p) {
+			const args = (function f (b) { // Bad, need to rethink this
+				if (b == bdef)
+					return fs.o_ports[0];
+				if (b == fs)
+					return fs.o_ports[0];
+				if (bs.ConstantBlock.isPrototypeOf(b))
+					return b0.o_ports[0];
+				normalize(b);
+				var args = [];
+				b.i_ports.forEach(pp => {
+					const uuu = bdef.connections.find(c => c.out == pp);
+					if (!uuu)
+						throw new Error("Wtf??? " + b.toString() + " - " + p.block.toString() + " - " + p.type)
+					const bb = bdef.connections.find(c => c.out == pp).in.block;
+					args = args.concat(f(bb));
+				});
+				return args;
+			})(p.of);
+
+			const max = (function get_max_fs (args) {
+				args = Array.from(new Set(args)); // Note for the future: Assuming blocks have only 1 output at this point
+				if (args.length == 0)
+					throw new Error("What?");
+				if (args.length > 1) { // Remove 0
+					const i = args.map(a => a.block).indexOf(b0);
+					if (i != -1)
+						;//args.splice(i, 1);
+				}
+				if (args.length == 1)
+					return args[0];
+
+				const max = Object.create(bs.MaxBlock);
+				max.datatype = () => ts.DataTypeFloat32;
+				max.createPorts(args.length, 1);
+				max.init();
+				for (let i = 0; i < args.length; i++) {
+					const c = Object.create(bs.CompositeBlock.Connection);
+					c.in = args[i];
+					c.out = max.i_ports[i];
+					bdef.connections.push(c);
+				}
+				bdef.blocks.push(max);
+				return max.o_ports[0];
+			})(args);
+
+			const c = Object.create(bs.CompositeBlock.Connection);
+			c.in = max;
+			c.out = p.block.i_ports[0];
+			bdef.connections.push(c);
 		}
 
-		function norm_init (b) {
+		function infer_init (p) {
+			const b = (function get_init (b) {
+				if (b == bdef)
+					return b0.o_ports[0]; //throw new Error("Unimplemented. Note: set default for audio (0) or take user compilation inputs");
+				if (bs.ConstantBlock.isPrototypeOf(b))
+					return b.o_ports[0];
+				if (b == fs) // Meh: TODO: check
+					return b.o_ports[0]; 
+normalize(b);
+				const bb = b.__clun__ ? b.__clun__ : b.clone(); // Test tmp
+				b.__clun__ = bb
+				//const bb = b.clone();
+				const args = [];
+				b.i_ports.forEach((pp, i) => {
+					const c = bdef.connections.find(c => c.out == pp);
+					if (!c)
+						throw new Error("madonnaaa " + b.toString() + " - " + p + i)
+					const vv = convert_property(c.in.block, "init", bdef);
+					normalize(vv);
+					const cc = Object.create(bs.CompositeBlock.Connection);
+					cc.in = vv.o_ports[0];
+					cc.out = bb.i_ports[i];
+					bdef.connections.push(cc);
+				});
+				bdef.blocks.push(bb);
+				return bb.o_ports[0];
+			})(p.of);
 
+			const c = Object.create(bs.CompositeBlock.Connection);
+			c.in = b;
+			c.out = p.block.i_ports[0];
+			bdef.connections.push(c);
 		}
-
-		// When fs is not explicitly assigned
-		function derive_fs (property_block) {
-			const p = bdef.properties.find(p => p.block == property_block && p.type == 'fs');
-			const o = p.of;
-			if (bs.ConstantBlock.isPrototypeOf(o))
-				return ; // Should return 0;  No, we should probably return 0... depends on if it is inferred or explicit... heck
-			if (o == bdef)
-				return findVarById("fs", bdef).r;
-			// Cannot be memory/element by syntax
-			// Now take the max of imput fss
-			const max = Object.create(bs.MaxBlock);
-			max.datatype = () => ts.DataTypeFloat32;
-			const ins = [];
-			o.i_ports.forEach(p => {
-				const bb = bdef.connections.find(c => c.out == p).in.block;
-				ins.push(dispatch(bb, "fs"));
-			});
-			max.createPorts(ins.length, 1);
-			max.init();
-			// TODO: connect ins to max
-
-
-		}
-
-		// When init is not explicitly assiged
-		function derive_init (b) {
-
-		}
-
 	}
 
 	function findVarById (id, bdef) {
