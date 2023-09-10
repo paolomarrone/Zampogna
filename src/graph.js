@@ -662,8 +662,6 @@
 				const args = [];
 				b.i_ports.forEach((pp, i) => {
 					const c = bdef.connections.find(c => c.out == pp);
-					if (!c)
-						throw new Error("madonnaaa " + b.toString() + " - " + p + i)
 					const vv = convert_property(c.in.block, "init", bdef);
 					normalize(vv);
 					const cc = Object.create(bs.CompositeBlock.Connection);
