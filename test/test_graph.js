@@ -60,7 +60,7 @@
 			code: `
 				y = asd (x) {
 					y = t.fs
-					t = x + 5.0 + u
+					t = x + 5.0 + u # + t # doesn't work now, but should
 					u = 1.0
 					u.fs = 2.0
 				}
@@ -124,7 +124,8 @@
 				}
 			`,
 			options: { initial_block_id: "asd" }
-		},/*
+		},
+		/*
 		{ 
 			code: `
 					int A = 5
@@ -142,14 +143,32 @@
 	];
 
 	const BadTests = [
-		/*
 		{
 			code: `
-				A = 5
-				A.init = A.init
+				y = A () {
+					y = y.fs
+				}
 			`,
-			options: {}
-		},*/
+			options: { initial_block_id: "A" }
+		},
+		{
+			code: `
+				y = asd (x) {
+					y = t.fs
+					t = y
+				}
+			`,
+			options: { initial_block_id: "asd" }
+		},
+		{
+			code: `
+				y = asd (x) {
+					y = t.init
+					t = y
+				}
+			`,
+			options: { initial_block_id: "asd" }
+		},
 	];
 
 	const GoodTestResults = [];
@@ -171,7 +190,6 @@
 			graph.flatten(g, GoodTests[t].options);
 			var gvizs = util.graphToGraphviz(g);
 			fs.writeFileSync(outputDir + "/T" + t + "Flattened.dot", gvizs);
-			
 		} catch (e) {
 			//console.log("A", e);
 			res = false;
@@ -187,6 +205,11 @@
 			const AST = parser.parse(BadTests[t].code);
 			syntax.validateAST(AST);
 			const g = graph.ASTToGraph(AST, BadTests[t].options);
+			var gvizs = util.graphToGraphviz(g);
+			fs.writeFileSync(outputDir + "/F" + t + ".dot", gvizs);
+			graph.flatten(g, BadTests[t].options);
+			var gvizs = util.graphToGraphviz(g);
+			fs.writeFileSync(outputDir + "/F" + t + "Flattened.dot", gvizs);
 		} catch (e) {
 			console.log("B", e.message);
 			res = true;

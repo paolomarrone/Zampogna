@@ -436,7 +436,7 @@
 		bds = bds.filter(bd => bd.inputs_N == options.initial_block_inputs_n);
 		if (bds.length == 1)
 			return bds[0];
-		throw new Error("Initial block not found");
+		throw new Error("Initial block not found: " + options.initial_block_id);
 	}
 
 	function flatten (bdef, options) {
@@ -502,6 +502,36 @@
 			});
 		})(bdef);
 
+		// TODO: Fix this, it's too strict
+		(function detect_inference_loops (bdef) {
+			// Like: y = y.fs with y.fs inferred
+			bdef.properties.map(p => p.block).forEach(b => {
+				(function f (b, stack, inferring) {
+					if (inferring)
+						if (stack.find(bb => b == bb))
+							throw new Error("Recursive properties inference. Stack: " + stack.toString() + " + " + b.toString());
+					if (b.__visited__)
+						return;	
+					b.__visited__ = true;
+					var gotta = false;
+					b.i_ports.forEach(p => {
+						const c = bdef.connections.find(c => c.out == p);
+						if (c) {
+							f(c.in.block, stack.concat(b), inferring);
+							gotta = true;
+						}
+					});
+					if (gotta) {
+						return;
+					}
+					bdef.properties.filter(p => p.block == b).forEach(p => {
+						f (p.of, stack.concat(b), true);
+					});
+				})(b, [], false);
+			});
+			bdef.blocks.forEach(b => delete b.__visited__);
+		})(bdef);
+
 		const b0 = Object.create(bs.ConstantBlock);
 		b0.value = 0;
 		b0.datatype = () => ts.DataTypeFloat32;
@@ -510,89 +540,125 @@
 
 		const fs = findVarById("fs", bdef).r;
 
-		bdef.properties.forEach(p => normalize(p.block));
+		const toBeNormalized = bdef.properties.map(p => p.block);
+		for (let i = 0; i < toBeNormalized.length; i++) {
+			normalize(toBeNormalized[i]);
+		}
+		bdef.blocks.forEach(b => delete b.__normalized__);
 
+		// Tmp - cleaning maxes and vars with 1 input...
+		(function simplifly (bdef) {
+			var l = bdef.blocks.length;
+			for (let i = 0; i < l; i++) {
+				const b = bdef.blocks[i];
+				if (!bs.MaxBlock.isPrototypeOf(b) && !bs.VarBlock.isPrototypeOf(b))
+					continue;
+				if (b.i_ports.length != 1)
+					continue;
+				const cin = bdef.connections.find(c => c.out == b.i_ports[0]);
+				const cons = bdef.connections.filter(c => c.in  == b.o_ports[0]);
+				if (cons.length != 1)
+					continue;
+				const con = cons[0];
+				if (!cin || !con)
+					continue;
+				cin.out = con.out;
+				bdef.connections.splice(bdef.connections.indexOf(con), 1);
+				bdef.blocks.splice(i, 1);
+				i--;
+				l--;
+			}
+		})(bdef);
+
+		// Checks whether b has inputs or needs to be inferred
 		function normalize (b) {
+			if (b.__normalized__)
+				return;
+			b.__normalized__ = true;
+			if (b == bdef)
+				return;
+			if (b == fs)
+				return;
+			if (b.i_ports.length == 0)
+				return;
 			if (bdef.connections.find(c => c.out == b.i_ports[0]))
-				return; // Already defined // Oh, shoudln't we remove the prop?
+				return;
+			
 			// Otherwise inference is needed
 
 			const p = bdef.properties.find(p => p.block == b);
 			if (!p)
-				return; //throw new Error("No propery found..." + b.toString());
+				throw new Error("No propery found..." + b.toString());
 
 			if (p.type == "fs")
 				infer_fs(p);
 			if (p.type == "init")
 				infer_init(p);
-
-			bdef.properties.splice(bdef.properties.indexOf(p), 1);
 		}
 
 		function infer_fs (p) {
-			const args = (function f (b) { // Bad, need to rethink this
+
+			normalize(p.of);
+			const m = get_fs(p.of);
+			const c = Object.create(bs.CompositeBlock.Connection);
+			c.in = m.o_ports[0];
+			c.out = p.block.i_ports[0];
+			bdef.connections.push(c);
+
+			function get_fs (b) {
 				if (b == bdef)
-					return fs.o_ports[0];
+					return fs;
 				if (b == fs)
-					return fs.o_ports[0];
+					return fs;
 				if (bs.ConstantBlock.isPrototypeOf(b))
-					return b0.o_ports[0];
-				normalize(b);
-				var args = [];
-				b.i_ports.forEach(pp => {
-					const uuu = bdef.connections.find(c => c.out == pp);
-					if (!uuu)
-						throw new Error("Wtf??? " + b.toString() + " - " + p.block.toString() + " - " + p.type)
-					const bb = bdef.connections.find(c => c.out == pp).in.block;
-					args = args.concat(f(bb));
-				});
-				return args;
-			})(p.of);
-
-			const max = (function get_max_fs (args) {
-				args = Array.from(new Set(args)); // Note for the future: Assuming blocks have only 1 output at this point
-				if (args.length == 0)
-					throw new Error("What?");
-				if (args.length > 1) { // Remove 0
-					const i = args.map(a => a.block).indexOf(b0);
-					if (i != -1)
-						;//args.splice(i, 1);
-				}
-				if (args.length == 1)
-					return args[0];
-
+					return b0;
+				
 				const max = Object.create(bs.MaxBlock);
 				max.datatype = () => ts.DataTypeFloat32;
-				max.createPorts(args.length, 1);
+				max.createPorts(b.i_ports.length, 1);
 				max.init();
-				for (let i = 0; i < args.length; i++) {
+				for (let i = 0; i < b.i_ports.length; i++) {
+					const p_o = b.i_ports[i];
+					const p_i = bdef.connections.find(x => x.out == p_o).in;
+					var v;
+					if (p_i.block == bdef)
+						v = fs;
+					else if (p_i.block == fs)
+						v = fs;
+					else {
+						v = convert_property(p_i.block, "fs", bdef);
+						toBeNormalized.push(v);
+					}
 					const c = Object.create(bs.CompositeBlock.Connection);
-					c.in = args[i];
+					c.in = v.o_ports[0];
 					c.out = max.i_ports[i];
 					bdef.connections.push(c);
 				}
 				bdef.blocks.push(max);
-				return max.o_ports[0];
-			})(args);
-
-			const c = Object.create(bs.CompositeBlock.Connection);
-			c.in = max;
-			c.out = p.block.i_ports[0];
-			bdef.connections.push(c);
+				return max;
+			}
 		}
 
 		function infer_init (p) {
-			const b = (function get_init (b) {
+			normalize(p.of);
+
+			const b = get_init(p.of);
+			const c = Object.create(bs.CompositeBlock.Connection);
+			c.in = b.o_ports[0];
+			c.out = p.block.i_ports[0];
+			bdef.connections.push(c);
+
+			function get_init(b) {
 				if (b == bdef)
-					return b0.o_ports[0]; //throw new Error("Unimplemented. Note: set default for audio (0) or take user compilation inputs");
+					return b0; //throw new Error("Unimplemented. Note: set default for audio (0) or take user compilation inputs");
 				if (bs.ConstantBlock.isPrototypeOf(b))
-					return b.o_ports[0];
-				if (b == fs) // Meh: TODO: check
-					return b.o_ports[0]; 
-normalize(b);
+					return b;
+				if (b == fs)
+					return b;
+
 				const bb = b.__clun__ ? b.__clun__ : b.clone(); // Test tmp
 				b.__clun__ = bb
-				//const bb = b.clone();
+
 				const args = [];
 				b.i_ports.forEach((pp, i) => {
 					const c = bdef.connections.find(c => c.out == pp);
@@ -606,13 +672,8 @@ normalize(b);
 					bdef.connections.push(cc);
 				});
 				bdef.blocks.push(bb);
-				return bb.o_ports[0];
-			})(p.of);
-
-			const c = Object.create(bs.CompositeBlock.Connection);
-			c.in = b;
-			c.out = p.block.i_ports[0];
-			bdef.connections.push(c);
+				return bb;
+			}
 		}
 	}
 
