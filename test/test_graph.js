@@ -69,6 +69,17 @@
 		},
 		{
 			code: `
+				y = asd (x) {
+					y = t.init
+					t = x + 5.0 + u
+					u = 1.0
+					u.init = 2.0
+				}
+			`,
+			options: { initial_block_id: "asd" }
+		},
+		{
+			code: `
 				int A = 1234
 				y, u = asd (x) {
 					t = x * 5.5

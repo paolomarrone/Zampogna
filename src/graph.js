@@ -666,7 +666,7 @@
 				b.i_ports.forEach((pp, i) => {
 					const c = bdef.connections.find(c => c.out == pp);
 					const vv = convert_property(c.in.block, "init", bdef);
-					normalize(vv);
+					toBeNormalized.push(vv);
 					const cc = Object.create(bs.CompositeBlock.Connection);
 					cc.in = vv.o_ports[0];
 					cc.out = bb.i_ports[i];
