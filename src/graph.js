@@ -529,7 +529,6 @@
 					});
 				})(b, [], false);
 			});
-			bdef.blocks.forEach(b => delete b.__visited__);
 		})(bdef);
 
 		const b0 = Object.create(bs.ConstantBlock);
@@ -544,7 +543,11 @@
 		for (let i = 0; i < toBeNormalized.length; i++) {
 			normalize(toBeNormalized[i]);
 		}
-		bdef.blocks.forEach(b => delete b.__normalized__);
+		bdef.blocks.forEach(b => { 
+			delete b.__visited__;
+			delete b.__normalized__; 
+			delete b.__clun__;
+		});
 
 		// Tmp - cleaning maxes and vars with 1 input...
 		(function simplifly (bdef) {
