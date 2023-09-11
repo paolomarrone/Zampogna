@@ -485,6 +485,17 @@
 					throw new Error("Cannot assign property multiple times");
 			});
 		})(bdef);
+
+		(function set_mem_init (bdef) {
+			const mems = bdef.blocks.filter(b => bs.MemoryBlock.isPrototypeOf(b));
+			mems.forEach(m => {
+				const p = bdef.properties.find(p => p.of == m && p.type == 'init');
+				const c = Object.create(bs.CompositeBlock.Connection);
+				c.in = p.block.o_ports[0];
+				c.out = m.i_ports[1];
+				bdef.connections.push(c);
+			});
+		})(bdef);
 	}
 
 	// replace properties with blocks
@@ -502,7 +513,7 @@
 			});
 		})(bdef);
 
-		// TODO: Fix this, it's too strict
+		// TODO: Fix this, it's too strict. Or maybe no, since mem r/w are separated, loops cannot exist
 		(function detect_inference_loops (bdef) {
 			// Like: y = y.fs with y.fs inferred
 			bdef.properties.map(p => p.block).forEach(b => {

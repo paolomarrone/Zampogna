@@ -13,8 +13,47 @@
 	Author: Paolo Marrone
 */
 
-(function schedule (bdef, options) {
+(function() {
 
+	const bs = require("./blocks").BlockTypes;
 	
+	function schedule (bdef, options) {
+		const outblocks = bdef.o_ports.map(p => {
+			const c = bdef.connections.find(c => c.out == p);
+			return c.in.block;
+		});
+		var roots = [];
+		roots = roots.concat(outblocks);
+		roots = roots.concat(bdef.blocks.filter(b => bs.MemoryWriterBlock.isPrototypeOf(b)));
 
+
+		const scheduled_nodes = [];
+		roots.forEach(b => schedule_block(b, []));
+		bdef.blocks.forEach(b => delete b.__visited__);
+
+		function schedule_block (b, stack) {
+			if (b == bdef)
+				return;
+			if (bs.VarBlock.isPrototypeOf(b) && b.id == "fs")
+				return;
+			if (stack.includes(b))
+				throw new Error("Found loop while scheduling. Stack: " + stack.join(', ') + ". + " + b);
+			const nstack = stack.concat(b);
+
+			if (b.__visited__)
+				return;
+			b.__visited__ = true;
+
+			b.i_ports.forEach(p => {
+				const bb = bdef.connections.find(c => c.out == p).in.block;
+				schedule_block(bb, nstack);
+			});
+
+			scheduled_nodes.push(b);
+		}
+
+		return scheduled_nodes;
+
+	}
+	exports["schedule"] = schedule;
 }());

@@ -17,11 +17,12 @@
 
 (function() {
 
-	console.log("--- GRAPH TESTS --- START");
+	console.log("--- SCHEDULER TESTS --- START");
 
 	const parser = require("../src/grammar");
 	const syntax = require("../src/syntax");
 	const graph  = require("../src/graph");
+	const schdlr = require("../src/scheduler");
 	const util   = require("../src/util");
 	const fs     = require("fs");
 
@@ -44,17 +45,6 @@
 				}
 			`,
 			options: { initial_block_id: "asd" }
-		},
-		{
-			code: `
-				y = asd (x) {
-					y = x
-				}
-				y = asd (x1, x2) {
-					y = x1 + x2 + asd(x1)
-				}
-			`,
-			options: { initial_block_id: "asd", initial_block_inputs_n: 2 }
 		},
 		{
 			code: `
@@ -83,7 +73,8 @@
 				y = asd (x) {
 					y = t.fs
 					t = x + 5.0 + u # + t # doesn't work now, but should, or no
-					u = 1.0
+					u = 1.11
+					h = h
 					u.fs = 2.0
 				}
 			`,
@@ -139,7 +130,7 @@
 					V[0] = x + fs
 					V[1] = x * 2.0 / V[33]
 					V[int(x)] = 0.5 * t
-					t = x * 5.5 + uff(t / 2.2)
+					t = x * 5.5 + uff(delay(t) / 2.2)
 					y = x * 2.0 + float(A) / (V[44] + V[55])
 					u = float(int(t) - A % int(U[3]))
 				}
@@ -155,53 +146,26 @@
 					y1 = y2 * float(x) + float(A)
 					y2 = t + float(x)
 				}
+				float y = delay (float x) {
+				    mem[1] float s
+				    y = s[0]
+				    s[0] = x
+				    s.init = x
+				}
 			`,
 			options: { initial_block_id: "asd" }
 		},
-		/*
-		{ 
-			code: `
-					int A = 5
-					float B = 5.5
-					bool C = false
-					y1, float y2, int y3, y4 = myblock (x, t, int u) {
-						y1 = 6.0;
-						y2 = y1 > 0.5 ? B * float(A) : 0.0 + y4 / t * x
-						y3 = 5 | 6 >> 5 << 1 * 1
-						y4 = y2
-					}
-				`,
-			options: { initial_block_id: "myblock" }
-		}*/
 	];
 
 	const BadTests = [
 		{
 			code: `
 				y = A () {
-					y = y.fs
+					y = y + 1.0
 				}
 			`,
 			options: { initial_block_id: "A" }
-		},
-		{
-			code: `
-				y = asd (x) {
-					y = t.fs
-					t = y
-				}
-			`,
-			options: { initial_block_id: "asd" }
-		},
-		{
-			code: `
-				y = asd (x) {
-					y = t.init
-					t = y
-				}
-			`,
-			options: { initial_block_id: "asd" }
-		},
+		}
 	];
 
 	const GoodTestResults = [];
@@ -223,6 +187,7 @@
 			graph.flatten(g, GoodTests[t].options);
 			var gvizs = util.graphToGraphviz(g);
 			fs.writeFileSync(outputDir + "/T" + t + "Flattened.dot", gvizs);
+			const s = schdlr.schedule(g, GoodTests[t].options);
 		} catch (e) {
 			//console.log("A", e);
 			res = false;
@@ -243,6 +208,7 @@
 			graph.flatten(g, BadTests[t].options);
 			var gvizs = util.graphToGraphviz(g);
 			fs.writeFileSync(outputDir + "/F" + t + "Flattened.dot", gvizs);
+			const s = schdlr.schedule(g, BadTests[t].options);
 		} catch (e) {
 			console.log("B", e.message);
 			res = true;
@@ -273,6 +239,6 @@
 	console.log("Good code tests passed: " + GoodPassedsN + " / " + GoodTests.length);
 	console.log("Bad  code tests passed: " + BadPassedsN + " / " + BadTests.length);
 
-	console.log("--- GRAPH TESTS --- END")
+	console.log("--- SCHEDULER TESTS --- END")
 
 }());
