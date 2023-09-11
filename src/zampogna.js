@@ -30,7 +30,7 @@
 			debug_mode: false,
 			initial_block_id: "",
 			initial_block_inputs_n: -1, // Optional (and not checked) if there's a unique bdef with that id. All input types must be float32
-			control_inputs: [],
+			control_inputs: [], // List of ids. Inputs with such ids will carry UpdateRateControl
 			initial_values: [],
 			optimizations: [],
 			target_language: ""

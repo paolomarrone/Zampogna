@@ -83,6 +83,7 @@
 			c.in = bdef.i_ports[i];
 			c.out = v.i_ports[0];
 
+			bdef.i_ports[i].id = p.id;
 			bdef.blocks.push(v);
 			bdef.connections.push(c);
 		});
@@ -97,13 +98,11 @@
 			c.in = v.o_ports[0];
 			c.out = bdef.o_ports[i];
 
+			bdef.o_ports[i].id = p.id;
 			bdef.blocks.push(v);
 			bdef.connections.push(c);
 		});
-
 		convert_statements(bdef_node.statements, bdef);
-
-		bdef.__bdefnode__ = bdef_node;
 
 		return bdef;
 	}
@@ -448,6 +447,8 @@
 		bdef.createPorts(bdef.inputs_N, bdef.outputs_N);
 		bdef.i_ports.forEach(p => p.datatype = () => ts.DataTypeFloat32);
 		bdef.o_ports.forEach(p => p.datatype = () => ts.DataTypeFloat32);
+		bdef.i_ports.forEach((p, i) => p.id = i_bdef.i_ports[i].id);
+		bdef.o_ports.forEach((p, i) => p.id = i_bdef.o_ports[i].id);
 
 		const b = Object.create(bs.CallBlock);
 		b.id = i_bdef.id;
@@ -496,6 +497,8 @@
 				bdef.connections.push(c);
 			});
 		})(bdef);
+
+		setUpdateRate(bdef, options);
 	}
 
 	// replace properties with blocks
@@ -687,6 +690,20 @@
 				return bb;
 			}
 		}
+	}
+
+	function setUpdateRate (bdef, options) {
+		options.control_inputs.forEach(c => {
+			const p = bdef.i_ports.find(p => p.id == c);
+			if (!p)
+				throw new Error("No input with such id. " + bdef.i_ports.join());
+			p.updaterate = () => us.UpdateRateControl;
+		});
+		bdef.i_ports.forEach(p => {
+			if (!options.control_inputs.includes(p.id))
+				p.updaterate = () => us.UpdateRateAudio;
+		})
+		bdef.propagateUpdateRates();
 	}
 
 	function findVarById (id, bdef) {

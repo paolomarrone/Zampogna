@@ -34,7 +34,7 @@
 					u = x
 				}
 			`,
-			options: { initial_block_id: "asd" }
+			options: { initial_block_id: "asd", control_inputs: [] }
 		},
 		{
 			code: `
@@ -43,7 +43,7 @@
 					y = x * 2.0 + float(A)
 				}
 			`,
-			options: { initial_block_id: "asd" }
+			options: { initial_block_id: "asd", control_inputs: [] }
 		},
 		{
 			code: `
@@ -54,7 +54,7 @@
 					y = x1 + x2 + asd(x1)
 				}
 			`,
-			options: { initial_block_id: "asd", initial_block_inputs_n: 2 }
+			options: { initial_block_id: "asd", initial_block_inputs_n: 2, control_inputs: [] }
 		},
 		{
 			code: `
@@ -65,7 +65,7 @@
 					u = float(int(t)) - A
 				}
 			`,
-			options: { initial_block_id: "asd" }
+			options: { initial_block_id: "asd", control_inputs: [] }
 		},
 		{
 			code: `
@@ -76,7 +76,7 @@
 					y = V[0];
 				}
 			`,
-			options: { initial_block_id: "asd" }
+			options: { initial_block_id: "asd", control_inputs: [] }
 		},
 		{
 			code: `
@@ -87,7 +87,7 @@
 					u.fs = 2.0
 				}
 			`,
-			options: { initial_block_id: "asd" }
+			options: { initial_block_id: "asd", control_inputs: [] }
 		},
 		{
 			code: `
@@ -98,7 +98,7 @@
 					u.init = 2.0
 				}
 			`,
-			options: { initial_block_id: "asd" }
+			options: { initial_block_id: "asd", control_inputs: [] }
 		},
 		{
 			code: `
@@ -110,7 +110,7 @@
 					t.fs.init.fs.fs.fs = float(int(666.666 + (A.fs.init.fs * 2.0).init) ^ 5.init)
 				}
 			`,
-			options: { initial_block_id: "asd" }
+			options: { initial_block_id: "asd", control_inputs: [] }
 		},
 		{
 			code: `
@@ -126,7 +126,7 @@
 					t.fs.init = float(int(666.666 + (A.fs.init.fs * 2.0).init) ^ 5.init)
 				}
 			`,
-			options: { initial_block_id: "asd" }
+			options: { initial_block_id: "asd", control_inputs: [] }
 		},
 		{
 			code: `
@@ -156,8 +156,16 @@
 					y2 = t + float(x)
 				}
 			`,
-			options: { initial_block_id: "asd" }
+			options: { initial_block_id: "asd", control_inputs: [] }
 		},
+		{
+			code: `
+				y = vol (x, v) {
+					y = x * v
+				}
+			`,
+			options: { initial_block_id: "vol", control_inputs: ["v"] }
+		}
 		/*
 		{ 
 			code: `

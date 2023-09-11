@@ -16,24 +16,14 @@
 (function() {
 
 	const ts = require("./types");
-
-
-	const UpdateRateGeneric = {};
-	UpdateRateGeneric.level = undefined;
-	const UpdateRateConstant = Object.create(UpdateRateGeneric);
-	UpdateRateConstant.level = 0;
-	const UpdateRateFs = Object.create(UpdateRateGeneric);
-	UpdateRateFs.level = 1;
-	const UpdateRateControl = Object.create(UpdateRateGeneric);
-	UpdateRateControl.level = 2;
-	const UpdateRateAudio = Object.create(UpdateRateGeneric);
-	UpdateRateAudio.level = 3;
+	const us = require("./uprates");
 
 
 	const Port = {};
-	Port.block = null;
+	Port.block = undefined;
+	Port.id = undefined;
 	Port.datatype = () => ts.DataTypeGeneric;
-	Port.updaterate = UpdateRateGeneric;
+	Port.updaterate = () => us.UpdateRateGeneric;
 	Port.type = function () {
 		if (this.block.i_ports.includes(this)) return "in";
 		if (this.block.o_ports.includes(this)) return "out";
@@ -48,6 +38,7 @@
 		const r = Object.create(Port);
 		this.__clone__ = r;
 		r.block = this.block.clone();
+		r.id = this.id;
 		r.datatype = this.datatype;
 		r.updaterate = this.updaterate;
 		return r;
@@ -55,11 +46,11 @@
 	Port.validate = function () {
 		if (this.datatype() == ts.DataTypeGeneric)
 			throw new Error("Generic port datatype: " + this.toString());
-		if (this.updaterate == UpdateRateGeneric)
+		if (this.updaterate() == us.UpdateRateGeneric)
 			;//throw new Error("Generic updaterate");
 	};
 	Port.toString = function () {
-		return this.block.toString() + "[" + this.type() + ": " + this.index() + ": " + this.datatype().toString() + "]";
+		return this.block.toString() + (this.id ? "-" + this.id : "") + "[" + this.type() + ": " + this.index() + ": " + this.datatype().toString() + "]";
 	};
 
 
@@ -78,10 +69,9 @@
 	Block.init = function () {
 		this.createPorts(0, 0);
 	};
-	Block.setOutputUpdaterate = function () {
-		var m = UpdateRateConstant;
-		this.i_ports.forEach(p => { if (p.updaterate.level > m.level) m = p.updaterate; });
-		this.o_ports.forEach(p => p.updaterate = m);
+	Block.setMaxOutputUpdaterate = function () {
+		const max = this.i_ports.map(p => p.updaterate()).reduce((u, t) => t.level > u.level ? t : u, us.UpdateRateConstant);
+		this.o_ports.forEach(p => p.updaterate = () => max);
 	};
 	Block.validate = function () {
 		if (!this.i_ports || !this.o_ports)
@@ -123,9 +113,9 @@
 		this.o_ports[0].datatype = function () {
 			return this.block.datatype();
 		};
-	};
-	VarBlock.setOutputUpdaterate = function () {
-		this.o_ports[0].updaterate = this.i_ports[0].updaterate;
+		this.o_ports[0].updaterate = function () {
+			return this.block.i_ports[0].updaterate();
+		}
 	};
 	VarBlock.validate = function () {
 		Block.validate.call(this);
@@ -174,6 +164,9 @@
 		this.o_ports[0].datatype = function () {
 			return this.block.memoryblock.datatype();
 		};
+		this.o_ports[0].updaterate = function () {
+			return this.block.i_ports[0].updaterate();
+		};
 	};
 	MemoryReaderBlock.validate = function () {
 		Block.validate.call(this);
@@ -214,9 +207,7 @@
 		this.o_ports[0].datatype = function () {
 			return this.block.datatype();
 		};
-	};
-	ConstantBlock.setOutputUpdaterate = function () {
-		this.o_ports[0].updaterate = UpdateRateConstant;
+		this.o_ports[0].updaterate = () => us.UpdateRateConstant;
 	};
 	ConstantBlock.validate = function () {
 		Block.validate.call(this);
@@ -240,6 +231,7 @@
 	LogicalBlock.init = function () {
 		this.createPorts(2, 1);
 		this.o_ports[0].datatype = () => ts.DataTypeBool;
+		Block.setMaxOutputUpdaterate.call(this);
 	};
 	LogicalBlock.validate = function () {
 		Block.validate.call(this);
@@ -260,12 +252,14 @@
 	LogicalNotBlock.init = function () {
 		this.createPorts(1, 1);
 		this.o_ports[0].datatype = () => ts.DataTypeBool;
+		Block.setMaxOutputUpdaterate.call(this);
 	};
 
 	const BitwiseBlock = Object.create(Block);
 	BitwiseBlock.init = function () {
 		this.createPorts(2, 1);
 		this.o_ports[0].datatype = () => ts.DataTypeInt32;
+		Block.setMaxOutputUpdaterate.call(this);
 	};
 	BitwiseBlock.validate = function () {
 		Block.validate.call(this);
@@ -285,6 +279,9 @@
 	BitwiseNotBlock.operation = "~";
 	BitwiseNotBlock.init = function () {
 		this.createPorts(1, 1);
+		this.o_ports[0].updaterate = function () {
+			return this.block.i_ports[0].updaterate();
+		};
 	};
 
 
@@ -292,6 +289,7 @@
 	RelationalBlock.init = function () {
 		this.createPorts(2, 1);
 		this.o_ports[0].datatype = () => ts.DataTypeBool;
+		Block.setMaxOutputUpdaterate.call(this);
 	};
 	RelationalBlock.validate = function () {
 		Block.validate.call(this);
@@ -326,6 +324,7 @@
 	ShiftBlock.init = function () {
 		this.createPorts(2, 1);
 		this.o_ports[0].datatype = () => ts.DataTypeInt32;
+		Block.setMaxOutputUpdaterate.call(this);
 	};
 	ShiftBlock.validate = function () {
 		Block.validate.call(this);
@@ -344,6 +343,7 @@
 		this.o_ports[0].datatype = function () {
 			return this.block.i_ports[0].datatype();
 		};
+		Block.setMaxOutputUpdaterate.call(this);
 	};
 	ArithmeticalBlock.validate = function () {
 		Block.validate.call(this);
@@ -374,6 +374,7 @@
 		this.o_ports[0].datatype = function () {
 			return this.i_ports[0].datatype();
 		};
+		Block.setMaxOutputUpdaterate.call(this);
 	};
 	UminusBlock.operation = "-";
 
@@ -383,6 +384,7 @@
 	ModuloBlock.init = function () {
 		this.createPorts(2, 1);
 		this.o_ports[0].datatype = () => ts.DataTypeInt32;
+		Block.setMaxOutputUpdaterate.call(this);
 	};
 	ModuloBlock.validate = function () {
 		Block.validate.call(this);
@@ -393,6 +395,7 @@
 	const CastBlock = Object.create(Block);
 	CastBlock.init = function () {
 		this.createPorts(1, 1);
+		Block.setMaxOutputUpdaterate.call(this);
 	};
 
 	const CastF32Block = Object.create(CastBlock);
@@ -400,6 +403,7 @@
 	CastF32Block.init = function () {
 		this.createPorts(1, 1);
 		this.o_ports[0].datatype = () => ts.DataTypeFloat32;
+		Block.setMaxOutputUpdaterate.call(this);
 	};
 	
 	const CastI32Block = Object.create(CastBlock);
@@ -407,6 +411,7 @@
 	CastI32Block.init = function () {
 		this.createPorts(1, 1);
 		this.o_ports[0].datatype = () => ts.DataTypeInt32;
+		Block.setMaxOutputUpdaterate.call(this);
 	};
 
 	const CastBoolBlock = Object.create(CastBlock);
@@ -414,6 +419,7 @@
 	CastBoolBlock.init = function () {
 		this.createPorts(1, 1);
 		this.o_ports[0].datatype = () => ts.DataTypeBool;
+		Block.setMaxOutputUpdaterate.call(this);
 	};
 
 	const MaxBlock = Object.create(Block);
@@ -423,7 +429,8 @@
 		// Create ports from outside. out ports must be 1
 		this.o_ports[0].datatype = function () {
 			return this.block.datatype();
-		}
+		};
+		Block.setMaxOutputUpdaterate.call(this);
 	};
 	MaxBlock.validate = function () {
 		Block.validate.call(this);
@@ -443,9 +450,7 @@
 	CallBlock.init = function () {
 		this.createPorts(this.inputs_N, this.outputs_N);
 		// Override port datatypes
-	};
-	CallBlock.setOutputUpdaterate = function () {
-		// TODO.
+		Block.setMaxOutputUpdaterate.call(this);
 	};
 	CallBlock.clone = function () {
 		const r = Block.clone.call(this);
@@ -547,12 +552,14 @@
 		});
 		this.bdefs.forEach(bd => bd.propagateDataTypes());
 	};
-	CompositeBlock.setOutputUpdaterate = function () {
-		// TODO: propagate internally first
-		for (let o = 0; o < this.outputs_N; o++) {
-			let c = this.connections.find(c => c.out == this.o_ports[o]);
-			
-		}
+	CompositeBlock.propagateUpdateRates = function () {
+		this.connections.forEach(c => {
+			const i = c.in;
+			c.out.updaterate = function () {
+				return i.updaterate();
+			};
+		});
+		this.bdefs.forEach(bd => bd.propagateUpdateRates());
 	};
 	CompositeBlock.validate = function () {
 		Block.validate.call(this);
@@ -625,7 +632,7 @@
 
 			b.i_ports.forEach((p, i) => {
 				const np = bb.i_ports[i];
-				const csext = this.connections.filter(c => c.out == p); // Should be max 1 btw
+				const csext = this.connections.filter(c => c.out == p);
 				const csint = this.connections.filter(c => c.in == np);
 				if (csext.length != 1)
 					throw new Error("Found invalid number of connectrions toward input");
@@ -636,7 +643,7 @@
 			b.o_ports.forEach((p, i) => {
 				const np = bb.o_ports[i];
 				const csext = this.connections.filter(c => c.in == p); 
-				const csint = this.connections.filter(c => c.out == np); // Should be max 1 btw
+				const csint = this.connections.filter(c => c.out == np);
 				if (csint.length != 1)
 					throw new Error("Found invalid number of connectrions toward output");
 				this.connections.splice(this.connections.indexOf(csint[0]), 1);
