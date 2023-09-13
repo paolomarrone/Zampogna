@@ -17,7 +17,7 @@
 
 	const ts = require("./types");
 	const bs = require("./blocks").BlockTypes;
-
+	const us = require("./uprates");
 
 	function ASTToGraph (root, options) {
 
@@ -33,6 +33,7 @@
 		fs.datatype = () => ts.DataTypeFloat32;
 		fs.init();
 		fs.i_ports[0].datatype = () => ts.DataTypeFloat32; // Trick, maybe set as system input
+		fs.i_ports[0].updaterate = () => us.UpdateRateFs;
 		bdef.blocks.push(fs);
 
 		convert_statements(root.statements, bdef);

@@ -70,8 +70,9 @@
 		this.createPorts(0, 0);
 	};
 	Block.setMaxOutputUpdaterate = function () {
-		const max = this.i_ports.map(p => p.updaterate()).reduce((u, t) => t.level > u.level ? t : u, us.UpdateRateConstant);
-		this.o_ports.forEach(p => p.updaterate = () => max);
+		this.o_ports.forEach(p => p.updaterate = function () {
+			return this.block.i_ports.map(p => p.updaterate()).reduce((u, t) => t.level > u.level ? t : u, us.UpdateRateConstant);
+		});
 	};
 	Block.validate = function () {
 		if (!this.i_ports || !this.o_ports)

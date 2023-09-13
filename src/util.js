@@ -48,7 +48,9 @@
 			b.i_ports.forEach(p => p.__gvizid__ = u);
 			b.o_ports.forEach(p => p.__gvizid__ = u);
 
-			s += u + "[" + "label = \"" + (b.id || (b.value != undefined ? b.value + "" : null ) || b.operation || ".") + "\"" + "]; \n";
+			const ur = b.i_ports.concat(b.o_ports).map(x => x.updaterate()).reduce((a, b) => b.level > a.level ? b : a);
+			const urc = ur.level == undefined ? "red" : (ur.level == 0 ? "green" : (ur.level == 1 ? "yellow" : (ur.level == 2 ? "orange" : "blue"))); 
+			s += u + "[" + "label = \"" + (b.id || (b.value != undefined ? " " + b.value : null ) || b.operation || ".") + "\"" + "color=" + urc + "]; \n";
 			return s;
 		}
 

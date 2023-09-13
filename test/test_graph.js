@@ -130,7 +130,7 @@
 		},
 		{
 			code: `
-				int A = 123
+								int A = 123
 				mem[A * 2] float U
 				U.init = 0.1
 				y, u = asd (x) {
@@ -139,7 +139,7 @@
 					V[0] = x + fs
 					V[1] = x * 2.0 / V[33]
 					V[int(x)] = 0.5 * t
-					t = x * 5.5 + uff(t / 2.2)
+					t = x * 5.5 + uff(delay(t) / 2.2)
 					y = x * 2.0 + float(A) / (V[44] + V[55])
 					u = float(int(t) - A % int(U[3]))
 				}
@@ -154,6 +154,12 @@
 				y1, y2 = aff (int x, t) {
 					y1 = y2 * float(x) + float(A)
 					y2 = t + float(x)
+				}
+				float y = delay (float x) {
+				    mem[1] float s
+				    y = s[0]
+				    s[0] = x
+				    s.init = x
 				}
 			`,
 			options: { initial_block_id: "asd", control_inputs: [] }
