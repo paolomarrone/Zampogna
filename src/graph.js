@@ -154,12 +154,10 @@
 		statements.filter(s => s.name == 'ASSIGNMENT').forEach((s) => {
 			switch (s.type) {
 			case 'ANONYMOUS_BLOCK': {
-				throw "Not imeplemented yet"
-				break;
+				throw new Error("Not imeplemented yet");
 			}
 			case 'IF_THEN_ELSE': {
-				throw "Not imeplemented yet"
-				break;
+				throw new Error("Not imeplemented yet");
 			}
 			case 'EXPR': {
 				const expr_ports = convert_expr(s.expr, bdef);
@@ -328,8 +326,7 @@
 			return [[], b.o_ports];
 		}
 		case 'INLINE_IF_THEN_ELSE': {
-			throw "Not imeplemented yet"
-			return;
+			throw new Error("Not imeplemented yet");
 		}
 		}
 
@@ -705,6 +702,8 @@
 				p.updaterate = () => us.UpdateRateAudio;
 		})
 		bdef.propagateUpdateRates();
+
+		// TODO: think about memory update rate. Readings should be up-bounded to writings...?
 	}
 
 	function findVarById (id, bdef) {

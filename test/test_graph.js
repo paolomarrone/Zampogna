@@ -47,6 +47,42 @@
 		},
 		{
 			code: `
+				float y = delay (float x) {
+				    mem[1] float s
+				    y = s[0]
+				    s[0] = x
+				    s.init = x
+				}
+			`,
+			options: { initial_block_id: "delay", control_inputs: [] }
+		},
+		{
+			code: `
+				int y = delay (int x) {
+				    mem[1] int s
+				    y = s[0]
+				    s[0] = x
+				    s.init = x
+				}
+				int i = circular_iterator (int n) {
+					i = (delay(i) + 1) % n
+					i.init = -1
+				}
+				float y = delay(float x, int n) {
+				    mem[n] float line
+				    int i = circular_iterator(n)
+				    y = line[i]
+				    line[i] = x
+				    line.init = x # implicitly x.init
+				}
+				float y = delay11(float x) {
+					y = delay(x, 11);
+				}
+			`,
+			options: { initial_block_id: "delay11", control_inputs: [] }
+		},
+		{
+			code: `
 				y = asd (x) {
 					y = x
 				}

@@ -307,6 +307,7 @@
 		}
 		case "CALL_EXPR":
 		{
+			console.log("Calling: " + expr.id + ", " + expr.args.join(",,"))
 			let bdefs = scope.findGlobally(expr.id);
 			if (bdefs.length < 1) {
 				warn("using external function");
@@ -324,7 +325,7 @@
 				break;
 			}
 			if (!found)
-				err("No matching block found");
+				err("No matching block found: " + expr.id + ", " + expr.args.length + ".. " + bdefs.map(b => b.id + b.inputs.length).join(", "));
 			break;
 		}
 		case "ARRAY_CONST":

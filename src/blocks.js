@@ -373,7 +373,7 @@
 	UminusBlock.init = function () {
 		this.createPorts(1, 1);
 		this.o_ports[0].datatype = function () {
-			return this.i_ports[0].datatype();
+			return this.block.i_ports[0].datatype();
 		};
 		Block.setMaxOutputUpdaterate.call(this);
 	};
