@@ -27,15 +27,23 @@
 		roots = roots.concat(bdef.blocks.filter(b => bs.MemoryWriterBlock.isPrototypeOf(b)));
 
 
-		const scheduled_nodes = [];
+		const scheduled_blocks = [];
+		const memory_blocks = [];
 		roots.forEach(b => schedule_block(b, []));
 		bdef.blocks.forEach(b => delete b.__visited__);
+		Array.from(new Set(memory_blocks)).forEach(m => {
+			scheduled_blocks.push(m);
+		});
+
+		return scheduled_blocks;
 
 		function schedule_block (b, stack) {
 			if (b == bdef)
 				return;
 			if (bs.VarBlock.isPrototypeOf(b) && b.id == "fs")
 				return;
+			if (bs.MemoryReaderBlock.isPrototypeOf(b))
+				memory_blocks.push(b.memoryblock);
 			if (stack.includes(b))
 				throw new Error("Found loop while scheduling. Stack: " + stack.join(', ') + ". + " + b);
 			const nstack = stack.concat(b);
@@ -49,11 +57,8 @@
 				schedule_block(bb, nstack);
 			});
 
-			scheduled_nodes.push(b);
+			scheduled_blocks.push(b);
 		}
-
-		return scheduled_nodes;
-
 	}
 	exports["schedule"] = schedule;
 }());

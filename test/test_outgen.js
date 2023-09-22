@@ -17,12 +17,13 @@
 
 (function() {
 
-	console.log("--- SCHEDULER TESTS --- START");
+	console.log("--- OUTGEN TESTS --- START");
 
 	const parser = require("../src/grammar");
 	const syntax = require("../src/syntax");
 	const graph  = require("../src/graph");
 	const schdlr = require("../src/scheduler");
+	const outgen = require("../src/outgen");
 	const util   = require("../src/util");
 	const fs     = require("fs");
 
@@ -158,14 +159,7 @@
 	];
 
 	const BadTests = [
-		{
-			code: `
-				y = A () {
-					y = y + 1.0
-				}
-			`,
-			options: { initial_block_id: "A", control_inputs: [] }
-		}
+
 	];
 
 	const GoodTestResults = [];
@@ -179,6 +173,7 @@
 		let res = true;
 		let err = "";
 		try {
+			GoodTests[t].options.target_language = "C"; // See this
 			const AST = parser.parse(GoodTests[t].code);
 			syntax.validateAST(AST);
 			const g = graph.ASTToGraph(AST, GoodTests[t].options);
@@ -188,6 +183,8 @@
 			var gvizs = util.graphToGraphviz(g);
 			fs.writeFileSync(outputDir + "/T" + t + "Flattened.dot", gvizs);
 			const s = schdlr.schedule(g, GoodTests[t].options);
+			const o = outgen.convert(g, s, GoodTests[t].options);
+			fs.writeFileSync(outputDir + "/T" + t + "Out.c", o[0].str);
 		} catch (e) {
 			//console.log("A", e);
 			res = false;
@@ -239,6 +236,6 @@
 	console.log("Good code tests passed: " + GoodPassedsN + " / " + GoodTests.length);
 	console.log("Bad  code tests passed: " + BadPassedsN + " / " + BadTests.length);
 
-	console.log("--- SCHEDULER TESTS --- END")
+	console.log("--- OUTGEN TESTS --- END")
 
 }());

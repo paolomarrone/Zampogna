@@ -58,6 +58,7 @@
 	Block.Port = Port;
 	Block.id = undefined;
 	Block.operation = "DEFAULT";
+	Block.parLevel = 0;
 	Block.i_ports = undefined; // Array of Ports
 	Block.o_ports = undefined; // Array of Ports
 	Block.createPorts = function (i_n, o_n) {
@@ -173,6 +174,8 @@
 		Block.validate.call(this);
 		if (this.i_ports[0].datatype() != ts.DataTypeInt32)
 			throw new Error("Only int can be used to access memory");
+		if (this.memoryblock == undefined)
+			throw new Error("Undefined memoryblock");
 	};
 	MemoryReaderBlock.clone = function () {
 		const r = Block.clone.call(this);
@@ -192,6 +195,8 @@
 			throw new Error("Only int can be used to access memory");
 		if (this.i_ports[1].datatype() != this.memoryblock.datatype())
 			throw new Error("Inconsistent datatype");
+		if (this.memoryblock == undefined)
+			throw new Error("Undefined memoryblock");
 	};
 	MemoryWriterBlock.clone = function () {
 		const r = Block.clone.call(this);
@@ -242,11 +247,13 @@
 		});
 	};
 
-	const LogicalAndBlock = Object.create(LogicalBlock);
-	LogicalAndBlock.operation = "&&";
-
 	const LogicalOrBlock = Object.create(LogicalBlock);
+	LogicalOrBlock.parLevel = 20;
 	LogicalOrBlock.operation = "||";
+
+	const LogicalAndBlock = Object.create(LogicalBlock);
+	LogicalAndBlock.parLevel = 19;
+	LogicalAndBlock.operation = "&&";
 	
 	const LogicalNotBlock = Object.create(LogicalBlock);
 	LogicalNotBlock.operation = "!";
@@ -272,10 +279,13 @@
 
 	const BitwiseOrBlock = Object.create(BitwiseBlock);
 	BitwiseOrBlock.operation = "|";
+	BitwiseOrBlock.parLevel = 18;
 	const BitwiseXorBlock = Object.create(BitwiseBlock);
 	BitwiseXorBlock.operation = "^";
+	BitwiseXorBlock.parLevel = 17;
 	const BitwiseAndBlock = Object.create(BitwiseBlock);
 	BitwiseAndBlock.operation = "&";
+	BitwiseAndBlock.parLevel = 16;
 	const BitwiseNotBlock = Object.create(BitwiseBlock);
 	BitwiseNotBlock.operation = "~";
 	BitwiseNotBlock.init = function () {
@@ -300,8 +310,10 @@
 
 	const EqualityBlock = Object.create(RelationalBlock);
 	EqualityBlock.operation = "==";
+	EqualityBlock.parLevel = 15;
 	const InequalityBlock = Object.create(RelationalBlock);
 	InequalityBlock.operation = "!=";
+	InequalityBlock.parLevel = 15;
 	
 
 	const RelationalLGBlock = Object.create(RelationalBlock);
@@ -313,15 +325,20 @@
 	};
 	const LessBlock = Object.create(RelationalLGBlock);
 	LessBlock.operation = "<";
+	LessBlock.parLevel = 14;
 	const GreaterBlock = Object.create(RelationalLGBlock);
 	GreaterBlock.operation = ">";
+	GreaterBlock.parLevel = 14;
 	const LessEqualBlock = Object.create(RelationalLGBlock);
 	LessEqualBlock.operation = "<=";
+	LessEqualBlock.parLevel = 14;
 	const GreaterEqualBlock = Object.create(RelationalLGBlock);
 	GreaterEqualBlock.operation = ">=";
+	GreaterEqualBlock.parLevel = 14;
 
 
 	const ShiftBlock = Object.create(Block);
+	ShiftBlock.parLevel = 13;
 	ShiftBlock.init = function () {
 		this.createPorts(2, 1);
 		this.o_ports[0].datatype = () => ts.DataTypeInt32;
@@ -359,17 +376,22 @@
 
 	const SumBlock = Object.create(ArithmeticalBlock);
 	SumBlock.operation = "+";
+	SumBlock.parLevel = 12;
 
 	const SubtractionBlock = Object.create(ArithmeticalBlock);
 	SubtractionBlock.operation = "-";
+	SubtractionBlock.parLevel = 12;
 
 	const MulBlock = Object.create(ArithmeticalBlock);
 	MulBlock.operation = "*";
+	MulBlock.parLevel = 11;
 
 	const DivisionBlock = Object.create(ArithmeticalBlock);
 	DivisionBlock.operation = "/";
+	DivisionBlock.parLevel = 11;
 
 	const UminusBlock = Object.create(ArithmeticalBlock);
+	UminusBlock.operation = "-";
 	UminusBlock.init = function () {
 		this.createPorts(1, 1);
 		this.o_ports[0].datatype = function () {
@@ -377,11 +399,11 @@
 		};
 		Block.setMaxOutputUpdaterate.call(this);
 	};
-	UminusBlock.operation = "-";
 
 	
 	const ModuloBlock = Object.create(Block);
 	ModuloBlock.operation = "%";
+	ModuloBlock.parLevel = 11;
 	ModuloBlock.init = function () {
 		this.createPorts(2, 1);
 		this.o_ports[0].datatype = () => ts.DataTypeInt32;
