@@ -24,27 +24,34 @@
 		const bdef = Object.create(bs.CompositeBlock);
 		bdef.id = "0";
 		bdef.bdef_father = undefined;
-		bdef.inputs_N = 0; // set later
-		bdef.outputs_N = 0; // ^
+		bdef.inputs_N = 1; // fs
+		bdef.outputs_N = 0;
 		bdef.init();
+		bdef.i_ports[0].datatype = () => ts.DataTypeFloat32;
+		bdef.i_ports[0].updaterate = () => us.UpdateRateFs;
+		bdef.i_ports[0].id = "fs";
 
-		const fs = Object.create(bs.VarBlock);
-		fs.id = "fs";
-		fs.datatype = () => ts.DataTypeFloat32;
-		fs.init();
-		fs.i_ports[0].datatype = () => ts.DataTypeFloat32; // Trick, maybe set as system input
-		fs.i_ports[0].updaterate = () => us.UpdateRateFs;
-		bdef.blocks.push(fs);
+		(function create_fs (bdef) {
+			const fs = Object.create(bs.VarBlock);
+			fs.id = "fs";
+			fs.datatype = () => ts.DataTypeFloat32;
+			fs.init();
+			const c = Object.create(bs.CompositeBlock.Connection);
+			c.in = bdef.i_ports[0];
+			c.out = fs.i_ports[0];
+			bdef.blocks.push(fs);
+			bdef.connections.push(c);
+		})(bdef);
 
 		convert_statements(root.statements, bdef);
 
 		bdef.propagateDataTypes();
 
-		(function resolve_call_blocks (bdef) {
+		(function resolve_block_calls (bdef) {
 			bdef.blocks.filter(b => bs.CallBlock.isPrototypeOf(b)).forEach(b => {
-				resolve_call_block(b, bdef);
+				resolve_block_call(b, bdef);
 			});
-			bdef.bdefs.forEach(bd => resolve_call_blocks(bd));
+			bdef.bdefs.forEach(bd => resolve_block_calls(bd));
 		})(bdef);
 
 		(function validate (bdef) {
@@ -405,7 +412,7 @@
 		return [[], b.o_ports];
 	}
 
-	function resolve_call_block (b, bdef) {
+	function resolve_block_call (b, bdef) {
 		const inputDataTypes = b.i_ports.map(p => p.datatype());
 		const r = findBdefBySignature(b.id, inputDataTypes, b.outputs_N, bdef);
 		if (!r)
@@ -442,25 +449,31 @@
 
 		bdef.inputs_N = i_bdef.inputs_N;
 		bdef.outputs_N = i_bdef.outputs_N;
-		bdef.createPorts(bdef.inputs_N, bdef.outputs_N);
+		const pfs = bdef.i_ports[0];
+		bdef.createPorts(bdef.inputs_N + 1, bdef.outputs_N);
+		bdef.i_ports[0] = pfs;
 		bdef.i_ports.forEach(p => p.datatype = () => ts.DataTypeFloat32);
 		bdef.o_ports.forEach(p => p.datatype = () => ts.DataTypeFloat32);
-		bdef.i_ports.forEach((p, i) => p.id = i_bdef.i_ports[i].id);
+		bdef.i_ports.forEach((p, i) => {
+			if (i == 0)
+				return;
+			p.id = i_bdef.i_ports[i - 1].id
+		});
 		bdef.o_ports.forEach((p, i) => p.id = i_bdef.o_ports[i].id);
 
 		const b = Object.create(bs.CallBlock);
 		b.id = i_bdef.id;
-		b.inputs_N = bdef.inputs_N;
-		b.outputs_N = bdef.outputs_N;
+		b.inputs_N = i_bdef.inputs_N;
+		b.outputs_N = i_bdef.outputs_N;
 		b.bdef = i_bdef;
 		b.init();
-		for (let i = 0; i < bdef.inputs_N; i++) {
+		for (let i = 0; i < i_bdef.inputs_N; i++) {
 			const c = Object.create(bs.CompositeBlock.Connection);
-			c.in = bdef.i_ports[i];
+			c.in = bdef.i_ports[i + 1]; // Cuz of fs
 			c.out = b.i_ports[i];
 			bdef.connections.push(c);
 		}
-		for (let i = 0; i < bdef.outputs_N; i++) {
+		for (let i = 0; i < i_bdef.outputs_N; i++) {
 			const c = Object.create(bs.CompositeBlock.Connection);
 			c.in = b.o_ports[i];
 			c.out = bdef.o_ports[i];
@@ -496,6 +509,7 @@
 			});
 		})(bdef);
 
+		// It's important to call this after flattening/cloning
 		setUpdateRate(bdef, options);
 	}
 
@@ -700,7 +714,8 @@
 		bdef.i_ports.forEach(p => {
 			if (!options.control_inputs.includes(p.id))
 				p.updaterate = () => us.UpdateRateAudio;
-		})
+		});
+		bdef.i_ports[0].updaterate = () => us.UpdateRateFs;
 		bdef.propagateUpdateRates();
 
 		// TODO: think about memory update rate. Readings should be up-bounded to writings...?

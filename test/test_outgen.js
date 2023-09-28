@@ -128,7 +128,8 @@
 				y, u = asd (x) {
 					mem[5] float V
 					V.init = 0.0
-					V[0] = x + fs
+					fs2 = fs * 2.0
+					V[0] = x + fs2
 					V[1] = x * 2.0 / V[33]
 					V[int(x)] = 0.5 * t
 					t = x * 5.5 + uff(delay(t) / 2.2)

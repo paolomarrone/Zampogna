@@ -33,7 +33,9 @@
 		if (this.type() == "out") return this.block.o_ports.indexOf(this);
 	};
 	Port.clone = function () {
-		if (this.__clone__)
+		if (!this.__clone__)
+			return this;
+		if (this.__clone__ != 1)
 			return this.__clone__;
 		const r = Object.create(Port);
 		this.__clone__ = r;
@@ -81,11 +83,15 @@
 		this.i_ports.forEach(p => p.validate());
 		this.o_ports.forEach(p => p.validate());
 	};
-	Block.toString = function () {
-		return "{" + this.operation + ":" + this.i_ports.length + ":" + this.o_ports.length + " }";
+	Block.setToBeCloned = function () {
+		this.__clone__ = 1;
+		this.i_ports.forEach(p => p.__clone__ = 1);
+		this.o_ports.forEach(p => p.__clone__ = 1);
 	};
 	Block.clone = function () {
-		if (this.__clone__)
+		if (!this.__clone__)
+			return this;
+		if (this.__clone__ != 1)
 			return this.__clone__;
 		let r = Object.create(Object.getPrototypeOf(this));
 		this.__clone__ = r;
@@ -102,8 +108,11 @@
 		});
 		return r; 
 	};
+	Block.toString = function () {
+		return "{" + this.operation + ":" + this.i_ports.length + ":" + this.o_ports.length + " }";
+	};
 	Block.flatten = function () {};
-	Block.isUseless = function () { return false }; // TODO
+	//Block.isUseless = function () { return false }; // TODO
 
 
 	const VarBlock = Object.create(Block);
@@ -152,9 +161,13 @@
 		//if (this.i_ports[1].datatype() != this.datatype())
 		//	throw new Error("Memory init must carry the same datatype");
 	};
+	MemoryBlock.toString = function () {
+		return "{ MEM: " + this.id + " }";
+	};
 	MemoryBlock.clone = function () {
 		const r = Block.clone.call(this);
 		r.datatype = this.datatype;
+		r.id = "CRIIIIIIIIIIIIIIIIIIIIIIIIII"+this.id;
 		return r;
 	};
 
@@ -527,6 +540,17 @@
 		if (this.in.datatype() != this.out.datatype())
 			throw new Error("Connection got different datatypes");
 	};
+	Connection.clone = function () {
+		if (!this.__clone__)
+			return this;
+		if (this.__clone__ != 1)
+			return this.__clone__;
+		const r = Object.create(Connection);
+		this.__clone__ = r;
+		r.in = this.in.clone();
+		r.out = this.out.clone();
+		return r;
+	};
 	Connection.toString = function () {
 		return this.in.toString() + " => " + this.out.toString();
 	};
@@ -540,7 +564,12 @@
 			throw new Error("Invalid Property");
 	};
 	Property.clone = function () {
+		if (!this.__clone__)
+			return this;
+		if (this.__clone__ != 1)
+			return this.__clone__;
 		const r = Object.create(Property);
+		this.__clone__ = r;
 		r.of = this.of.clone();
 		r.type = this.type;
 		r.block = this.block.clone();
@@ -646,6 +675,7 @@
 	};
 	CompositeBlock.flatten = function () {
 		this.blocks.filter(b => CallBlock.isPrototypeOf(b)).forEach(b => {
+			b.bdef.setToBeCloned();
 			const bb = b.bdef.clone();
 			bb.flatten();
 			this.blocks = this.blocks.concat(bb.blocks);
@@ -677,8 +707,23 @@
 		});
 		this.bdefs = [];
 	};
+	/*
+		Instructions to clone:
+			call setToBeCloned
+			call clone
+			call clean
+	*/
+	CompositeBlock.setToBeCloned = function () {
+		Block.setToBeCloned.call(this);
+		this.blocks.forEach(b => b.setToBeCloned());
+		this.connections.forEach(c => c.__clone__ = 1);
+		this.properties.forEach(p => p.__clone__ = 1);
+		this.bdefs.forEach(bdef => bdef.setToBeCloned());
+	};
 	CompositeBlock.clone = function () {
-		if (this.__clone__)
+		if (!this.__clone__)
+			return this;
+		if (this.__clone__ != 1)
 			return this.__clone__;
 		const r = Block.clone.call(this);
 		this.__clone__ = r;
@@ -686,28 +731,22 @@
 		r.inputs_N = this.inputs_N;
 		r.outputs_N = this.outputs_N;
 		r.blocks = this.blocks.map(b => b.clone());
-		r.connections = this.connections.map(c =>  {
-			const rr = Object.create(Connection);
-			// To handle implicit inputs
-			rr.in  = this.blocks.find(x => x == c.in.block)  ? c.in.clone()  : (c.in.__clone__  || c.in);
-			rr.out = this.blocks.find(x => x == c.out.block) ? c.out.clone() : (c.out.__clone__ || c.out);
-			return rr;
-		});
-		r.properties = this.properties.map(p => p.clone()); // properties are granted to refer to local blocks only
-		r.bdef_father = this.bdef_father; // Check this
+		r.connections = this.connections.map(c => c.clone());
+		r.properties = this.properties.map(p => p.clone());
+		r.bdef_father = this.bdef_father.clone();
 		r.bdefs = this.bdefs.map(bd => bd.clone());
 		return r;
 	};
 	CompositeBlock.clean = function () {
 		this.blocks.forEach(b => {
-			b.i_ports.forEach(p => p.__clone__ = undefined);
-			b.o_ports.forEach(p => p.__clone__ = undefined);
-			b.__clone__ = undefined;
+			b.i_ports.forEach(p => delete p.__clone__);
+			b.o_ports.forEach(p => delete p.__clone__);
+			delete b.__clone__;
 		});
 		this.bdefs.forEach(bd => bd.clean());
-		this.i_ports.forEach(p => p.__clone__ = undefined);
-		this.o_ports.forEach(p => p.__clone__ = undefined);
-		this.__clone__ = undefined;
+		this.i_ports.forEach(p => delete p.__clone__);
+		this.o_ports.forEach(p => delete p.__clone__);
+		delete this.__clone__;
 	};
 
 
