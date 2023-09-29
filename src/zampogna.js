@@ -24,6 +24,26 @@
 	const graph   = require("./graph");
 
 	
+	const options_descr = `
+		
+		debug_mode: true/false
+		initial_block_id: unspaced string
+		initial_block_inputs_n: number
+		control_inputs: array of strings
+		initial_values: array of { id: string, value: string } objects
+		target_language: simpleC/MATLAB
+		optimizations: object of properties
+			{
+				"remove_useless_vars": true
+				"merge_max_blocks": true
+				"simplifly_max_blocks": true
+				"negative_consts": true
+				"negative_negative": true
+				"unify_consts": true
+			}
+
+	`;
+
 	function compile (code, options_ = {}) {
 
 		const options = {

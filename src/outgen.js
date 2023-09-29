@@ -231,13 +231,6 @@
 
 		function convert_block (b) {
 			
-			b.i_ports.map(p => bdef.connections.find(c => c.out == p)).forEach((c, i, v) => {
-				if (!c) {
-					const uu = bdef.connections.filter(c => c.out.block == b);
-					throw new Error("djnabs " + b + " .. " + i + ", " + b.i_ports.join('-') + ",, " + v.join('-') + ",,, " + uu.length + uu.map(u => "l"+u.toString()).join('-'))
-				}
-			})
-
 			const input_block_out_ports = b.i_ports.map(p => bdef.connections.find(c => c.out == p).in);
 			const input_blocks = input_block_out_ports.map(p => p.block);
 			const input_codes = input_block_out_ports.map(p => p.code);
