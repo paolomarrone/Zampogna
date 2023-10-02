@@ -27,7 +27,30 @@
 	const util   = require("../src/util");
 	const fs     = require("fs");
 
+
+	const default_optimizations = {
+		negative_negative: true,
+		negative_consts: true,
+		unify_consts: true,
+		remove_useless_vars: true,
+		merge_max_blocks: true,
+		simplifly_max_blocks1: true,
+		simplifly_max_blocks2: true,
+	};
+
 	const GoodTests = [
+		{
+			code: `
+				y1, y2, y3 = asd (x) {
+					y1 = -(-(-5.0))
+					y2 = u
+					u = -5.0
+					y3 = (y1 + 5.0 + x).fs
+					y1.fs = 50.0
+				}
+			`,
+			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
+		},
 		{
 			code: `
 				y, u = asd (x) {
@@ -36,7 +59,7 @@
 					u = x
 				}
 			`,
-			options: { initial_block_id: "asd", control_inputs: [] }
+			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
 		},
 		{
 			code: `
@@ -45,7 +68,7 @@
 					y = x * 2.0 + float(A)
 				}
 			`,
-			options: { initial_block_id: "asd", control_inputs: [] }
+			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
 		},
 		{
 			code: `
@@ -56,7 +79,7 @@
 					u = float(int(t)) - A
 				}
 			`,
-			options: { initial_block_id: "asd", control_inputs: [] }
+			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
 		},
 		{
 			code: `
@@ -67,7 +90,7 @@
 					y = V[0];
 				}
 			`,
-			options: { initial_block_id: "asd", control_inputs: [] }
+			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
 		},
 		{
 			code: `
@@ -79,7 +102,7 @@
 					u.fs = 2.0
 				}
 			`,
-			options: { initial_block_id: "asd", control_inputs: [] }
+			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
 		},
 		{
 			code: `
@@ -90,7 +113,7 @@
 					u.init = 2.0
 				}
 			`,
-			options: { initial_block_id: "asd", control_inputs: [] }
+			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
 		},
 		{
 			code: `
@@ -102,7 +125,7 @@
 					t.fs.init.fs.fs.fs = float(int(666.666 + (A.fs.init.fs * 2.0).init) ^ 5.init)
 				}
 			`,
-			options: { initial_block_id: "asd", control_inputs: [] }
+			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
 		},
 		{
 			code: `
@@ -118,7 +141,7 @@
 					t.fs.init = float(int(666.666 + (A.fs.init.fs * 2.0).init) ^ 5.init)
 				}
 			`,
-			options: { initial_block_id: "asd", control_inputs: [] }
+			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
 		},
 		{
 			code: `
@@ -155,7 +178,7 @@
 				    s.init = x
 				}
 			`,
-			options: { initial_block_id: "asd", control_inputs: [] }
+			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
 		},
 	];
 
@@ -181,6 +204,7 @@
 			var gvizs = util.graphToGraphviz(g);
 			fs.writeFileSync(outputDir + "/T" + t + ".dot", gvizs);
 			graph.flatten(g, GoodTests[t].options);
+			graph.optimize(g, GoodTests[t].options);
 			var gvizs = util.graphToGraphviz(g);
 			fs.writeFileSync(outputDir + "/T" + t + "Flattened.dot", gvizs);
 			const s = schdlr.schedule(g, GoodTests[t].options);

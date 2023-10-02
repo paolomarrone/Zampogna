@@ -700,15 +700,50 @@
 	// Assuming bdef flattened
 	function optimize (bdef, options) {
 
-		function safely_remove_blocks (blocks) {
+		
+		if (options.optimizations["negative_negative"])
+			negative_negative();
 
+		if (options.optimizations["negative_consts"])
+			negative_consts();
+
+		if (options.optimizations["unify_consts"])
+			unify_consts();
+
+		if (options.optimizations["remove_useless_vars"])
+			remove_useless_vars();
+
+		if (options.optimizations["merge_vars"])
+			merge_vars();
+
+		if (options.optimizations["merge_max_blocks"])
+			merge_max_blocks();
+
+		if (options.optimizations["simplifly_max_blocks1"])
+			simplifly_max_blocks1();
+
+		if (options.optimizations["simplifly_max_blocks2"])
+			simplifly_max_blocks2();
+
+		// Sad that we need this
+		setUpdateRate(bdef, options);
+
+
+		function safely_remove_blocks (blocks) {
+			blocks.forEach(b => {
+				const i = bdef.blocks.indexOf(b);
+				bdef.blocks.splice(i, 1);
+			});
 		}
 
 		function safely_remove_connections (conns) {
-
+			conns.forEach(c => {
+				const i = bdef.connections.indexOf(c);
+				bdef.connections.splice(i, 1);
+			});
 		}
 
-		if (options.optimizations.negative_negative) {
+		function negative_negative () {
 			const rem_blocks = [];
 			const rem_conns = [];
 
@@ -745,8 +780,7 @@
 			safely_remove_connections(rem_conns);
 		}
 
-		if (options.optimizations.negative_consts) {
-
+		function negative_consts () {
 			const rem_blocks = [];
 			const rem_conns = [];
 
@@ -787,13 +821,13 @@
 			safely_remove_connections(rem_conns);
 		}
 
-		if (options.optimizations.unify_consts) {
+		function unify_consts () {
 
 			const rem_blocks = [];
 			const rem_conns = [];
 
 			const CBlocks = bdef.blocks.filter(b => bs.ConstantBlock.isPrototypeOf(b));
-			const values = Array.from(new Set(CBlocks).map(b => b.value));
+			const values = (Array.from(new Set(CBlocks.map(b => b.value))));
 
 			values.forEach(v => {
 				const VBlocks = CBlocks.filter(b => b.value == v);
@@ -811,8 +845,8 @@
 			safely_remove_blocks(rem_blocks);
 		}
 
-		if (options.optimizations.remove_useless_vars) {
-
+		function remove_useless_vars () {
+			
 			const rem_blocks = [];
 			const rem_conns = [];
 
@@ -824,7 +858,7 @@
 
 				if (rcs.length != 1)
 					return;
-				if (rcs.some(bb => bb.block == bdef))
+				if (rcs.some(c => c.out.block == bdef))
 					return;
 
 				rcs[0].in = lcs.in;
@@ -836,7 +870,11 @@
 			safely_remove_connections(rem_conns);
 		}
 
-		if (options.optimizations.merge_max_blocks) {
+		function merge_vars () {
+			// TODO: y1 = 5; y2 = 5. Merge y1 and y2
+		}
+
+		function merge_max_blocks () {
 
 			const rem_blocks = [];
 			const rem_conns = [];
@@ -874,13 +912,51 @@
 			safely_remove_connections(rem_conns);
 		}
 
-		if (options.optimizations.simplifly_max_blocks1) {
-			/*
-			 * First remove 0s from inputs or remove singled inputs ones?
-			 * */
+		function simplifly_max_blocks1 () {
+
+			const rem_conns = [];
+
+			const MBlocks = bdef.blocks.filter(b => bs.MaxBlock.isPrototypeOf(b));
+
+			MBlocks.forEach((b, i) => {
+				const lcs = bdef.connections.filter(c => c.out.block == b);
+				const rcs = bdef.connections.filter(c => c.in  == b.o_ports[0]);
+				
+				const lps = Array.from(new Set(lcs.map(c => c.in)));
+				const newlps = [];
+				var c0 = undefined;
+				for (let i = 0; i < lps.length; i++) {
+					if (bs.ConstantBlock.isPrototypeOf(lps[i].block) && lps[i].block.value == 0)
+						c0 = lps[i];
+					else
+						newlps.push(lps[i]);
+				}
+				if (newlps.length == 0) {
+					if (!c0)
+						throw new Error("Invalid max block found");
+					newlps.push(c0);
+				}
+
+				b.createPorts(newlps.length, 1);
+				b.init();
+				newlps.forEach((p, ii) => {
+					const c = Object.create(bs.CompositeBlock.Connection);
+					c.in = p;
+					c.out = b.i_ports[ii];
+					bdef.connections.push(c);
+				});
+				rcs.forEach(c => {
+					c.in = b.o_ports[0];
+				});
+				lcs.forEach(c => {
+					rem_conns.push(c);
+				});
+			});
+
+			safely_remove_connections(rem_conns);
 		}
 
-		if (options.optimizations.simplifly_max_blocks2) {
+		function simplifly_max_blocks2 () {
 
 			const rem_blocks = [];
 			const rem_conns = [];
@@ -888,46 +964,23 @@
 			const MBlocks = bdef.blocks.filter(b => bs.MaxBlock.isPrototypeOf(b));
 
 			MBlocks.forEach(b => {
-				const lcs = bdef.connections.find(c => c.out == b.i_ports[0]);
+				if (b.i_ports.length != 1)
+					return;
+
+				const lc  = bdef.connections.find(c => c.out == b.i_ports[0]);
 				const rcs = bdef.connections.filter(c => c.in  == b.o_ports[0]);
 
-				if (rcs.length != 1)
-					return;
-				
-				rcs[0].in = lcs.in;
+				rcs.forEach(c => {
+					c.in = lc.in;
+				});
+
 				rem_blocks.push(b)
-				rem_conns.push(lcs);
+				rem_conns.push(lc);
 			});
 
 			safely_remove_blocks(rem_blocks);
 			safely_remove_connections(rem_conns);
 		}
-
-		// Tmp - cleaning maxes and vars with 1 input...
-		(function simplifly (bdef) {
-			var l = bdef.blocks.length;
-			for (let i = 0; i < l; i++) {
-				const b = bdef.blocks[i];
-				if (!bs.MaxBlock.isPrototypeOf(b) && !bs.VarBlock.isPrototypeOf(b))
-					continue;
-				if (b.i_ports.length != 1)
-					continue;
-				const cin = bdef.connections.find(c => c.out == b.i_ports[0]);
-				const cons = bdef.connections.filter(c => c.in  == b.o_ports[0]);
-				if (cons.length != 1)
-					continue;
-				const con = cons[0];
-				if (!cin || !con)
-					continue;
-				cin.out = con.out;
-				bdef.connections.splice(bdef.connections.indexOf(con), 1);
-				bdef.blocks.splice(i, 1);
-				i--;
-				l--;
-			}
-		})(bdef);
-
-
 	};
 
 	function findVarById (id, bdef) {
@@ -992,4 +1045,5 @@
 
 	exports["ASTToGraph"] = ASTToGraph;
 	exports["flatten"] = flatten;
+	exports["optimize"] = optimize;
 }());

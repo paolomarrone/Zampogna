@@ -307,7 +307,6 @@
 		}
 		case "CALL_EXPR":
 		{
-			console.log("Calling: " + expr.id + ", " + expr.args.join(",,"))
 			let bdefs = scope.findGlobally(expr.id);
 			if (bdefs.length < 1) {
 				warn("using external function");
