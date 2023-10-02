@@ -12,7 +12,7 @@ enum {
 
 struct _{{=it.name}} {
 	{{~it.memory_declarations:d}}
-	float {{=d}}{{~}}
+	{{=d}}{{~}}
 	
 	{{~it.control_inputs:c}}
 	float {{=c}}_z1;

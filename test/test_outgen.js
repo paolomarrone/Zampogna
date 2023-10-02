@@ -29,6 +29,7 @@
 
 
 	const default_optimizations = {
+		remove_dead_graph: true,
 		negative_negative: true,
 		negative_consts: true,
 		unify_consts: true,
@@ -47,6 +48,7 @@
 					u = -5.0
 					y3 = (y1 + 5.0 + x).fs
 					y1.fs = 50.0
+					h = 0.5
 				}
 			`,
 			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
@@ -77,6 +79,16 @@
 					t = x * 5.5
 					y = x * 2.0 + A
 					u = float(int(t)) - A
+				}
+			`,
+			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
+		},
+		{
+			code: `
+				y = asd () {
+					mem[1] float V
+					V.init = 2.0 + 3.0
+					y = V[0];
 				}
 			`,
 			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
@@ -148,14 +160,14 @@
 				int A = 123
 				mem[A * 2] float U
 				U.init = 0.1
-				y, u = asd (x) {
+				y, u = asd (x, b) {
 					mem[5] float V
 					V.init = 0.0
 					fs2 = fs * 2.0
 					V[0] = x + fs2
 					V[1] = x * 2.0 / V[33]
 					V[int(x)] = 0.5 * t
-					t = x * 5.5 + uff(delay(t) / 2.2)
+					t = x * 5.5 + uff(delay(t) / 2.2) + b + b
 					y = x * 2.0 + float(A) / (V[44] + V[55])
 					u = float(int(t) - A % int(U[3]))
 				}
@@ -178,7 +190,7 @@
 				    s.init = x
 				}
 			`,
-			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
+			options: { initial_block_id: "asd", control_inputs: ["b"], optimizations: default_optimizations }
 		},
 	];
 
@@ -186,30 +198,45 @@
 
 	];
 
-	const GoodTestResults = [];
-	const BadTestResults = [];
-
 	const outputDir = './output';
 	if (!fs.existsSync(outputDir))
 		fs.mkdirSync(outputDir);
+
+	
+	for (let i = 0; i < process.argv.length; i++) {
+		const val = process.argv[i];
+		if (val.includes('t=')) {
+			const i = val.substr(2);
+			runGoodTest(i);
+			return;
+		}
+	}
+
+	function runGoodTest (t) {
+		GoodTests[t].options.target_language = "C"; // See this
+		const AST = parser.parse(GoodTests[t].code);
+		syntax.validateAST(AST);
+		const g = graph.ASTToGraph(AST, GoodTests[t].options);
+		var gvizs = util.graphToGraphviz(g);
+		fs.writeFileSync(outputDir + "/T" + t + ".dot", gvizs);
+		graph.flatten(g, GoodTests[t].options);
+		graph.optimize(g, GoodTests[t].options);
+		var gvizs = util.graphToGraphviz(g);
+		fs.writeFileSync(outputDir + "/T" + t + "Flattened.dot", gvizs);
+		const s = schdlr.schedule(g, GoodTests[t].options);
+		const o = outgen.convert(g, s, GoodTests[t].options);
+		fs.writeFileSync(outputDir + "/T" + t + "Out.c", o[0].str);
+	}
+
+	const GoodTestResults = [];
+	const BadTestResults = [];
+
 
 	for (let t in GoodTests) {
 		let res = true;
 		let err = "";
 		try {
-			GoodTests[t].options.target_language = "C"; // See this
-			const AST = parser.parse(GoodTests[t].code);
-			syntax.validateAST(AST);
-			const g = graph.ASTToGraph(AST, GoodTests[t].options);
-			var gvizs = util.graphToGraphviz(g);
-			fs.writeFileSync(outputDir + "/T" + t + ".dot", gvizs);
-			graph.flatten(g, GoodTests[t].options);
-			graph.optimize(g, GoodTests[t].options);
-			var gvizs = util.graphToGraphviz(g);
-			fs.writeFileSync(outputDir + "/T" + t + "Flattened.dot", gvizs);
-			const s = schdlr.schedule(g, GoodTests[t].options);
-			const o = outgen.convert(g, s, GoodTests[t].options);
-			fs.writeFileSync(outputDir + "/T" + t + "Out.c", o[0].str);
+			runGoodTest(t);
 		} catch (e) {
 			//console.log("A", e);
 			res = false;

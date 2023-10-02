@@ -118,10 +118,20 @@
 
 		funcs.MemoryDeclaration = function (type, id, size) {
 			this.s = new LazyString();
-			this.s.add(funcs.getTypeDecl(type), ' * ', id);
+			this.s.add(funcs.getTypeDecl(type), ' * ', id, " - ", size); // TMP TODO
 			this.toString = function () {
 				return this.s.toString();
 			};
+		};
+		funcs.MemoryInit = function (id, size, value) {
+			this.s = new LazyString();
+			this.s.add("for (int i = 0; i < ", size, "; i++) { \n");
+			this.s.add('\t', id, keys.array_indexer_l, 'i', keys.array_indexer_r, ' = ', value, ';\n');
+			this.s.add('}');
+
+			this.toString = function () {
+				return this.s.toString();
+			}
 		};
 		funcs.Declaration = function (isStatic, isConst, type, id, lonely) {
 			this.s = new LazyString();
@@ -175,6 +185,11 @@
 
 
 	function convert (bdef, schedule, options) {
+
+		/**
+		 * TODO:
+		 * - blocks cloned have the same ids, so we need a namings system that grantrs ids uniqueness
+		 * */
 		
 		const t = options.target_language;
 		const funcs = get_funcs(t);
@@ -206,8 +221,9 @@
 			b.i_ports.forEach(p => p.code = new LazyString());
 			b.o_ports.forEach(p => p.code = new LazyString());
 		});
-		bdef.i_ports.forEach(p => p.code = new LazyString());
+		bdef.i_ports.forEach(p => p.code = new LazyString(p.id));
 		bdef.o_ports.forEach(p => p.code = new LazyString());
+
 
 		schedule.forEach(b => {
 			convert_block(b);
@@ -239,11 +255,8 @@
 			const op0 = b.o_ports[0];
 
 			if (bs.VarBlock.isPrototypeOf(b)) {
-				//if (outblocks.length <= 1) { // bypass // This should be done when optimizing the graph 
-				//	b.o_ports[0].code.add(b.i_ports[0].code);
-				//	return;
-				//}
-				const idcode = "PREFIXTODO" + b.id;
+				
+				const idcode = "PREFIXTODO_" + b.id;
 				op0.code.add(idcode);
 				if (true) { // Declare and assign here
 					const d = new funcs.Declaration(false, true, b.datatype(), idcode, false);
@@ -266,6 +279,11 @@
 				// TODO: memreq, memset...
 				//appendStatement(d, null); // Where?
 				program.memory_declarations.push(d);
+
+				// And memory init
+				const i = new funcs.MemoryInit(b.id, input_codes[0], input_codes[1]);
+				program.init.push(i);
+
 				return;
 			}
 			if (bs.MemoryReaderBlock.isPrototypeOf(b)) {
@@ -291,7 +309,7 @@
 				op0.code.add("__max__(");
 				op0.code.add(input_codes[0]);
 				for (let i = 1; i < input_codes.length; i++)
-					op0.code.add(input_codes[1], ', ');
+					op0.code.add( ', ', input_codes[1]);
 				op0.code.add(')');
 				return;
 			}

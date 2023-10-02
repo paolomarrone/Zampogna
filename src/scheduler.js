@@ -18,32 +18,21 @@
 	const bs = require("./blocks").BlockTypes;
 	
 	function schedule (bdef, options) {
-		const outblocks = bdef.o_ports.map(p => {
-			const c = bdef.connections.find(c => c.out == p);
-			return c.in.block;
-		});
-		var roots = [];
-		roots = roots.concat(outblocks);
-		roots = roots.concat(bdef.blocks.filter(b => bs.MemoryWriterBlock.isPrototypeOf(b)));
 
-
+		const iconns = bdef.o_ports.map(p => bdef.connections.find(c => c.out == p));
+		const roots = iconns.map(c => c.in.block);
 		const scheduled_blocks = [];
-		const memory_blocks = [];
-		roots.forEach(b => schedule_block(b, []));
-		bdef.blocks.forEach(b => delete b.__visited__);
-		Array.from(new Set(memory_blocks)).forEach(m => {
-			scheduled_blocks.push(m);
-		});
+		
+		for (let i = 0; i < roots.length; i++) {
+			schedule_block (roots[i], []);
+		}
 
-		return scheduled_blocks;
+		bdef.blocks.forEach(b => delete b.__visited__);
 
 		function schedule_block (b, stack) {
 			if (b == bdef)
 				return;
-			if (bs.VarBlock.isPrototypeOf(b) && b.id == "fs")
-				return;
-			if (bs.MemoryReaderBlock.isPrototypeOf(b))
-				memory_blocks.push(b.memoryblock);
+
 			if (stack.includes(b))
 				throw new Error("Found loop while scheduling. Stack: " + stack.join(', ') + ". + " + b);
 			const nstack = stack.concat(b);
@@ -52,6 +41,15 @@
 				return;
 			b.__visited__ = true;
 
+			if (bs.MemoryReaderBlock.isPrototypeOf(b)) {
+				roots.push(b.memoryblock);
+			}
+
+			if (bs.MemoryBlock.isPrototypeOf(b)) {
+				const mwriters = bdef.blocks.filter(bb => bs.MemoryWriterBlock.isPrototypeOf(bb) && bb.memoryblock == b);
+				mwriters.forEach(mw => roots.push(mw));
+			}
+
 			b.i_ports.forEach(p => {
 				const bb = bdef.connections.find(c => c.out == p).in.block;
 				schedule_block(bb, nstack);
@@ -59,6 +57,9 @@
 
 			scheduled_blocks.push(b);
 		}
+
+		return scheduled_blocks;
+
 	}
 	exports["schedule"] = schedule;
 }());

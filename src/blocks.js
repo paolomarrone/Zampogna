@@ -167,7 +167,7 @@
 	MemoryBlock.clone = function () {
 		const r = Block.clone.call(this);
 		r.datatype = this.datatype;
-		r.id = "CRIIIIIIIIIIIIIIIIIIIIIIIIII"+this.id;
+		r.id = this.id;
 		return r;
 	};
 
@@ -575,6 +575,9 @@
 		r.block = this.block.clone();
 		return r;
 	};
+	Property.toString = function () {
+		return '[' + this.type + " of " + this.of + " = " + this.block + ']';
+	};
 
 	const CompositeBlock = Object.create(Block); // A.k.a. Graph
 	CompositeBlock.Connection = Connection;
@@ -743,6 +746,8 @@
 			b.o_ports.forEach(p => delete p.__clone__);
 			delete b.__clone__;
 		});
+		this.connections.forEach(c => delete c.__clone__);
+		this.properties.forEach(p => delete p.__clone__);
 		this.bdefs.forEach(bd => bd.clean());
 		this.i_ports.forEach(p => delete p.__clone__);
 		this.o_ports.forEach(p => delete p.__clone__);

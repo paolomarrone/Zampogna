@@ -516,7 +516,6 @@
 	// replace properties with blocks/connections
 	function normalize_properties (bdef) {
 		// Assuming bdef flattened
-
 		(function explicitize_init (bdef) {
 			// y.init = x -> y.init = x.init
 			bdef.properties.filter(p => p.type == 'init').forEach(p => {
@@ -572,8 +571,8 @@
 		bdef.blocks.forEach(b => { 
 			delete b.__visited__;
 			delete b.__normalized__; 
-			delete b.__clun__;
 		});
+		bdef.clean();
 
 		// Checks whether b has inputs or needs to be inferred
 		function normalize (b) {
@@ -661,8 +660,8 @@
 				if (b == fs)
 					return b;
 
-				const bb = b.__clun__ ? b.__clun__ : b.clone(); // Test tmp
-				b.__clun__ = bb
+				b.setToBeCloned();
+				const bb = b.clone();
 
 				const args = [];
 				b.i_ports.forEach((pp, i) => {
@@ -700,7 +699,9 @@
 	// Assuming bdef flattened
 	function optimize (bdef, options) {
 
-		
+		if (options.optimizations["remove_dead_graph"])
+			remove_dead_graph();
+
 		if (options.optimizations["negative_negative"])
 			negative_negative();
 
@@ -709,7 +710,7 @@
 
 		if (options.optimizations["unify_consts"])
 			unify_consts();
-
+	
 		if (options.optimizations["remove_useless_vars"])
 			remove_useless_vars();
 
@@ -743,9 +744,56 @@
 			});
 		}
 
+		// Very similar to the scheduling...
+		function remove_dead_graph () {
+			
+			var blocks = [];
+			var conns = [];
+			
+			const iconns = bdef.o_ports.map(p => bdef.connections.find(c => c.out == p));
+			const roots = iconns.map(c => c.in.block);
+
+			for (let i = 0; i < roots.length; i++) {
+				f (roots[i]);
+			}
+
+			conns = conns.concat(iconns);
+
+			bdef.blocks = blocks;
+			bdef.connections = conns;
+			
+			bdef.blocks.forEach(b => delete b.__visited__);
+
+			function f (b) {
+				if (b == bdef)
+					return;
+
+				if (b.__visited__)
+					return;
+				b.__visited__ = true;
+
+				if (bs.MemoryReaderBlock.isPrototypeOf(b)) {
+					roots.push(b.memoryblock);
+				}
+
+				if (bs.MemoryBlock.isPrototypeOf(b)) {
+					bdef.blocks.filter(bb => bs.MemoryWriterBlock.isPrototypeOf(bb) && bb.memoryblock == b).forEach(bb => {
+						roots.push(bb);
+					});
+				}
+
+				b.i_ports.forEach(p => {
+					const cc = bdef.connections.find(c => c.out == p);
+					const bb = cc.in.block;
+					conns.push(cc);
+					f (bb);
+				});
+				
+				blocks.push(b);
+			}
+		}
+
 		function negative_negative () {
-			const rem_blocks = [];
-			const rem_conns = [];
 
 			bdef.connections.forEach(c => {
 
@@ -754,6 +802,9 @@
 
 				if (!(bs.UminusBlock.isPrototypeOf(l) && bs.UminusBlock.isPrototypeOf(r)))
 					return;
+
+				const rem_blocks = [];
+				const rem_conns = [];
 
 				const llc  = bdef.connections.find(c => c.out == l.i_ports[0]);
 				const lrcs = bdef.connections.filter(c => c.in == l.o_ports[0]);
@@ -774,16 +825,14 @@
 					rem_blocks.push(r);
 					rem_conns.push(rlc);
 				}
-			});
 
-			safely_remove_blocks(rem_blocks);
-			safely_remove_connections(rem_conns);
+				safely_remove_blocks(rem_blocks);
+				safely_remove_connections(rem_conns);
+			});
 		}
 
 		function negative_consts () {
-			const rem_blocks = [];
-			const rem_conns = [];
-
+			
 			bdef.connections.forEach(c => {
 
 				const l = c.in.block;
@@ -791,6 +840,9 @@
 
 				if (!(bs.ConstantBlock.isPrototypeOf(l) && bs.UminusBlock.isPrototypeOf(r)))
 					return;
+
+				const rem_blocks = [];
+				const rem_conns = [];
 
 				const lrcs = bdef.connections.filter(c => c.in == l.o_ports[0]);
 				const rlc  = c;
@@ -815,10 +867,10 @@
 					rem_blocks.push(r);
 					rem_conns.push(rlc);
 				}
+				
+				safely_remove_blocks(rem_blocks);
+				safely_remove_connections(rem_conns);
 			});
-
-			safely_remove_blocks(rem_blocks);
-			safely_remove_connections(rem_conns);
 		}
 
 		function unify_consts () {
@@ -827,10 +879,15 @@
 			const rem_conns = [];
 
 			const CBlocks = bdef.blocks.filter(b => bs.ConstantBlock.isPrototypeOf(b));
-			const values = (Array.from(new Set(CBlocks.map(b => b.value))));
+
+			const values = [
+				Array.from(new Set(CBlocks.filter(b => b.datatype() == ts.DataTypeFloat32).map(b => b.value))).map(v => [ts.DataTypeFloat32, v]),
+				Array.from(new Set(CBlocks.filter(b => b.datatype() == ts.DataTypeInt32).map(b => b.value))).map(v => [ts.DataTypeInt32, v]),
+				Array.from(new Set(CBlocks.filter(b => b.datatype() == ts.DataTypeBool).map(b => b.value))).map(v => [ts.DataTypeBool, v])
+			].flat(1);
 
 			values.forEach(v => {
-				const VBlocks = CBlocks.filter(b => b.value == v);
+				const VBlocks = CBlocks.filter(b => b.datatype() == v[0] && b.value == v[1]);
 				const VB0 = VBlocks[0];
 				for (let i = 1; i < VBlocks.length; i++) {
 					const vb = VBlocks[i];
@@ -846,14 +903,14 @@
 		}
 
 		function remove_useless_vars () {
-			
-			const rem_blocks = [];
-			const rem_conns = [];
 
 			const VBlocks = bdef.blocks.filter(b => bs.VarBlock.isPrototypeOf(b));
 
 			VBlocks.forEach(b => {
-				const lcs = bdef.connections.find(c => c.out == b.i_ports[0]);
+				const rem_blocks = [];
+				const rem_conns = [];
+
+				const lc  = bdef.connections.find(c => c.out == b.i_ports[0]);
 				const rcs = bdef.connections.filter(c => c.in  == b.o_ports[0]);
 
 				if (rcs.length != 1)
@@ -861,13 +918,13 @@
 				if (rcs.some(c => c.out.block == bdef))
 					return;
 
-				rcs[0].in = lcs.in;
+				rcs[0].in = lc.in;
 				rem_blocks.push(b)
-				rem_conns.push(lcs);
-			});
+				rem_conns.push(lc);
 
-			safely_remove_blocks(rem_blocks);
-			safely_remove_connections(rem_conns);
+				safely_remove_blocks(rem_blocks); // Check this position in the ohter opts
+				safely_remove_connections(rem_conns);
+			});
 		}
 
 		function merge_vars () {
