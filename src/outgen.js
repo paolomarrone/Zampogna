@@ -33,7 +33,7 @@
 		let tabs = '';
 		for (let i = 0; i < tabLevel; i++)
 			tabs += '\t';
-		return s.toString().split('\n').map(x => tabs + x).join('\n');
+		return s.toString().trim().split('\n').map(x => tabs + x).join('\n');
 	};
 
 	function LazyString (...init) {
@@ -196,13 +196,51 @@
 			this.condition = new LazyString();
 			this.start = new LazyString('if ( ', this.condition, ' ) { \n');
 			this.body = new funcs.Statements();
-			this.end = new LazyString('} \n');
+			this.end = new LazyString('\n} \n');
 
 			this.toString = function (tabLevel = 0) {
-				const r = this.start.toString() + this.body.toString(tabLevel + 1) + this.end.toString();
+				const r = this.start.toString() + this.body.toString(1) + this.end.toString();
 				return prependTabs(r, tabLevel);
 			};
 		};
+		funcs.ControlCoeffsGroup = function (control_dependencies) {
+			//this.label = Array.from(control_dependencies).join('_');
+			this.control_dependencies = control_dependencies;
+			this.cardinality = control_dependencies.size;
+			this.equals = (s) => Set.checkEquality(this.control_dependencies, s);
+			
+			this.s = new funcs.IfBlock();
+			this.s.condition.add(Array.from(control_dependencies).map(x => x + '_CHANGED').join(' | '));
+
+			this.add = function (...x) {
+				this.s.body.add.apply(this.s.body, x);
+			};
+			this.toString = function (tabLevel = 0) {
+				return this.s.toString(tabLevel);
+			};
+		};
+		funcs.ControlCoeffs = function () {
+			this.groups = [];
+			this.getOrAddGroup = function (control_dependencies) {
+				var g = this.groups.find(g => g.equals(control_dependencies));
+				if (g == undefined) {
+					g = new funcs.ControlCoeffsGroup(control_dependencies);
+					this.groups.push(g);
+				}
+				return g;
+			};
+			this.add = function (s, control_dependencies) {
+				const g = this.getOrAddGroup(control_dependencies);
+				g.add(s);
+			};
+			this.toString = function (tabLevel = 0) {
+				return this.groups.map(g => g.toString(tabLevel)).join('\n');
+			};
+		};
+
+		/*
+			groups.sort((A, B) => A.cardinality < B.cardinality ? -1 : A.cardinality == B.cardinality ? 0 : 1 )
+		*/
 
 		return funcs;
 	};
@@ -214,7 +252,7 @@
 		 * TODO:
 		 * - blocks cloned have the same ids, so we need a namings system that grantrs ids uniqueness
 		 * - We're delcaring/assigning only on VARs. So we might check if there other blocks fork their output. Should not happen with the implemented opts, might better to be sure 
-		 * 
+		 * - For the future: Control grouping system should be trated in the same way of user IFs. In the graph itself
 		 */
 		
 		const t = options.target_language;
@@ -225,26 +263,47 @@
 			name: "",
 
 			audio_inputs: [],
-			control_inputs: [],
 			audio_outputs: [],
+			parameters: [],
 
+			// Instance properties // Declarations
+			parameter_states: new funcs.Statements(), // p, p_z1, p_CHANGED
 			memory_declarations: new funcs.Statements(),
+			states: new funcs.Statements(),
+			coefficients: new funcs.Statements(),
+
+			// Assignments
 			init: new funcs.Statements(),
 			reset: new funcs.Statements(),
-
 			constants: new funcs.Statements(),
 			fs_update: new funcs.Statements(),
-			control_coeffs_update: new funcs.Statements(),
+			control_coeffs_update: new funcs.ControlCoeffs(),
 			audio_update: new funcs.Statements(),
-
 			delay_updates: new funcs.Statements(),
+
 			output_updates: new funcs.Statements(),
 		};
 
 		program.name = "Buh_" + bdef.id;
 		program.audio_inputs = bdef.i_ports.filter(p => p.updaterate() == us.UpdateRateAudio).map(p => p.id);
-		program.control_inputs = bdef.i_ports.filter(p => p.updaterate() == us.UpdateRateControl).map(p => p.id);
 		program.audio_outputs = bdef.o_ports.map(p => p.id);
+		program.parameters = bdef.i_ports.filter(p => p.updaterate() == us.UpdateRateControl).map(p => p.id);
+		
+		
+		// TODO: declared twice when declared by corresponding variables
+		program.parameters.forEach(p => {
+			const d = new funcs.Declaration(false, false, ts.DataTypeFloat32, p, true);
+			program.parameter_states.add(d);
+		});
+		
+		program.parameters.forEach(p => {
+			const d = new funcs.Declaration(false, false, ts.DataTypeFloat32, p + '_z1', true);
+			program.parameter_states.add(d);
+		});
+		program.parameters.forEach(p => {
+			const d = new funcs.Declaration(false, false, ts.DataTypeBool, p + '_CHANGED', true);
+			program.parameter_states.add(d);
+		});
 
 		//var extra_vars_n = 0;
 
@@ -255,12 +314,6 @@
 			});
 			bdef.i_ports.forEach(p => p.code = new LazyString(p.id));
 			bdef.o_ports.forEach(p => p.code = new LazyString());
-		}());
-
-		(function init_controlDependencies () {
-
-
-
 		}());
 
 		schedule.forEach(b => {
@@ -283,32 +336,86 @@
 		}
 		*/
 
+		// Tmp here:
+		function idify (id) {
+			// TODO: uniqueness
+			id = id.replace(/[^a-zA-Z0-9_]/, '');
+			if (id[0].match(/[0-9]/))
+				id = '_' + id;
+			return id;
+		}
+
 		function convert_block (b) {
 			
 			const input_block_out_ports = b.i_ports.map(p => bdef.connections.find(c => c.out == p).in);
 			const input_blocks = input_block_out_ports.map(p => p.block);
 			const input_codes = input_block_out_ports.map(p => p.code);
 			
-			//const update_rate = b.i_ports.concat(b.o_ports).map(p => p.updaterate()).reduce((u, t) => t.level > u.level ? t : u, us.UpdateRateConstant);
 			const op0 = b.o_ports[0];
 
 			if (bs.VarBlock.isPrototypeOf(b)) {
+
+				// TODO: fs
+
+				const outblocks = bdef.connections.filter(c => c.in == b.o_ports[0]).map(c => c.out.block);
+				const ur = b.o_ports[0].updaterate();
+
+				var locality = undefined;
+				var whereDec = undefined;
+				var whereAss = undefined;
+
+				// TOTHINK: mem writes?
 				
-				const idcode = "PREFIXTODO_" + b.id;
-				op0.code.add(idcode);
-				if (true) { // Declare and assign here
-					const d = new funcs.Declaration(false, true, b.datatype(), idcode, false);
+				const outblockurs = outblocks.map(bb => us.max.apply(null, bb.i_ports.concat(bb.o_ports)));
+				const maxour = us.max.apply(null, outblockurs);
+				
+				locality = maxour.level <= ur.level;
+
+				if (ur == us.UpdateRateConstant) {
+					locality = true;
+					whereDec = program.constants;
+					whereAss = program.constants;
+				}
+				if (ur == us.UpdateRateFs) {
+					if (locality)
+						whereDec = program.fs_update;
+					else
+						whereDec = program.coefficients;
+					whereAss = program.fs_update;
+				}
+				if (ur == us.UpdateRateControl) {
+					const g = program.control_coeffs_update.getOrAddGroup(b.control_dependencies);
+					if (locality) {
+						locality = outblocks.every(bb => Set.checkEquality(b.control_dependencies, bb.control_dependencies));
+					}
+					if (locality) {
+						whereDec = g;
+					}
+					else {
+						whereDec = program.coefficients;
+					}
+					whereAss = g;
+				}
+				if (ur == us.UpdateRateAudio) {
+					locality = true;
+					whereDec = program.audio_update;
+					whereAss = program.audio_update;
+				}
+
+				var id = idify(b.id); // TODO: ID uniqueness
+				if (locality) {
+					op0.code.add(id);
+					const d = new funcs.Declaration(false, true, b.datatype(), id, false);
 					const a = new funcs.Assignment(null, input_codes[0], d);
-					
-					//appendStatement(a, update_rate); // where?
-					program.audio_update.add(a); //tmp
+					whereAss.add(a);	
 				}
 				else {
-					const d = new funcs.Declaration(false, false, b.datatype(), idcode, true);
-					const a = new funcs.Assignment(idcode, input_codes[0], null);
-					//appendStatement(d, null); // Where?
-					//appendStatement(a, update_rate); // Where?
-					program.audio_update.add(d, a); //tmp
+					const refid = funcs.getObjectPrefix() + id;
+					op0.code.add(id);
+					const d = new funcs.Declaration(false, false, b.datatype(), id, true);
+					const a = new funcs.Assignment(refid, input_codes[0], null);
+					whereDec.add(d);
+					whereAss.add(a);
 				}
 				return;
 			}
@@ -440,31 +547,6 @@
 				throw new Error("Unexpected block type");
 			}
 		};
-/*
-		function groupControls() {
-			var Group = function (set) {
-				let self = this
-				this.label = Array.from(set).join('_')
-				this.set = set
-				this.cardinality = set.size
-				this.equals = (s) => checkSetEquality(self.set, s)
-				this.stmts = []
-			}
-			let groups = []
-			program.controls_rate.forEach(function (stmt) {
-				let group = groups.find(g => g.equals(stmt.control_dependencies))
-				if (group == undefined) {
-					group = new Group(stmt.control_dependencies)
-					groups.push(group)
-				}
-				group.stmts.push(stmt)
-			})
-
-			groups.sort((A, B) => A.cardinality < B.cardinality ? -1 : A.cardinality == B.cardinality ? 0 : 1 )
-
-			program.controls_rate = groups
-		}
-*/
 	};
 
 	exports["convert"] = convert;

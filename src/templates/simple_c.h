@@ -3,20 +3,26 @@
 #ifndef _{{=it.name.toUpperCase()}}_H
 #define _{{=it.name.toUpperCase()}}_H
 
-{{?it.control_inputs.length > 0}}
+{{?it.parameters.length > 0}}
 enum {
-	{{~it.control_inputs:c}}
+	{{~it.parameters:c}}
 	p_{{=c}},{{~}}
 };
 {{?}}
 
 struct _{{=it.name}} {
-	{{=it.memory_declarations}}
 	
-	{{~it.control_inputs:c}}
-	float {{=c}}_z1;
-	char {{=c}}_CHANGED;
-	{{~}}
+	// Parameters
+{{=it.parameter_states.toString(1)}}
+
+	// Memory
+{{=it.memory_declarations.toString(1)}}
+
+	// States
+{{=it.states.toString(1)}}
+
+	// Coefficients
+{{=it.coefficients.toString(1)}}
 
 	float fs;
 	char firstRun;
@@ -32,10 +38,12 @@ float {{=it.name}}_get_parameter({{=it.name}} *instance, int index);
 void {{=it.name}}_set_parameter({{=it.name}} *instance, int index, float value);
 
 
-{{=it.constants}}
+{{=it.constants.toString(0)}}
 
 void {{=it.name}}_init({{=it.name}} *instance) {
-	{{=it.init}}
+
+{{=it.init.toString(1)}}
+
 }
 
 void {{=it.name}}_reset({{=it.name}} *instance) {
@@ -43,20 +51,25 @@ void {{=it.name}}_reset({{=it.name}} *instance) {
 }
 
 void {{=it.name}}_set_sample_rate({{=it.name}} *instance, float sample_rate) {
+	
 	instance->fs = sample_rate;
-	{{=it.fs_update}}
+	
+{{=it.fs_update.toString(1)}}
+
 }
 
 void {{=it.name}}_process({{=it.name}} *instance, {{?it.audio_inputs.length > 0}} {{=it.audio_inputs.map(x => 'const float *' + x).join(', ')}}, {{?}}{{?it.audio_outputs.length > 0}}{{=it.audio_outputs.map(x => 'float *' + x).join(', ')}}, {{?}}int nSamples) {
-	if (instance->firstRun) {{{~it.control_inputs:c}}
+	
+	if (instance->firstRun) {{{~it.parameters:c}}
 		instance->{{=c}}_CHANGED = 1;{{~}}
 	}
-	else {{{~it.control_inputs:c}}
+	else {{{~it.parameters:c}}
 		instance->{{=c}}_CHANGED = instance->{{=c}} != instance->{{=c}}_z1;{{~}}
 	}
-	{{=it.control_coeffs_update}}
+	
+{{=it.control_coeffs_update.toString(1)}}
 
-	{{~it.control_inputs:c}}
+	{{~it.parameters:c}}
 	instance->{{=c}}_CHANGED = 0;{{~}}
 
 	if (instance->firstRun) {
@@ -71,14 +84,14 @@ void {{=it.name}}_process({{=it.name}} *instance, {{?it.audio_inputs.length > 0}
 {{=it.output_updates.toString(2)}}
 	}
 
-	{{~it.control_inputs:c}}
+	{{~it.parameters:c}}
 	instance->{{=c}}_z1 = instance->{{=c}};{{~}}
 	instance->firstRun = 0;
 }
 
 float {{=it.name}}_get_parameter({{=it.name}} *instance, int index) {
 	switch (index) {
-		{{~it.control_inputs:c}}case p_{{=c}}:
+		{{~it.parameters:c}}case p_{{=c}}:
 			return instance->{{=c}};
 		{{~}}
 	}
@@ -86,7 +99,7 @@ float {{=it.name}}_get_parameter({{=it.name}} *instance, int index) {
 
 void {{=it.name}}_set_parameter({{=it.name}} *instance, int index, float value) {
 	switch (index) {
-		{{~it.control_inputs:c}}case p_{{=c}}:
+		{{~it.parameters:c}}case p_{{=c}}:
 			instance->{{=c}} = value;
 			break;
 		{{~}}

@@ -1091,7 +1091,7 @@
 				const our = b.o_ports[0].updaterate();
 				b.i_ports.forEach(p => {
 					const c = bdef.connections.find(c => c.out == p);
-					const iur = c.in.updaterate()
+					const iur = c.in.updaterate();
 					if (us.equal(our, iur))
 						return;
 					if (bs.VarBlock.isPrototypeOf(c.in.block))
@@ -1123,6 +1123,7 @@
 
 				b.i_ports.forEach(p => {
 					const c = bdef.connections.find(c => c.out == p);
+					const iur = c.in.updaterate();
 					const bb = c.in.block;
 
 					if (bb == bdef)

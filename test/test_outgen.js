@@ -44,6 +44,14 @@
 	const GoodTests = [
 		{
 			code: `
+				y = volume (x, v) {
+					y = x * (v * 2.0)
+				}
+			`,
+			options: { initial_block_id: "volume", control_inputs: ['v'], optimizations: default_optimizations }
+		},
+		{
+			code: `
 				y1, y2, y3 = asd (x) {
 					y1 = -(-(-5.0))
 					y2 = u
@@ -162,14 +170,14 @@
 				int A = 123
 				mem[A * 2] float U
 				U.init = 0.1
-				y, u = asd (x, b) {
+				y, u = asd (x, b, bb) {
 					mem[5] float V
 					V.init = 0.0
 					fs2 = fs * 2.0
 					V[0] = x + fs2
 					V[1] = x * 2.0 / V[33]
 					V[int(x)] = 0.5 * t
-					t = x * 5.5 + uff(delay(t) / 2.2) + b + b
+					t = x * 5.5 + uff(delay(t) / 2.2) + (b + b) * bb + bb / 2.0
 					y = x * 2.0 + float(A) / (V[44] + V[55])
 					u = float(int(t) - A % int(U[3]))
 				}
@@ -192,7 +200,7 @@
 				    s.init = x
 				}
 			`,
-			options: { initial_block_id: "asd", control_inputs: ["b"], optimizations: default_optimizations }
+			options: { initial_block_id: "asd", control_inputs: ["b", 'bb'], optimizations: default_optimizations }
 		},
 	];
 
