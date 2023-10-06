@@ -11,8 +11,7 @@ enum {
 {{?}}
 
 struct _{{=it.name}} {
-	{{~it.memory_declarations:d}}
-	{{=d}}{{~}}
+	{{=it.memory_declarations}}
 	
 	{{~it.control_inputs:c}}
 	float {{=c}}_z1;
@@ -28,17 +27,15 @@ typedef struct _{{=it.name}} {{=it.name}};
 void {{=it.name}}_init({{=it.name}} *instance);
 void {{=it.name}}_set_sample_rate({{=it.name}} *instance, float sample_rate);
 void {{=it.name}}_reset({{=it.name}} *instance);
-void {{=it.name}}_process({{=it.name}} *instance, {{?it.audio_inputs.length > 0}} {{=it.audio_inputs.map(x => 'const float *' + x).join(', ')}}, {{?}}{{?it.outputs.length > 0}}{{=it.outputs.map(x => 'float *' + x).join(', ')}}, {{?}}int nSamples);
+void {{=it.name}}_process({{=it.name}} *instance, {{?it.audio_inputs.length > 0}} {{=it.audio_inputs.map(x => 'const float *' + x).join(', ')}}, {{?}}{{?it.audio_outputs.length > 0}}{{=it.audio_outputs.map(x => 'float *' + x).join(', ')}}, {{?}}int nSamples);
 float {{=it.name}}_get_parameter({{=it.name}} *instance, int index);
 void {{=it.name}}_set_parameter({{=it.name}} *instance, int index, float value);
 
 
-{{~it.constants:c}}static const float {{=c}};
-{{~}}
+{{=it.constants}}
 
 void {{=it.name}}_init({{=it.name}} *instance) {
-	{{~it.init:d}}
-	{{=d}};{{~}}
+	{{=it.init}}
 }
 
 void {{=it.name}}_reset({{=it.name}} *instance) {
@@ -47,36 +44,31 @@ void {{=it.name}}_reset({{=it.name}} *instance) {
 
 void {{=it.name}}_set_sample_rate({{=it.name}} *instance, float sample_rate) {
 	instance->fs = sample_rate;
-	{{~it.fs_update:s}}{{=s}};
-	{{~}}
+	{{=it.fs_update}}
 }
 
-void {{=it.name}}_process({{=it.name}} *instance, {{?it.audio_inputs.length > 0}} {{=it.audio_inputs.map(x => 'const float *' + x).join(', ')}}, {{?}}{{?it.outputs.length > 0}}{{=it.outputs.map(x => 'float *' + x).join(', ')}}, {{?}}int nSamples) {
+void {{=it.name}}_process({{=it.name}} *instance, {{?it.audio_inputs.length > 0}} {{=it.audio_inputs.map(x => 'const float *' + x).join(', ')}}, {{?}}{{?it.audio_outputs.length > 0}}{{=it.audio_outputs.map(x => 'float *' + x).join(', ')}}, {{?}}int nSamples) {
 	if (instance->firstRun) {{{~it.control_inputs:c}}
 		instance->{{=c}}_CHANGED = 1;{{~}}
 	}
 	else {{{~it.control_inputs:c}}
 		instance->{{=c}}_CHANGED = instance->{{=c}} != instance->{{=c}}_z1;{{~}}
 	}
-	{{~it.control_coeffs_update:c}}
-	if ({{=Array.from(c.set).map(e => "instance->" + e + "_CHANGED").join(' | ')}}) {{{~c.stmts: s}}
-		{{=s}};{{~}}
-	}{{~}}
+	{{=it.control_coeffs_update}}
+
 	{{~it.control_inputs:c}}
 	instance->{{=c}}_CHANGED = 0;{{~}}
 
-	if (instance->firstRun) {{{~it.reset:r}}
-		{{=r}};{{~}}
+	if (instance->firstRun) {
+		{{=it.reset}}
 	}
 
 	for (int i = 0; i < nSamples; i++) {
-		{{~it.audio_update: a}}
-		{{=a}};{{~}}
+{{=it.audio_update.toString(2)}}
 		
-		{{~it.delay_updates:u}}{{=u}};
-		{{~}}
-		{{~it.output_updates:u}}
-		{{=u}};{{~}}
+{{=it.delay_updates.toString(2)}}
+
+{{=it.output_updates.toString(2)}}
 	}
 
 	{{~it.control_inputs:c}}

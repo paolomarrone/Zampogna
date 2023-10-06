@@ -26,7 +26,16 @@
 	const bs = require("./blocks").BlockTypes;
 	const ts = require("./types");
 	const us = require("./uprates");
+	const ut = require("./util");
+
 	
+	function prependTabs (s, tabLevel) {
+		let tabs = '';
+		for (let i = 0; i < tabLevel; i++)
+			tabs += '\t';
+		return s.toString().split('\n').map(x => tabs + x).join('\n');
+	};
+
 	function LazyString (...init) {
 		this.s = [];
 		this.add = function (...x) {
@@ -172,11 +181,26 @@
 				return this.s.toString();
 			};
 		};
-		// mmm...
-		funcs.CodeBlock = function (...init) {
-			this.s = [];
+		funcs.Statements = function () {
+			this.s = new LazyString();
 			this.add = function (...x) {
+				this.s.add.apply(this.s, x);
+				this.s.add('\n');
+				return this;
+			};
+			this.toString = function (tabLevel = 0) {
+				return prependTabs(this.s, tabLevel);
+			};
+		};
+		funcs.IfBlock = function () {
+			this.condition = new LazyString();
+			this.start = new LazyString('if ( ', this.condition, ' ) { \n');
+			this.body = new funcs.Statements();
+			this.end = new LazyString('} \n');
 
+			this.toString = function (tabLevel = 0) {
+				const r = this.start.toString() + this.body.toString(tabLevel + 1) + this.end.toString();
+				return prependTabs(r, tabLevel);
 			};
 		};
 
@@ -189,41 +213,55 @@
 		/**
 		 * TODO:
 		 * - blocks cloned have the same ids, so we need a namings system that grantrs ids uniqueness
-		 * */
+		 * - We're delcaring/assigning only on VARs. So we might check if there other blocks fork their output. Should not happen with the implemented opts, might better to be sure 
+		 * 
+		 */
 		
 		const t = options.target_language;
 		const funcs = get_funcs(t);
 
 		const program = {
 
-			name: "buh" + bdef.id,
+			name: "",
 
-			control_inputs: options.control_inputs,
-			audio_inputs: bdef.i_ports.map(p => p.id).filter(i => !options.control_inputs.includes(i)),
-			outputs: bdef.o_ports.map(p => p.id),
+			audio_inputs: [],
+			control_inputs: [],
+			audio_outputs: [],
 
-			memory_declarations: [],
-			init: [],
-			reset: [],
+			memory_declarations: new funcs.Statements(),
+			init: new funcs.Statements(),
+			reset: new funcs.Statements(),
 
-			constants: [],
-			fs_update: [],
-			control_coeffs_update: [],
-			audio_update: [],
+			constants: new funcs.Statements(),
+			fs_update: new funcs.Statements(),
+			control_coeffs_update: new funcs.Statements(),
+			audio_update: new funcs.Statements(),
 
-			delay_updates: [],
-			output_updates: []
+			delay_updates: new funcs.Statements(),
+			output_updates: new funcs.Statements(),
 		};
 
-		var extra_vars_n = 0;
+		program.name = "Buh_" + bdef.id;
+		program.audio_inputs = bdef.i_ports.filter(p => p.updaterate() == us.UpdateRateAudio).map(p => p.id);
+		program.control_inputs = bdef.i_ports.filter(p => p.updaterate() == us.UpdateRateControl).map(p => p.id);
+		program.audio_outputs = bdef.o_ports.map(p => p.id);
 
-		bdef.blocks.forEach(b => {
-			b.i_ports.forEach(p => p.code = new LazyString());
-			b.o_ports.forEach(p => p.code = new LazyString());
-		});
-		bdef.i_ports.forEach(p => p.code = new LazyString(p.id));
-		bdef.o_ports.forEach(p => p.code = new LazyString());
+		//var extra_vars_n = 0;
 
+		(function init_strings () {
+			bdef.blocks.forEach(b => {
+				b.i_ports.forEach(p => p.code = new LazyString());
+				b.o_ports.forEach(p => p.code = new LazyString());
+			});
+			bdef.i_ports.forEach(p => p.code = new LazyString(p.id));
+			bdef.o_ports.forEach(p => p.code = new LazyString());
+		}());
+
+		(function init_controlDependencies () {
+
+
+
+		}());
 
 		schedule.forEach(b => {
 			convert_block(b);
@@ -263,14 +301,14 @@
 					const a = new funcs.Assignment(null, input_codes[0], d);
 					
 					//appendStatement(a, update_rate); // where?
-					program.audio_update.push(a); //tmp
+					program.audio_update.add(a); //tmp
 				}
 				else {
 					const d = new funcs.Declaration(false, false, b.datatype(), idcode, true);
 					const a = new funcs.Assignment(idcode, input_codes[0], null);
 					//appendStatement(d, null); // Where?
 					//appendStatement(a, update_rate); // Where?
-					program.audio_update.push(d, a); //tmp
+					program.audio_update.add(d, a); //tmp
 				}
 				return;
 			}
@@ -278,11 +316,11 @@
 				const d = new funcs.MemoryDeclaration(b.datatype(), b.id, input_codes[0]);
 				// TODO: memreq, memset...
 				//appendStatement(d, null); // Where?
-				program.memory_declarations.push(d);
+				program.memory_declarations.add(d);
 
 				// And memory init
 				const i = new funcs.MemoryInit(b.id, input_codes[0], input_codes[1]);
-				program.init.push(i);
+				program.init.add(i);
 
 				return;
 			}
@@ -298,7 +336,7 @@
 				c.add(funcs.getArrayIndex(input_codes[0]));
 				const a = new funcs.Assignment(c, input_codes[1], null);
 				//appendStatement(a, null); // Where?
-				program.delay_updates.push(a);
+				program.delay_updates.add(a);
 				return;
 			}
 			if (bs.ConstantBlock.isPrototypeOf(b)) {
@@ -402,6 +440,31 @@
 				throw new Error("Unexpected block type");
 			}
 		};
+/*
+		function groupControls() {
+			var Group = function (set) {
+				let self = this
+				this.label = Array.from(set).join('_')
+				this.set = set
+				this.cardinality = set.size
+				this.equals = (s) => checkSetEquality(self.set, s)
+				this.stmts = []
+			}
+			let groups = []
+			program.controls_rate.forEach(function (stmt) {
+				let group = groups.find(g => g.equals(stmt.control_dependencies))
+				if (group == undefined) {
+					group = new Group(stmt.control_dependencies)
+					groups.push(group)
+				}
+				group.stmts.push(stmt)
+			})
+
+			groups.sort((A, B) => A.cardinality < B.cardinality ? -1 : A.cardinality == B.cardinality ? 0 : 1 )
+
+			program.controls_rate = groups
+		}
+*/
 	};
 
 	exports["convert"] = convert;

@@ -511,6 +511,8 @@
 
 		// It's important to call this after flattening/cloning
 		setUpdateRate(bdef, options);
+
+		propagateControlDependencies(bdef);
 	}
 
 	// replace properties with blocks/connections
@@ -697,7 +699,37 @@
 	}
 
 	// Assuming bdef flattened
+	function propagateControlDependencies (bdef) {
+
+		// Better to reset
+		bdef.blocks.forEach(b => b.control_dependencies = new Set());
+
+		bdef.i_ports.filter(p => p.updaterate() == us.UpdateRateControl).forEach(p => {
+			const cs = bdef.connections.filter(c => c.in == p);
+			cs.forEach(c => f (c.out.block, p.id));
+			bdef.blocks.forEach(b => delete b.__visited__);
+		});
+
+		function f (b, ctrd) {
+			if (b == bdef)
+				return;
+			if (b.__visited__)
+				return;
+			b.__visited__ = true;
+
+			b.control_dependencies.add(ctrd);
+
+			b.o_ports.forEach(p => {
+				const cs = bdef.connections.filter(c => c.in == p)
+				cs.forEach(c => f (c.out.block, ctrd));
+			});
+		}
+	}
+
+	// Assuming bdef flattened
 	function optimize (bdef, options) {
+
+		var _x_counter = 0;
 
 		if (options.optimizations["remove_dead_graph"])
 			remove_dead_graph();
@@ -728,6 +760,15 @@
 
 		// Sad that we need this
 		setUpdateRate(bdef, options);
+
+		if (options.optimizations["lazyfy_subexpressions_rates"])
+			lazyfy_subexpressions_rates();
+
+		if (options.optimizations["lazyfy_subexpressions_controls"])
+			lazyfy_subexpressions_controls();
+
+		// Needed cuz we eventually created new blocks... Anything better?
+		propagateControlDependencies (bdef);
 
 
 		function safely_remove_blocks (blocks) {
@@ -796,6 +837,8 @@
 		function negative_negative () {
 
 			bdef.connections.forEach(c => {
+				if (!bdef.connections.includes(c))
+					return;
 
 				const l = c.in.block;
 				const r = c.out.block;
@@ -1037,6 +1080,74 @@
 
 			safely_remove_blocks(rem_blocks);
 			safely_remove_connections(rem_conns);
+		}
+
+		// Assuming blocks with only 1 output
+		function lazyfy_subexpressions_rates () {
+
+			bdef.blocks.forEach(b => {
+				if (b.o_ports.length == 0)
+					return; // Uhm, what to do in this case?
+				const our = b.o_ports[0].updaterate();
+				b.i_ports.forEach(p => {
+					const c = bdef.connections.find(c => c.out == p);
+					const iur = c.in.updaterate()
+					if (us.equal(our, iur))
+						return;
+					if (bs.VarBlock.isPrototypeOf(c.in.block))
+						return;
+					if (bs.ConstantBlock.isPrototypeOf(c.in.block))
+						return;
+					const v = Object.create(bs.VarBlock);
+					v.id = "_x_" + _x_counter++;
+					const d = c.in.datatype();
+					v.datatype = () => d;
+					v.init();
+					v.i_ports[0].datatype = () => d;
+					v.i_ports[0].updaterate = () => iur;
+					v.o_ports[0].updaterate = () => iur;
+					const cc = Object.create(bs.CompositeBlock.Connection);
+					cc.in = v.o_ports[0];
+					cc.out = c.out;
+					c.out = v.i_ports[0];
+					bdef.blocks.push(v);
+					bdef.connections.push(cc);
+				});
+			});
+		}
+
+		function lazyfy_subexpressions_controls () {
+			
+			// Here too
+			bdef.blocks.filter(b => b.o_ports.length != 0 && b.o_ports[0].updaterate() == us.UpdateRateControl).forEach(b => {
+
+				b.i_ports.forEach(p => {
+					const c = bdef.connections.find(c => c.out == p);
+					const bb = c.in.block;
+
+					if (bb == bdef)
+						return;
+					if (Set.checkEquality(b.control_dependencies, bb.control_dependencies))
+						return;
+					if (bs.VarBlock.isPrototypeOf(bb))
+						return;
+
+					const v = Object.create(bs.VarBlock);
+					v.id = "_x_" + _x_counter++;
+					const d = c.in.datatype();
+					v.datatype = () => d;
+					v.init();
+					v.i_ports[0].datatype = () => d;
+					v.i_ports[0].updaterate = () => iur;
+					v.o_ports[0].updaterate = () => iur;
+					const cc = Object.create(bs.CompositeBlock.Connection);
+					cc.in = v.o_ports[0];
+					cc.out = c.out;
+					c.out = v.i_ports[0];
+					bdef.blocks.push(v);
+					bdef.connections.push(cc);
+				});
+			});
 		}
 	};
 

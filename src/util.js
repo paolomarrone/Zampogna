@@ -1,5 +1,17 @@
 (function() {
 
+	Array.checkInclusion = function (A, B) {
+		return A.every(a => B.some(b => a == b));
+	};
+	Set.checkInclusion = function (A, B) { // if A is included in B
+		return Array.checkInclusion(Array.from(A), Array.from(B));
+	};
+	Set.checkEquality = function (A, B) {
+		A = Array.from(A);
+		B = Array.from(B);
+		return Array.checkInclusion(A, B) && Array.checkInclusion(B, A);
+	};
+
 	function graphToGraphviz (g, path) {
 		let ui = 0;
 		function getUID () {

@@ -37,6 +37,8 @@
 		merge_max_blocks: true,
 		simplifly_max_blocks1: true,
 		simplifly_max_blocks2: true,
+		lazyfy_subexpressions_rates: true,
+		lazyfy_subexpressions_controls: true,
 	};
 
 	const GoodTests = [

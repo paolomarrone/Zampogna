@@ -35,11 +35,45 @@
 	UpdateRateAudio.level = 3;
 	UpdateRateAudio.toString = () => "UpdateRateAudio";
 
+	function max (...x) {
+		var r = x[0];
+		for (let k of x) {
+			//if (k == UpdateRateGeneric)
+			//	throw new Error("UpdateRateGeneric");
+			if (k.level > r.level)
+				r = k;
+		}
+		return r;
+	}
+
+	function min (...x) {
+		var r = x[0];
+		for (let k of x) {
+			//if (k == UpdateRateGeneric)
+			//	throw new Error("UpdateRateGeneric");
+			if (k.level < r.level)
+				r = k;
+		}
+		return r;
+	}
+
+	function equal (...x) {
+		var r = x[0];
+		for (let k of x) {
+			if (k != r)
+				return false;
+		}
+		return true;
+	}
 
 	exports["UpdateRateGeneric"] = UpdateRateGeneric;
 	exports["UpdateRateConstant"] = UpdateRateConstant;
 	exports["UpdateRateFs"] = UpdateRateFs;
 	exports["UpdateRateControl"] = UpdateRateControl;
 	exports["UpdateRateAudio"] = UpdateRateAudio;
+
+	exports["max"] = max;
+	exports["min"] = min;
+	exports["equal"] = equal;
 
 }());

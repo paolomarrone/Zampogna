@@ -48,7 +48,7 @@
 	Port.validate = function () {
 		if (this.datatype() == ts.DataTypeGeneric)
 			throw new Error("Generic port datatype: " + this.toString());
-		if (this.updaterate() == us.UpdateRateGeneric)
+		//if (this.updaterate() == us.UpdateRateGeneric)
 			;//throw new Error("Generic updaterate");
 	};
 	Port.toString = function () {
@@ -60,6 +60,7 @@
 	Block.Port = Port;
 	Block.id = undefined;
 	Block.operation = "DEFAULT";
+	Block.control_dependencies = undefined;
 	Block.parLevel = 0;
 	Block.i_ports = undefined; // Array of Ports
 	Block.o_ports = undefined; // Array of Ports
@@ -69,12 +70,14 @@
 		this.i_ports.forEach(p => p.block = this);
 		this.o_ports.forEach(p => p.block = this);
 	};
-	Block.init = function () {
-		this.createPorts(0, 0);
+	Block.init = function (i_p_n = 0, o_p_n = 0) {
+		this.createPorts(i_p_n, o_p_n);
+		this.control_dependencies = new Set();
 	};
 	Block.setMaxOutputUpdaterate = function () {
 		this.o_ports.forEach(p => p.updaterate = function () {
-			return this.block.i_ports.map(p => p.updaterate()).reduce((u, t) => t.level > u.level ? t : u, us.UpdateRateConstant);
+			//return this.block.i_ports.map(p => p.updaterate()).reduce((u, t) => t.level > u.level ? t : u, us.UpdateRateConstant);
+			return us.max.apply(null, this.block.i_ports.map(p => p.updaterate()));
 		});
 	};
 	Block.validate = function () {
@@ -120,7 +123,7 @@
 	VarBlock.id = "";
 	VarBlock.datatype = () => ts.DataTypeGeneric;
 	VarBlock.init = function () {
-		this.createPorts(1, 1);
+		Block.init.call(this, 1, 1);
 		this.o_ports[0].datatype = function () {
 			return this.block.datatype();
 		};
@@ -151,7 +154,7 @@
 	MemoryBlock.id = "";
 	MemoryBlock.datatype = () => ts.DataTypeGeneric;
 	MemoryBlock.init = function () {
-		this.createPorts(2, 0); // size, init
+		Block.init.call(this, 2, 0); // size, init
 	};
 	MemoryBlock.validate = function () {
 		if (this.datatype() == ts.DataTypeGeneric)
@@ -175,7 +178,7 @@
 	MemoryReaderBlock.operation = "MEMORY_READ";
 	MemoryReaderBlock.memoryblock = undefined;
 	MemoryReaderBlock.init = function () {
-		this.createPorts(1, 1); // index, value
+		Block.init.call(this, 1, 1); // index, value
 		this.o_ports[0].datatype = function () {
 			return this.block.memoryblock.datatype();
 		};
@@ -200,7 +203,7 @@
 	MemoryWriterBlock.operation = "MEMORY_WRITE";
 	MemoryWriterBlock.memoryblock = undefined;
 	MemoryWriterBlock.init = function () {
-		this.createPorts(2, 0); // index, value
+		Block.init.call(this, 2, 0); // index, value
 	};
 	MemoryWriterBlock.validate = function () {
 		Block.validate.call(this);
@@ -222,7 +225,7 @@
 	ConstantBlock.value = undefined;
 	ConstantBlock.datatype = () => ts.DataTypeGeneric;
 	ConstantBlock.init = function () {
-		this.createPorts(0, 1);
+		Block.init.call(this, 0, 1);
 		this.o_ports[0].datatype = function () {
 			return this.block.datatype();
 		};
@@ -248,7 +251,7 @@
 
 	const LogicalBlock = Object.create(Block);
 	LogicalBlock.init = function () {
-		this.createPorts(2, 1);
+		Block.init.call(this, 2, 1);
 		this.o_ports[0].datatype = () => ts.DataTypeBool;
 		Block.setMaxOutputUpdaterate.call(this);
 	};
@@ -271,14 +274,14 @@
 	const LogicalNotBlock = Object.create(LogicalBlock);
 	LogicalNotBlock.operation = "!";
 	LogicalNotBlock.init = function () {
-		this.createPorts(1, 1);
+		Block.init.call(this, 1, 1);
 		this.o_ports[0].datatype = () => ts.DataTypeBool;
 		Block.setMaxOutputUpdaterate.call(this);
 	};
 
 	const BitwiseBlock = Object.create(Block);
 	BitwiseBlock.init = function () {
-		this.createPorts(2, 1);
+		Block.init.call(this, 2, 1);
 		this.o_ports[0].datatype = () => ts.DataTypeInt32;
 		Block.setMaxOutputUpdaterate.call(this);
 	};
@@ -302,7 +305,7 @@
 	const BitwiseNotBlock = Object.create(BitwiseBlock);
 	BitwiseNotBlock.operation = "~";
 	BitwiseNotBlock.init = function () {
-		this.createPorts(1, 1);
+		Block.init.call(this, 1, 1);
 		this.o_ports[0].updaterate = function () {
 			return this.block.i_ports[0].updaterate();
 		};
@@ -311,7 +314,7 @@
 
 	const RelationalBlock = Object.create(Block);
 	RelationalBlock.init = function () {
-		this.createPorts(2, 1);
+		Block.init.call(this, 2, 1);
 		this.o_ports[0].datatype = () => ts.DataTypeBool;
 		Block.setMaxOutputUpdaterate.call(this);
 	};
@@ -353,7 +356,7 @@
 	const ShiftBlock = Object.create(Block);
 	ShiftBlock.parLevel = 13;
 	ShiftBlock.init = function () {
-		this.createPorts(2, 1);
+		Block.init.call(this, 2, 1);
 		this.o_ports[0].datatype = () => ts.DataTypeInt32;
 		Block.setMaxOutputUpdaterate.call(this);
 	};
@@ -370,7 +373,7 @@
 
 	const ArithmeticalBlock = Object.create(Block);
 	ArithmeticalBlock.init = function () {
-		this.createPorts(2, 1);
+		Block.init.call(this, 2, 1);
 		this.o_ports[0].datatype = function () {
 			return this.block.i_ports[0].datatype();
 		};
@@ -406,7 +409,7 @@
 	const UminusBlock = Object.create(ArithmeticalBlock);
 	UminusBlock.operation = "-";
 	UminusBlock.init = function () {
-		this.createPorts(1, 1);
+		Block.init.call(this, 1, 1);
 		this.o_ports[0].datatype = function () {
 			return this.block.i_ports[0].datatype();
 		};
@@ -418,7 +421,7 @@
 	ModuloBlock.operation = "%";
 	ModuloBlock.parLevel = 11;
 	ModuloBlock.init = function () {
-		this.createPorts(2, 1);
+		Block.init.call(this, 2, 1);
 		this.o_ports[0].datatype = () => ts.DataTypeInt32;
 		Block.setMaxOutputUpdaterate.call(this);
 	};
@@ -430,14 +433,14 @@
 
 	const CastBlock = Object.create(Block);
 	CastBlock.init = function () {
-		this.createPorts(1, 1);
+		Block.init.call(this, 1, 1);
 		Block.setMaxOutputUpdaterate.call(this);
 	};
 
 	const CastF32Block = Object.create(CastBlock);
 	CastF32Block.operation = "(f32)";
 	CastF32Block.init = function () {
-		this.createPorts(1, 1);
+		Block.init.call(this, 1, 1);
 		this.o_ports[0].datatype = () => ts.DataTypeFloat32;
 		Block.setMaxOutputUpdaterate.call(this);
 	};
@@ -445,7 +448,7 @@
 	const CastI32Block = Object.create(CastBlock);
 	CastI32Block.operation = "(i32)";
 	CastI32Block.init = function () {
-		this.createPorts(1, 1);
+		Block.init.call(this, 1, 1);
 		this.o_ports[0].datatype = () => ts.DataTypeInt32;
 		Block.setMaxOutputUpdaterate.call(this);
 	};
@@ -453,7 +456,7 @@
 	const CastBoolBlock = Object.create(CastBlock);
 	CastBoolBlock.operation = "(bool)";
 	CastBoolBlock.init = function () {
-		this.createPorts(1, 1);
+		Block.init.call(this, 1, 1);
 		this.o_ports[0].datatype = () => ts.DataTypeBool;
 		Block.setMaxOutputUpdaterate.call(this);
 	};
@@ -462,6 +465,8 @@
 	MaxBlock.operation = "max";
 	MaxBlock.datatype = () => ts.DataTypeGeneric;
 	MaxBlock.init = function () {
+		this.control_dependencies = new Set(); // Would be nice to normalize
+		//Block.init.call(this, 0, 0);
 		// Create ports from outside. out ports must be 1
 		this.o_ports[0].datatype = function () {
 			return this.block.datatype();
@@ -484,7 +489,7 @@
 	CallBlock.outputs_N = undefined;
 	CallBlock.bdef = undefined; // Tmp here. Refers to the called bdef
 	CallBlock.init = function () {
-		this.createPorts(this.inputs_N, this.outputs_N);
+		Block.init.call(this, this.inputs_N, this.outputs_N);
 		// Override port datatypes
 		Block.setMaxOutputUpdaterate.call(this);
 	};
@@ -502,7 +507,7 @@
 	IfthenelseBlock.nOutputs = undefined;
 	IfthenelseBlock.init = function () {
 		const nInputs = 1 + this.nOutputs * 2; // Condition, outputs of 1st branch, output of 2nd branch
-		this.createPorts(nInputs, this.nOutputs);
+		Block.init.call(this, nInputs, this.nOutputs);
 	};
 	IfthenelseBlock.setOutputDatatype = function () {
 		for (let i = 0; i < this.nOutputs; i++)
@@ -592,7 +597,7 @@
 	CompositeBlock.inputs_N = 0;
 	CompositeBlock.outputs_N = 0;
 	CompositeBlock.init = function () {
-		this.createPorts(this.inputs_N, this.outputs_N);
+		Block.init.call(this, this.inputs_N, this.outputs_N);
 		this.blocks = [];
 		this.connections = [];
 		this.properties = [];
