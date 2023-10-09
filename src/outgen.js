@@ -13,6 +13,13 @@
 	Author: Paolo Marrone
 */
 
+/**
+ * TODO:
+ * - blocks cloned have the same ids, so we need a namings system that grants ids uniqueness
+ * - We're delcaring/assigning only on VARs. So we might check if there other blocks fork their output. Should not happen with the implemented opts, might better to be sure 
+ * - For the future: Control grouping system should be trated in the same way of user IFs. In the graph itself
+ */
+
 (function() {
 
 	const doT = require("dot");
@@ -68,7 +75,15 @@
 			type_bool: 'char',
 			type_true: '1',
 			type_false: '0',
-			float_f_postfix: true
+			float_f_postfix: true,
+			reserved_keywords: [
+				"auto", "else", "long", "switch", "break", "enum",
+				"register", "typedef", "case", "extern", "return",
+				"union", "char", "float", "short", "unsigned",
+				"const", "for", "signed", "void", "continue", "goto",
+				"sizeof", "volatile", "default", "if", "static",
+				"while", "do", "int", "struct", "_Packed", "double"
+			]
 		};
 
 		switch (target_language) {
@@ -94,7 +109,7 @@
 		};
 
 		const funcs = {};
-		funcs["getArrayIndex"] = (i) => new LazyString(keys.array_indexer_l, i, keys.array_indexer_r);
+		funcs["getArrayIndexer"] = (i) => new LazyString(keys.array_indexer_l, i, keys.array_indexer_r);
 		funcs["getFloat"] = keys.float_f_postfix
 			? (n) =>  {
 				n = n + "";
@@ -124,10 +139,54 @@
 				return keys.type_bool;
 			throw new Error("getTypeDecl. Type error");
 		};
+		funcs["getReservedKeywords"] = () => keys.reserved_keywords;
 
+		funcs.Identifiers = function () {
+			this.ids = [];
+			const nuostr = Array.from(funcs.getReservedKeywords());
+			nuostr.push('i', 'instance', 'n_samples', 'sample_rate');
+			nuostr.forEach(k => {
+				this.ids.push( {
+					raw: k,
+					nrm: k + '0',
+					added: false
+				} );
+			});
+			this.add = function (raw_id) {
+				const id = this.ids.find(i => i.raw == raw_id);
+				if (id && !id.added) {
+					id.added = true;
+					return id.nrm;
+				}
+				var postfix = "";
+				for (let x = 0; x < 10000; x++) {
+					const nrm_id = normalize(raw_id) + postfix;
+					if (this.ids.some(i => i.nrm == nrm_id)) {
+						postfix = x;
+						continue;
+					}
+					this.ids.push({
+						raw: raw_id,
+						nrm: nrm_id,
+						added: true
+					});
+					return nrm_id;
+				}
+				throw new Error("Identifier almost impossible error");
+			};
+			function normalize (id) {
+				id = id.replace(/[^a-zA-Z0-9_]/, '');
+				if (id.lenght == 0)
+					id = '_';
+				if (id[0].match(/[0-9]/))
+					id = '_' + id;
+				return id;
+			};
+		};
 		funcs.MemoryDeclaration = function (type, id, size) {
 			this.s = new LazyString();
-			this.s.add(funcs.getTypeDecl(type), ' * ', id, " - ", size); // TMP TODO
+			//this.s.add(funcs.getTypeDecl(type), ' * ', id, " - ", size); // TMP TODO
+			this.s.add(funcs.getTypeDecl(type), ' ', id, '[', size, '];');
 			this.toString = function () {
 				return this.s.toString();
 			};
@@ -204,13 +263,11 @@
 			};
 		};
 		funcs.ControlCoeffsGroup = function (control_dependencies) {
-			//this.label = Array.from(control_dependencies).join('_');
 			this.control_dependencies = control_dependencies;
-			this.cardinality = control_dependencies.size;
 			this.equals = (s) => Set.checkEquality(this.control_dependencies, s);
 			
 			this.s = new funcs.IfBlock();
-			this.s.condition.add(Array.from(control_dependencies).map(x => x + '_CHANGED').join(' | '));
+			this.s.condition.add(Array.from(control_dependencies).map(x => funcs.getObjectPrefix() + x + '_CHANGED').join(' | '));
 
 			this.add = function (...x) {
 				this.s.body.add.apply(this.s.body, x);
@@ -238,29 +295,20 @@
 			};
 		};
 
-		/*
-			groups.sort((A, B) => A.cardinality < B.cardinality ? -1 : A.cardinality == B.cardinality ? 0 : 1 )
-		*/
-
 		return funcs;
 	};
 
 
 	function convert (bdef, schedule, options) {
 
-		/**
-		 * TODO:
-		 * - blocks cloned have the same ids, so we need a namings system that grantrs ids uniqueness
-		 * - We're delcaring/assigning only on VARs. So we might check if there other blocks fork their output. Should not happen with the implemented opts, might better to be sure 
-		 * - For the future: Control grouping system should be trated in the same way of user IFs. In the graph itself
-		 */
-		
 		const t = options.target_language;
 		const funcs = get_funcs(t);
 
 		const program = {
 
 			name: "",
+
+			identifiers: new funcs.Identifiers(),
 
 			audio_inputs: [],
 			audio_outputs: [],
@@ -284,40 +332,66 @@
 			output_updates: new funcs.Statements(),
 		};
 
-		program.name = "Buh_" + bdef.id;
-		program.audio_inputs = bdef.i_ports.filter(p => p.updaterate() == us.UpdateRateAudio).map(p => p.id);
-		program.audio_outputs = bdef.o_ports.map(p => p.id);
-		program.parameters = bdef.i_ports.filter(p => p.updaterate() == us.UpdateRateControl).map(p => p.id);
-		
-		
-		// TODO: declared twice when declared by corresponding variables
-		program.parameters.forEach(p => {
-			const d = new funcs.Declaration(false, false, ts.DataTypeFloat32, p, true);
-			program.parameter_states.add(d);
-		});
-		
-		program.parameters.forEach(p => {
-			const d = new funcs.Declaration(false, false, ts.DataTypeFloat32, p + '_z1', true);
-			program.parameter_states.add(d);
-		});
-		program.parameters.forEach(p => {
-			const d = new funcs.Declaration(false, false, ts.DataTypeBool, p + '_CHANGED', true);
-			program.parameter_states.add(d);
-		});
-
-		//var extra_vars_n = 0;
-
 		(function init_strings () {
 			bdef.blocks.forEach(b => {
 				b.i_ports.forEach(p => p.code = new LazyString());
 				b.o_ports.forEach(p => p.code = new LazyString());
+				if (bs.MemoryBlock.isPrototypeOf(b))
+					b.code = new LazyString();
 			});
-			bdef.i_ports.forEach(p => p.code = new LazyString(p.id));
+			bdef.i_ports.forEach(p => p.code = new LazyString());
 			bdef.o_ports.forEach(p => p.code = new LazyString());
 		}());
 
+		program.name = "Buh_" + bdef.id;
+		bdef.i_ports.filter(p => p.updaterate() == us.UpdateRateAudio).forEach(p => {
+			const id = program.identifiers.add(p.id);
+			const code = new LazyString(id, funcs.getArrayIndexer('i'));
+			program.audio_inputs.push(id);
+			p.code = code;
+		});
+		bdef.i_ports.filter(p => p.updaterate() == us.UpdateRateControl).forEach(p => {
+			const id = program.identifiers.add(p.id);
+			const code = funcs.getObjectPrefix() + id;
+			program.parameters.push(id);
+			p.code = code;
+		});
+		bdef.i_ports.filter(p => p.updaterate() == us.UpdateRateFs).forEach(p => {
+			const id = program.identifiers.add(p.id);
+			const code = funcs.getObjectPrefix() + id;
+			p.code = code;
+		});
+		bdef.o_ports.forEach(p => {
+			const id = program.identifiers.add(p.id);
+			const code = new LazyString(id, funcs.getArrayIndexer('i'));
+			program.audio_outputs.push(id);
+			p.code = code;
+		});
+		program.parameters.forEach(p => {
+			const id = p;
+			const d = new funcs.Declaration(false, false, ts.DataTypeFloat32, id, true);
+			program.parameter_states.add(d);
+		});
+		program.parameters.forEach(p => {
+			const id = program.identifiers.add(p + '_z1');
+			const d = new funcs.Declaration(false, false, ts.DataTypeFloat32, id, true);
+			program.parameter_states.add(d);
+		});
+		program.parameters.forEach(p => {
+			const id = program.identifiers.add(p + '_CHANGED');
+			const d = new funcs.Declaration(false, false, ts.DataTypeBool, id, true);
+			program.parameter_states.add(d);
+		});
+
+		
+
 		schedule.forEach(b => {
 			convert_block(b);
+		});
+
+		bdef.o_ports.forEach(p => {
+			const c = bdef.connections.find(c => c.out == p);
+			program.output_updates.add(new funcs.Assignment(c.out.code, c.in.code, false));
 		});
 
 
@@ -336,14 +410,7 @@
 		}
 		*/
 
-		// Tmp here:
-		function idify (id) {
-			// TODO: uniqueness
-			id = id.replace(/[^a-zA-Z0-9_]/, '');
-			if (id[0].match(/[0-9]/))
-				id = '_' + id;
-			return id;
-		}
+	
 
 		function convert_block (b) {
 			
@@ -402,7 +469,7 @@
 					whereAss = program.audio_update;
 				}
 
-				var id = idify(b.id); // TODO: ID uniqueness
+				var id = program.identifiers.add(b.id);
 				if (locality) {
 					op0.code.add(id);
 					const d = new funcs.Declaration(false, true, b.datatype(), id, false);
@@ -411,7 +478,7 @@
 				}
 				else {
 					const refid = funcs.getObjectPrefix() + id;
-					op0.code.add(id);
+					op0.code.add(refid);
 					const d = new funcs.Declaration(false, false, b.datatype(), id, true);
 					const a = new funcs.Assignment(refid, input_codes[0], null);
 					whereDec.add(d);
@@ -420,30 +487,31 @@
 				return;
 			}
 			if (bs.MemoryBlock.isPrototypeOf(b)) {
-				const d = new funcs.MemoryDeclaration(b.datatype(), b.id, input_codes[0]);
+				const id = program.identifiers.add(b.id);
+				const d = new funcs.MemoryDeclaration(b.datatype(), id, input_codes[0]);
+				b.code.add(funcs.getObjectPrefix(), id);
 				// TODO: memreq, memset...
 				//appendStatement(d, null); // Where?
 				program.memory_declarations.add(d);
 
 				// And memory init
-				const i = new funcs.MemoryInit(b.id, input_codes[0], input_codes[1]);
+				const i = new funcs.MemoryInit(b.code, input_codes[0], input_codes[1]);
 				program.init.add(i);
 
 				return;
 			}
 			if (bs.MemoryReaderBlock.isPrototypeOf(b)) {
 				const c = op0.code;
-				c.add(b.memoryblock.id); // prefix? Instance-> ?
-				c.add(funcs.getArrayIndex(input_codes[0]));
+				c.add(b.memoryblock.code);
+				c.add(funcs.getArrayIndexer(input_codes[0]));
 				return;
 			}
 			if (bs.MemoryWriterBlock.isPrototypeOf(b)) {
 				const c = new LazyString();
-				c.add(b.memoryblock.id); // prefix? Instance-> ?
-				c.add(funcs.getArrayIndex(input_codes[0]));
+				c.add(b.memoryblock.code);
+				c.add(funcs.getArrayIndexer(input_codes[0]));
 				const a = new funcs.Assignment(c, input_codes[1], null);
-				//appendStatement(a, null); // Where?
-				program.delay_updates.add(a);
+				program.delay_updates.add(a); // TODO: Might not be always the case
 				return;
 			}
 			if (bs.ConstantBlock.isPrototypeOf(b)) {

@@ -183,7 +183,8 @@
 			return this.block.memoryblock.datatype();
 		};
 		this.o_ports[0].updaterate = function () {
-			return this.block.i_ports[0].updaterate();
+			//return this.block.i_ports[0].updaterate();
+			return us.UpdateRateAudio; // Simplification. TODO: fix
 		};
 	};
 	MemoryReaderBlock.validate = function () {

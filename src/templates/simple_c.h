@@ -7,6 +7,8 @@
 enum {
 	{{~it.parameters:c}}
 	p_{{=c}},{{~}}
+
+	p_n
 };
 {{?}}
 
@@ -77,11 +79,13 @@ void {{=it.name}}_process({{=it.name}} *instance, {{?it.audio_inputs.length > 0}
 	}
 
 	for (int i = 0; i < nSamples; i++) {
+
 {{=it.audio_update.toString(2)}}
 		
 {{=it.delay_updates.toString(2)}}
 
 {{=it.output_updates.toString(2)}}
+
 	}
 
 	{{~it.parameters:c}}

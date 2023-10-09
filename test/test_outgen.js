@@ -44,11 +44,27 @@
 	const GoodTests = [
 		{
 			code: `
-				y = volume (x, v) {
-					y = x * (v * 2.0)
+				y = volume (i, v) {
+					y = i * (v * 2.0)
 				}
 			`,
 			options: { initial_block_id: "volume", control_inputs: ['v'], optimizations: default_optimizations }
+		},
+		{
+			code: `
+				y = lp1 (x, v) {
+					y_z1 = delay(y)
+					y = y_z1 + v / fs * 1000.0 * (x - y_z1)
+					y.init = 0.0
+				}
+				float y = delay (float x) {
+				    mem[1] float s
+				    y = s[0]
+				    s[0] = x
+				    s.init = x
+				}
+			`,
+			options: { initial_block_id: "lp1", control_inputs: ['v'], optimizations: default_optimizations }
 		},
 		{
 			code: `

@@ -416,7 +416,7 @@
 		const inputDataTypes = b.i_ports.map(p => p.datatype());
 		const r = findBdefBySignature(b.id, inputDataTypes, b.outputs_N, bdef);
 		if (!r)
-			throw new Error("No callable bdef found with that signature");
+			throw new Error("No callable bdef found with that signature: " + b.id);
 		b.bdef = r.r;
 	}
 
@@ -1117,7 +1117,7 @@
 		}
 
 		function lazyfy_subexpressions_controls () {
-			
+			return; // Something is wrong here
 			// Here too
 			bdef.blocks.filter(b => b.o_ports.length != 0 && b.o_ports[0].updaterate() == us.UpdateRateControl).forEach(b => {
 
