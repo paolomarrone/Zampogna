@@ -107,6 +107,13 @@
 				y.fs = ((x * x).fs * 2).init
 				y.fs.fs.fs = 0.5
 			}
+		`, `
+		
+			include meow
+
+			y = A (x) {
+				y = x	
+			}
 		`
 	];
 

@@ -15,8 +15,12 @@
 
 /**
  * TODO:
- * - We're delcaring/assigning only on VARs. So we might check if there other blocks fork their output. Should not happen with the implemented opts, might better to be sure 
+ * - We're delcaring/assigning only on VARs. So we might check if other blocks fork their output. Should not happen with the implemented opts, might better to be sure anyways
  * - For the future: Control grouping system should be trated in the same way of user IFs. In the graph itself
+ * 
+ * - Check memory updates order. Might be better to save reads in vars.
+ * - 
+ * 
  */
 
 (function() {
@@ -147,20 +151,14 @@
 			nuostr.forEach(k => {
 				this.ids.push( {
 					raw: k,
-					nrm: k + '0',
-					added: false
+					nrm: k,
 				} );
 			});
 			this.add = function (raw_id) {
-				const id = this.ids.find(i => i.raw == raw_id);
-				if (id && !id.added) {
-					id.added = true;
-					return id.nrm;
-				}
 				var postfix = "";
-				var nrm_id = normalize(raw_id);
+				var nrm_id_ = normalize(raw_id);
 				for (let x = 0; x < 10000; x++) {
-					nrm_id = nrm_id + postfix;
+					const nrm_id = nrm_id_ + postfix;
 					if (this.ids.some(i => i.nrm == nrm_id)) {
 						postfix = x;
 						continue;
@@ -326,7 +324,7 @@
 			fs_update: new funcs.Statements(),
 			control_coeffs_update: new funcs.ControlCoeffs(),
 			audio_update: new funcs.Statements(),
-			delay_updates: new funcs.Statements(),
+			memory_updates: new funcs.Statements(),
 
 			output_updates: new funcs.Statements(),
 		};
@@ -342,7 +340,7 @@
 			bdef.o_ports.forEach(p => p.code = new LazyString());
 		}());
 
-		program.name = "Buh_" + bdef.id;
+		program.name = program.identifiers.add(bdef.id); // Buh_0
 		bdef.i_ports.filter(p => p.updaterate() == us.UpdateRateAudio).forEach(p => {
 			const id = program.identifiers.add(p.id);
 			const code = new LazyString(id, funcs.getArrayIndexer('i'));
@@ -504,7 +502,7 @@
 				c.add(b.memoryblock.code);
 				c.add(funcs.getArrayIndexer(input_codes[0]));
 				const a = new funcs.Assignment(c, input_codes[1], null);
-				program.delay_updates.add(a); // TODO: Might not be always the case
+				program.memory_updates.add(a); // TODO: Might not be always the case
 				return;
 			}
 			if (bs.ConstantBlock.isPrototypeOf(b)) {

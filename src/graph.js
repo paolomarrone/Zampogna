@@ -483,6 +483,8 @@
 
 		bdef.flatten();
 
+		bdef.id = i_bdef.id;
+
 		normalize_properties(bdef);
 
 		(function validate (bdef) {
@@ -661,6 +663,8 @@
 					return b;
 				if (b == fs)
 					return b;
+				if (bs.MemoryReaderBlock.isPrototypeOf(b))
+					return convert_property(b.memoryblock, 'init', bdef);
 
 				b.setToBeCloned();
 				const bb = b.clone();

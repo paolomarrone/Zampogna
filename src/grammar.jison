@@ -25,6 +25,29 @@ program             : statements
                         }}
                     ;
 
+includes            : includes include
+                        {{
+                            $$ = $1.concat($2);
+                        }}
+                    |
+                        {{
+                            $$ = [];
+                        }}
+                    ;
+
+include             : INCLUDE id END
+                        {{
+                            $$ = {
+                                name: 'INCLUDE',
+                                id: $2
+                            };
+                        }}
+                    | END
+                        {{
+                            $$ = [];
+                        }}
+                    ;
+
 statements      	: statements statement
                         {{
                             $$ = $1.concat($2); 

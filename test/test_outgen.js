@@ -52,6 +52,50 @@
 		},
 		{
 			code: `
+				y = asd (x) {
+					y = delay(delay(x))
+				}
+				float y = delay (float x) {
+				    mem[1] float s
+				    y = s[0]
+				    s[0] = x
+				    s.init = x
+				}
+			`,
+			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
+		},
+		{
+			code: `
+				y = asd (x, lol) {
+					int n = 100000
+					int lul = int(lol * float(n))
+					y = x + delay(x, n, lul)
+				}
+				
+				int i = circular_iterator (int n) {
+				    i = (delay(i) + 1) % n
+				    i.init = -1
+				}
+
+				float y = delay(float x, int n, int lol) {
+				    mem[n] float line
+				    int i = circular_iterator(lol)
+				    y = line[i]
+				    line[i] = x
+				    line.init = x # implicitly x.init
+				}
+				int y = delay (int x) {
+				    mem[1] int s
+				    y = s[0]
+				    s[0] = x
+				    s.init = x
+				}
+
+			`,
+			options: { initial_block_id: "asd", control_inputs: ['lol'], optimizations: default_optimizations }
+		},		
+		{
+			code: `
 				y = lp1 (x, v) {
 					y_z1 = delay(y)
 					y = y_z1 + v / fs * 1000.0 * (x - y_z1)
@@ -65,6 +109,117 @@
 				}
 			`,
 			options: { initial_block_id: "lp1", control_inputs: ['v'], optimizations: default_optimizations }
+		},		
+		{
+			code: `
+				y = lp1 (x, fr) {
+					y_z1 = delay(y)
+					y = y_z1 + fr * (x - y_z1)
+					y.init = 0.0
+				}
+
+				y = lp3 (x, fr) {
+					y = lp1(lp1(lp1(x, fr), fr), fr)
+				}
+				float y = delay (float x) {
+				    mem[1] float s
+				    y = s[0]
+				    s[0] = x
+				    s.init = x
+				}
+			`,
+			options: { initial_block_id: "lp3", control_inputs: ['fr'], optimizations: default_optimizations }
+		},
+		{
+			code: `
+				pi = 3.14159265358979323846
+
+				y = EQregalia(x, low, high, peak) {
+					decibel_range = 40.0
+					lowdb  = low  * decibel_range - decibel_range * 0.5
+					highdb = high * decibel_range - decibel_range * 0.5
+					peakdb = peak * decibel_range - decibel_range * 0.5
+
+					t1 = lowshelffilter(x, lowdb)
+					
+					t2 = highshelffilter(t1, highdb)
+
+					t3 = peakfilter(t2, peakdb)
+
+					y = t3
+				}
+
+				yL, yR = EQregaliaStereo(xL, xR, low, high, peak) {
+					
+					yL = EQregalia (xL, low, high, peak)
+					yR = EQregalia (xR, low, high, peak)
+				}
+
+				y = lowshelffilter(x, gain) {
+					K = K_approximation(gain)
+					f0 = 200.0
+					z = (pi*f0)/fs
+
+					a = (z - 1.0) / (z + 1.0)
+
+					u = ((K - 1.0 ) / 2.0) * (a * x + delay(x)) -  a * delay(u)
+					u.init = 0.0
+
+					y = ((K + 1.0) / 2.0) * x + u
+				}
+
+
+				y = highshelffilter(x, gain) {
+					K = K_approximation(gain)
+					f0 = 5000.0
+					z = (pi*f0)/fs
+
+					a = (z - 1.0) / (z + 1.0)
+
+					u = ((1.0 - K) / 2.0) * (a * x + delay(x)) -  a * delay(u)
+					u.init = 0.0
+
+					y = ((1.0 + K) / 2.0) * x + u
+				}
+
+
+				y = peakfilter(x, gain) {
+					K = K_approximation(gain)
+					f0 = 1000.0
+					deltaf = 1789.0
+					z = (2.0 * pi * f0) / fs
+
+					b = - (-0.4643843937958486 * z * z - 0.01348369482970019 * z + 1.000898384794433)
+					a = (1.0 - ((pi * deltaf) / fs)) / (1.0 + ((pi * deltaf) / fs))
+
+					u = ((1.0 - K) / 2.0) * (a * x + b * (1.0 + a) * delay(x) + delay(delay(x))) ...
+					    - b * (1.0 + a) * delay(u) - a * delay(delay(u))
+					u.init = 0.0
+
+					y = ((1.0 + K) / 2.0) * x + u
+				}
+
+
+				y = K_approximation(gain) {
+
+					K = 1.005216266655582 + gain * ...
+					(0.115446211868609400 + gain * ...
+					(0.006357962473527189 + gain * ...
+					(2.473043497433871e-4 + gain * ...
+					(9.275409030059003e-6 + gain * ...
+					(2.061300092186973e-7)))))
+					
+					y = K
+				}
+
+				float y = delay (float x) {
+				    mem[1] float s
+				    y = s[0]
+				    s[0] = x
+				    s.init = x
+				}
+			`,
+			options: { initial_block_id: "EQregalia", control_inputs: ['low', 'high', 'peak'], optimizations: default_optimizations }
 		},
 		{
 			code: `
@@ -246,9 +401,11 @@
 		var gvizs = util.graphToGraphviz(g);
 		fs.writeFileSync(outputDir + "/T" + t + ".dot", gvizs);
 		graph.flatten(g, GoodTests[t].options);
-		graph.optimize(g, GoodTests[t].options);
 		var gvizs = util.graphToGraphviz(g);
 		fs.writeFileSync(outputDir + "/T" + t + "Flattened.dot", gvizs);
+		graph.optimize(g, GoodTests[t].options);
+		var gvizs = util.graphToGraphviz(g);
+		fs.writeFileSync(outputDir + "/T" + t + "Optimized.dot", gvizs);
 		const s = schdlr.schedule(g, GoodTests[t].options);
 		const o = outgen.convert(g, s, GoodTests[t].options);
 		fs.writeFileSync(outputDir + "/T" + t + "Out.c", o[0].str);

@@ -12,6 +12,8 @@ enum {
 };
 {{?}}
 
+{{=it.constants.toString(0)}}
+
 struct _{{=it.name}} {
 	
 	// Parameters
@@ -39,8 +41,6 @@ void {{=it.name}}_process({{=it.name}} *instance, {{?it.audio_inputs.length > 0}
 float {{=it.name}}_get_parameter({{=it.name}} *instance, int index);
 void {{=it.name}}_set_parameter({{=it.name}} *instance, int index, float value);
 
-
-{{=it.constants.toString(0)}}
 
 void {{=it.name}}_init({{=it.name}} *instance) {
 
@@ -82,7 +82,7 @@ void {{=it.name}}_process({{=it.name}} *instance, {{?it.audio_inputs.length > 0}
 
 {{=it.audio_update.toString(2)}}
 		
-{{=it.delay_updates.toString(2)}}
+{{=it.memory_updates.toString(2)}}
 
 {{=it.output_updates.toString(2)}}
 
