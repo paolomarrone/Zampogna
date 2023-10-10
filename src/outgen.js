@@ -15,7 +15,6 @@
 
 /**
  * TODO:
- * - blocks cloned have the same ids, so we need a namings system that grants ids uniqueness
  * - We're delcaring/assigning only on VARs. So we might check if there other blocks fork their output. Should not happen with the implemented opts, might better to be sure 
  * - For the future: Control grouping system should be trated in the same way of user IFs. In the graph itself
  */
@@ -159,8 +158,9 @@
 					return id.nrm;
 				}
 				var postfix = "";
+				var nrm_id = normalize(raw_id);
 				for (let x = 0; x < 10000; x++) {
-					const nrm_id = normalize(raw_id) + postfix;
+					nrm_id = nrm_id + postfix;
 					if (this.ids.some(i => i.nrm == nrm_id)) {
 						postfix = x;
 						continue;
@@ -185,7 +185,6 @@
 		};
 		funcs.MemoryDeclaration = function (type, id, size) {
 			this.s = new LazyString();
-			//this.s.add(funcs.getTypeDecl(type), ' * ', id, " - ", size); // TMP TODO
 			this.s.add(funcs.getTypeDecl(type), ' ', id, '[', size, '];');
 			this.toString = function () {
 				return this.s.toString();
@@ -382,7 +381,6 @@
 			const d = new funcs.Declaration(false, false, ts.DataTypeBool, id, true);
 			program.parameter_states.add(d);
 		});
-
 		
 
 		schedule.forEach(b => {
@@ -422,8 +420,6 @@
 
 			if (bs.VarBlock.isPrototypeOf(b)) {
 
-				// TODO: fs
-
 				const outblocks = bdef.connections.filter(c => c.in == b.o_ports[0]).map(c => c.out.block);
 				const ur = b.o_ports[0].updaterate();
 
@@ -431,8 +427,6 @@
 				var whereDec = undefined;
 				var whereAss = undefined;
 
-				// TOTHINK: mem writes?
-				
 				const outblockurs = outblocks.map(bb => us.max.apply(null, bb.i_ports.concat(bb.o_ports)));
 				const maxour = us.max.apply(null, outblockurs);
 				
@@ -490,11 +484,10 @@
 				const id = program.identifiers.add(b.id);
 				const d = new funcs.MemoryDeclaration(b.datatype(), id, input_codes[0]);
 				b.code.add(funcs.getObjectPrefix(), id);
-				// TODO: memreq, memset...
-				//appendStatement(d, null); // Where?
+				// TODO: memreq, memset... ?
+
 				program.memory_declarations.add(d);
 
-				// And memory init
 				const i = new funcs.MemoryInit(b.code, input_codes[0], input_codes[1]);
 				program.init.add(i);
 
