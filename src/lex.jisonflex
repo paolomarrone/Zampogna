@@ -73,8 +73,6 @@ id                          [_a-zA-Z][_a-zA-Z0-9]*
 ":"							return ':'
 "."							return '.'
 
-"include" 					return 'INCLUDE'
-
 {id}                        return 'ID'
 
 [\n\r;]+					return 'END'

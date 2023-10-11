@@ -373,6 +373,18 @@
 			`,
 			options: { initial_block_id: "asd", control_inputs: ["b", 'bb'], optimizations: default_optimizations }
 		},
+		{
+			code: `
+
+				include strunz 
+				include dio
+
+				y = asd (x) {
+					y = x
+				}
+			`,
+			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
+		},
 	];
 
 	const BadTests = [

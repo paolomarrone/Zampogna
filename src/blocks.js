@@ -129,7 +129,7 @@
 		};
 		this.o_ports[0].updaterate = function () {
 			return this.block.i_ports[0].updaterate();
-		}
+		};
 	};
 	VarBlock.validate = function () {
 		Block.validate.call(this);

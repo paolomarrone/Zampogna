@@ -175,10 +175,17 @@
 	if (!fs.existsSync(outputDir))
 		fs.mkdirSync(outputDir);
 
-	for (let t in GoodTests) {
-		let res = true;
-		let err = "";
-		try {
+	for (let i = 0; i < process.argv.length; i++) {
+		const val = process.argv[i];
+		if (val.includes('t=')) {
+			const i = val.substr(2);
+			console.log(GoodTests[i].code);
+			runGoodTest(i);
+			return;
+		}
+	}
+
+	function runGoodTest(t) {
 			const AST = parser.parse(GoodTests[t].code);
 			syntax.validateAST(AST);
 			const g = graph.ASTToGraph(AST, GoodTests[t].options);
@@ -188,6 +195,13 @@
 			var gvizs = util.graphToGraphviz(g);
 			fs.writeFileSync(outputDir + "/T" + t + "Flattened.dot", gvizs);
 			const s = schdlr.schedule(g, GoodTests[t].options);
+	}
+
+	for (let t in GoodTests) {
+		let res = true;
+		let err = "";
+		try {
+			runGoodTest(t);
 		} catch (e) {
 			//console.log("A", e);
 			res = false;

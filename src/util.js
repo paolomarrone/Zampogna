@@ -60,7 +60,14 @@
 			b.i_ports.forEach(p => p.__gvizid__ = u);
 			b.o_ports.forEach(p => p.__gvizid__ = u);
 
-			const ur = b.i_ports.concat(b.o_ports).map(x => x.updaterate()).reduce((a, b) => b.level > a.level ? b : a);
+			const ur = b.i_ports.concat(b.o_ports).map(x =>  {
+				try {
+					return x.updaterate();
+				}
+				catch (e) {
+					return { level: undefined };
+				}
+			}).reduce((a, b) => b.level > a.level ? b : a);
 			const urc = ur.level == undefined ? "red" : (ur.level == 0 ? "green" : (ur.level == 1 ? "yellow" : (ur.level == 2 ? "orange" : "blue"))); 
 			s += u + "[" + "label = \"" + (b.id || (b.value != undefined ? " " + b.value : null ) || b.operation || ".") + "\"" + "color=" + urc + "]; \n";
 			return s;
@@ -104,10 +111,36 @@
 	}
 
 
+	// Is this the best place for this?
+
+	const fs = require("fs");
+	const path = require("path");
+
+	function get_filereader (dirs) {
+
+		return function (filename) {
+
+			for (var i = 0; i < dirs.length; i++) {
+				const d = dirs[i];
+				try {
+					const p = path.join(d, filename);
+					const data = fs.readFileSync(p, 'utf8');
+					return data;
+				} catch (err) {
+			  		// Not in this dir;
+				}
+			}
+			throw new Error("No file found: " + filename);
+		};
+	}
+	
+
 	// TODO: make it better
 	function warn (msg) {
 		console.log("***Warning***", msg);
 	}
 
-	exports.graphToGraphviz = graphToGraphviz;
+	exports["graphToGraphviz"] = graphToGraphviz;
+	exports["get_filereader"] = get_filereader;
+
 }());

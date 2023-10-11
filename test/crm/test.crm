@@ -1,0 +1,11 @@
+
+include test2
+include test
+
+include test3
+
+A = 0.5
+
+y = orso (x) {
+	y = x * 2.0
+}

@@ -254,25 +254,43 @@
 		},
 	];
 
-	const GoodTestResults = [];
-	const BadTestResults = [];
-
 	const outputDir = './output';
 	if (!fs.existsSync(outputDir))
 		fs.mkdirSync(outputDir);
+
+
+	for (let i = 0; i < process.argv.length; i++) {
+		const val = process.argv[i];
+		if (val.includes('t=')) {
+			const i = val.substr(2);
+			console.log(GoodTests[i].code);
+			runGoodTest(i);
+			return;
+		}
+	}
+
+	function runGoodTest(t) {
+		const AST = parser.parse(GoodTests[t].code);
+		syntax.validateAST(AST);
+		const g = graph.ASTToGraph(AST, GoodTests[t].options);
+		var gvizs = util.graphToGraphviz(g);
+		fs.writeFileSync(outputDir + "/T" + t + ".dot", gvizs);
+		graph.flatten(g, GoodTests[t].options);
+		console.log("OOO")
+		var gvizs = util.graphToGraphviz(g);
+		console.log("UUU")
+		fs.writeFileSync(outputDir + "/T" + t + "Flattened.dot", gvizs);
+	}
+
+
+	const GoodTestResults = [];
+	const BadTestResults = [];
 
 	for (let t in GoodTests) {
 		let res = true;
 		let err = "";
 		try {
-			const AST = parser.parse(GoodTests[t].code);
-			syntax.validateAST(AST);
-			const g = graph.ASTToGraph(AST, GoodTests[t].options);
-			var gvizs = util.graphToGraphviz(g);
-			fs.writeFileSync(outputDir + "/T" + t + ".dot", gvizs);
-			graph.flatten(g, GoodTests[t].options);
-			var gvizs = util.graphToGraphviz(g);
-			fs.writeFileSync(outputDir + "/T" + t + "Flattened.dot", gvizs);
+			runGoodTest(t);
 		} catch (e) {
 			//console.log("A", e);
 			res = false;
