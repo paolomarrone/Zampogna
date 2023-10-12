@@ -603,7 +603,7 @@
 			}
 			
 			else {
-				throw new Error("Unexpected block type");
+				throw new Error("Unexpected block type: " + b + b.ref.id + b.type);
 			}
 		};
 	};

@@ -130,7 +130,7 @@
 			  		// Not in this dir;
 				}
 			}
-			throw new Error("No file found: " + filename);
+			return null;
 		};
 	}
 	

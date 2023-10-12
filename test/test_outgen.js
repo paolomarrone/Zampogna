@@ -19,6 +19,7 @@
 
 	console.log("--- OUTGEN TESTS --- START");
 
+	const preprocessor = require("../src/preprocessor");
 	const parser = require("../src/grammar");
 	const syntax = require("../src/syntax");
 	const graph  = require("../src/graph");
@@ -27,6 +28,12 @@
 	const util   = require("../src/util");
 	const fs     = require("fs");
 
+	const path = require("path");
+	const searchpaths = [ 
+		path.join(__dirname, "crm"), 
+		path.join(__dirname, "c") 
+	];
+	const filereader = require("../src/util").get_filereader(searchpaths);
 
 	const default_optimizations = {
 		remove_dead_graph: true,
@@ -322,65 +329,11 @@
 		},
 		{
 			code: `
-				int A = 123456
-				y, u = asd (x) {
-					mem[1] float V
-					V[0] = V[0] + 0.01 * y
-					V.init = y #implicit y.init
-					t = x * 5.5
-					u = t.fs
-					u.init = t
-					y = t.init + t.fs.init + t.fs / V[0]
-					t.fs.init = float(int(666.666 + (A.fs.init.fs * 2.0).init) ^ 5.init)
-				}
-			`,
-			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
-		},
-		{
-			code: `
-				int A = 123
-				mem[A * 2] float U
-				U.init = 0.1
-				y, u = asd (x, b, bb) {
-					mem[5] float V
-					V.init = 0.0
-					fs2 = fs * 2.0
-					V[0] = x + fs2
-					V[1] = x * 2.0 / V[33]
-					V[int(x)] = 0.5 * t
-					t = x * 5.5 + uff(delay(t) / 2.2) + (b + b) * bb + bb / 2.0
-					y = x * 2.0 + float(A) / (V[44] + V[55])
-					u = float(int(t) - A % int(U[3]))
-				}
-				y = uff (x) {
-					y = x - 1.111111 + float(A) + u + p
-					u = u1 + u2 + u3
-					p = p1 + p2 + p3
-					u1, p1 = aff(666, x - 1.0)
-					u2, p2 = aff(666 + 666, x)
-					u3, p3 = aff(666, x * p1)
-				}
-				y1, y2 = aff (int x, t) {
-					y1 = y2 * float(x) + float(A)
-					y2 = t + float(x)
-				}
-				float y = delay (float x) {
-				    mem[1] float s
-				    y = s[0]
-				    s[0] = x
-				    s.init = x
-				}
-			`,
-			options: { initial_block_id: "asd", control_inputs: ["b", 'bb'], optimizations: default_optimizations }
-		},
-		{
-			code: `
 
-				include strunz 
-				include dio
+				include mypowf
 
 				y = asd (x) {
-					y = x
+					y = mypowf(x, 2.0)
 				}
 			`,
 			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
@@ -407,9 +360,12 @@
 
 	function runGoodTest (t) {
 		GoodTests[t].options.target_language = "C"; // See this
-		const AST = parser.parse(GoodTests[t].code);
+		const r = preprocessor.preprocess(GoodTests[t].code, filereader);
+		const code = r[0];
+		const jsons = r[1];
+		const AST = parser.parse(code);
 		syntax.validateAST(AST);
-		const g = graph.ASTToGraph(AST, GoodTests[t].options);
+		const g = graph.ASTToGraph(AST, GoodTests[t].options, jsons);
 		var gvizs = util.graphToGraphviz(g);
 		fs.writeFileSync(outputDir + "/T" + t + ".dot", gvizs);
 		graph.flatten(g, GoodTests[t].options);

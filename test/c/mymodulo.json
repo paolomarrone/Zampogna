@@ -1,0 +1,36 @@
+{
+	"header": "mymath.h",
+	
+	"block_name": "mymodulo",
+	"block_inputs": [
+		{
+			"type": "int32"
+		},
+		{
+			"type": "int32"
+		}
+	],
+	"block_outputs": [
+		{ 
+			"type": "int32",
+			"updaterate": "i0 i1"
+		},
+		{
+			"type": "int32",
+			"updaterate": "i0 i1"
+		}
+	],
+
+	"process1": {
+		"f_name": "modulo",
+
+		"f_outputs": [],
+		"f_inputs": [
+			"i0",
+			"i1",
+			"o0",
+			"o1"
+		]
+	}
+
+}

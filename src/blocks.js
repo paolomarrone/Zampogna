@@ -482,26 +482,92 @@
 			throw new Error("Inconsistent MAX datatypes: " + this.toString());
 	};
 
-	// Maybe CallBlock needs to be specialized in Extern and block instantiation
 	const CallBlock = Object.create(Block);
 	CallBlock.operation = "CALL";
 	CallBlock.id = undefined;
 	CallBlock.inputs_N = undefined;
 	CallBlock.outputs_N = undefined;
-	CallBlock.bdef = undefined; // Tmp here. Refers to the called bdef
+	CallBlock.type = "GENERIC"; // "bdef" or "cdef"
+	CallBlock.ref = undefined; // Refers to the called bdef or cblock
 	CallBlock.init = function () {
 		Block.init.call(this, this.inputs_N, this.outputs_N);
 		// Override port datatypes
-		Block.setMaxOutputUpdaterate.call(this);
+		Block.setMaxOutputUpdaterate.call(this); // Generic for pre-flattening beauty
 	};
 	CallBlock.clone = function () {
 		const r = Block.clone.call(this);
 		r.inputs_N = this.inputs_N;
 		r.outputs_N = this.outputs_N;
-		r.bdef = this.bdef.clone();
+		r.ref = this.ref.clone();
+		r.type = this.type;
 		return r;
 	};
 
+
+	function parseType (x) {
+		if (x == "float32")
+			return ts.DataTypeFloat32;
+		if (x == "int32")
+			return ts.DataTypeInt32;
+		if (x == "bool")
+			return ts.DataTypeBool;
+		throw new Error("Unrecongized type: " + x);
+	};
+
+	function parseUprate (x) {
+		if (x == "const")
+			return us.UpdateRateConstant;
+		if (x == "fs")
+			return us.UpdateRateFs;
+		if (x == "control")
+			return us.UpdateRateControl;
+		if (x == "audio")
+			return us.UpdateRateAudio;
+
+		x = x.split(/[ ]+/);
+		x = x.map(d => d[1]).filter(d => d != '');
+		return x;
+	};
+
+	const CBlock = Object.create(Block);
+	CBlock.operation = "CBLOCK";
+	CBlock.id = undefined;
+	CBlock.inputs_N = undefined;
+	CBlock.outputs_N = undefined;
+	CBlock.funcs = undefined;
+	CBlock.init = function (desc) {
+		this.id = desc.block_name;
+		this.inputs_N = desc.block_inputs.length;
+		this.outputs_N = desc.block_outputs.length;
+		this.funcs = {
+			init: desc.init,
+			reset: desc.reset,
+			process1: desc.process1
+		};
+		this.createPorts(this.inputs_N, this.outputs_N);
+		desc.block_inputs.forEach((x, i) => {
+			const dt = parseType(x.type); 
+			this.i_ports[i].datatype = () => dt;
+		});
+		desc.block_outputs.forEach((x, i) => {
+			const dt = parseType(x.type); 
+			this.o_ports[i].datatype = () => dt;
+			const ur = parseUprate(x.updaterate);
+			if (!Array.isPrototypeOf(ur))
+				this.o_ports[i].updaterate = () => ur;
+			if (ur.length == 0)
+				throw new Error("Undefined output updaterate");
+			this.o_ports[i].updaterate = () => {
+				us.max.apply(null, this.i_ports.filter((x, i) => ur.includes(i)).map(p => p.updaterate()));
+			};
+		});
+	};
+	CBlock.clone = function () { // No sense in cloning this
+		return this;
+	};
+	CBlock.toString = function () {
+		return "{" + this.operation + ":" + this.id + ":" + this.i_ports.length + ":" + this.o_ports.length + " }";
+	};
 
 	const IfthenelseBlock = Object.create(Block);
 	IfthenelseBlock.operation = "???";
@@ -537,7 +603,6 @@
 		// 		This "enlarges" the branche blocks so that they can be treated as a black boxes
 		// 		Problem: if the duplicated blocks are used elsewhere, we need another select. TODO: define this better
 	};
-
 
 	const Connection = {};
 	Connection.in = undefined;  // Port
@@ -595,6 +660,7 @@
 	CompositeBlock.properties = undefined;    // Array of Properties
 	CompositeBlock.bdefs = undefined;         // Array of CompositeBlocks
 	CompositeBlock.bdef_father = undefined;   // CompositeBlock
+	CompositeBlock.cdefs = undefined;         // Array of CBlocks
 	CompositeBlock.inputs_N = 0;
 	CompositeBlock.outputs_N = 0;
 	CompositeBlock.init = function () {
@@ -603,6 +669,7 @@
 		this.connections = [];
 		this.properties = [];
 		this.bdefs = [];
+		this.cdefs = [];
 	};
 	CompositeBlock.propagateDataTypes = function () {
 		this.connections.forEach(c => {
@@ -615,9 +682,9 @@
 	};
 	CompositeBlock.propagateUpdateRates = function () {
 		this.connections.forEach(c => {
-			const i = c.in;
+			const cc = c;
 			c.out.updaterate = function () {
-				return i.updaterate();
+				return cc.in.updaterate();
 			};
 		});
 		this.bdefs.forEach(bd => bd.propagateUpdateRates());
@@ -645,52 +712,16 @@
 	CompositeBlock.toString = function () {
 		return "{ CompositeBlock: " + this.id + " }"
 	};
-	CompositeBlock.getInputPorts = function (o_port) {
-		return this.connections.filter(c => c.out == o_port).map(c => c.in); // Should be max 1
-	};
-	CompositeBlock.getOutputPorts = function (i_port) {
-		return this.connections.filter(c => c.in == i_port).map(c => c.out);
-	};
-	CompositeBlock.getInputBlocks = function (block) { // Unordered
-		return Array.from(new Set(block.i_ports.map(p => this.getInputPorts(p)).flat().map(p => p.block)));
-	};
-	CompositeBlock.getOutputBlocks = function (block) { // Unordered
-		return Array.from(new Set(block.o_ports.map(p => this.getOutputPorts(p)).flat().map(p => p.block)));
-	};
-	CompositeBlock.removeBlock = function (block) { // Brute remove
-		this.blocks.splice(this.blocks.indexOf(block), 1);
-		this.connections = this.connections.filter(c => c.in.block != block && c.out.block != block);
-	};
-	CompositeBlock.removeIntermediateBlock = function (block) { // Assuming 1 i_p, and n o_ps
-		let i_p  = this.getInputPorts(block.i_ports[0])[0];
-		let o_ps = this.getOutputPorts(block.o_ports[0]);
-		o_ps.forEach(o_p => {
-			let c = Object.create(Connection);
-			c.in = i_p;
-			c.out = o_p;
-			this.connections.push(c);
-		});
-		this.removeBlock(block);
-	};
-	CompositeBlock.removeIntermediateBlocks = function () { // TOO bad
-		this.blocks.filter(b => 
-			(VarBlock.isPrototypeOf(b)) ||
-			(SumBlock.isPrototypeOf(b) && b.i_ports.length == 1 && b.add[0]) ||
-			(MulBlock.isPrototypeOf(b) && b.i_ports.length == 1 && b.over[0])
-		).forEach(b => this.removeIntermediateBlock(b));
-	};
-	CompositeBlock.getPropertyOf = function (block, type) {
-		return this.properties.find(p => p.of == block && p.type == type);
-	};
 	CompositeBlock.flatten = function () {
-		this.blocks.filter(b => CallBlock.isPrototypeOf(b)).forEach(b => {
-			b.bdef.setToBeCloned();
-			const bb = b.bdef.clone();
+		this.blocks.filter(b => CallBlock.isPrototypeOf(b) && b.type == 'bdef').forEach(b => {
+			b.ref.setToBeCloned();
+			const bb = b.ref.clone();
 			bb.flatten();
 			this.blocks = this.blocks.concat(bb.blocks);
 			this.connections = this.connections.concat(bb.connections);
 			this.properties = this.properties.concat(bb.properties);
-			b.bdef.clean();
+			this.cdefs = this.cdefs.concat(bb.cdefs);
+			b.ref.clean();
 
 			b.i_ports.forEach((p, i) => {
 				const np = bb.i_ports[i];
@@ -744,6 +775,7 @@
 		r.properties = this.properties.map(p => p.clone());
 		r.bdef_father = this.bdef_father.clone();
 		r.bdefs = this.bdefs.map(bd => bd.clone());
+		r.cdefs = this.cdefs; // no need to clone
 		return r;
 	};
 	CompositeBlock.clean = function () {
@@ -775,6 +807,7 @@
 		CastBlock, CastF32Block, CastI32Block, CastBoolBlock,
 		MaxBlock,
 		CallBlock,
+		CBlock,
 		IfthenelseBlock,
 		CompositeBlock
 	};

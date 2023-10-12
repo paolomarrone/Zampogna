@@ -308,7 +308,7 @@
 		case "CALL_EXPR":
 		{
 			let bdefs = scope.findGlobally(expr.id);
-			if (bdefs.length < 1) {
+			if (bdefs.length < 1) { // TODO: fix
 				warn("using external function");
 				break;
 			}

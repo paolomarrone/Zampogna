@@ -1,0 +1,31 @@
+{
+	"header": "mymath.h",
+	
+	"block_name": "mypowf",
+	"block_inputs": [
+		{
+			"type": "float32"
+		},
+		{
+			"type": "float32"
+		}
+	],
+	"block_outputs": [
+		{
+			"type": "float32",
+			"updaterate": "i0 i1"
+		}
+	],
+
+	"process1": {
+		"f_name": "mypowf_process1",
+
+		"f_outputs": [
+			"o0"
+		],
+		"f_inputs": [
+			"i0",
+			"i1"
+		]
+	}
+}

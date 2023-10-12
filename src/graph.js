@@ -19,7 +19,7 @@
 	const bs = require("./blocks").BlockTypes;
 	const us = require("./uprates");
 
-	function ASTToGraph (root, options) {
+	function ASTToGraph (root, options, cblock_descs = []) {
 
 		const bdef = Object.create(bs.CompositeBlock);
 		bdef.id = "0";
@@ -41,6 +41,14 @@
 			c.out = fs.i_ports[0];
 			bdef.blocks.push(fs);
 			bdef.connections.push(c);
+		})(bdef);
+
+		(function register_cblocks (bdef) {
+			cblock_descs.forEach(d => {
+				const c = Object.create(bs.CBlock);
+				c.init(d);
+				bdef.cdefs.push(c);
+			});
 		})(bdef);
 
 		convert_statements(root.statements, bdef);
@@ -315,11 +323,11 @@
 			b.inputs_N = expr_node.args.length;
 			b.outputs_N = expr_node.outputs_N;
 			b.id = expr_node.id;
-			b.bdef = undefined; // Identification of the instantiated bdef must be done later, after setting output datatypes
+			b.ref = undefined; // bdef or cdef resolution must be done later, after setting output datatypes
 			b.init();
 			b.o_ports.forEach((p, i) => {
 				p.datatype = function () {
-					return this.block.bdef.o_ports[i].datatype();
+					return this.block.ref.o_ports[i].datatype();
 				};
 			});
 			for (let argi = 0; argi < expr_node.args.length; argi++) {
@@ -414,18 +422,27 @@
 
 	function resolve_block_call (b, bdef) {
 		const inputDataTypes = b.i_ports.map(p => p.datatype());
-		const r = findBdefBySignature(b.id, inputDataTypes, b.outputs_N, bdef);
-		if (!r)
-			throw new Error("No callable bdef found with that signature: " + b.id);
-		b.bdef = r.r;
+		var r = findBdefBySignature(b.id, inputDataTypes, b.outputs_N, bdef);
+		if (r) {
+			b.ref = r.r;
+			b.type = "bdef";
+			return;
+		}
+		r = findCdefBySignature(b.id, inputDataTypes, b.outputs_N, bdef);
+		if (r) {
+			b.ref = r.r;
+			b.type = "cdef";
+			return;
+		}
+		throw new Error("No callable bdef or cdef found with that signature: " + b.id);
 	}
 
 	function check_recursive_calls (bdef, stack = []) {
 		if (stack.find(b => b == bdef))
 			throw new Error("Recursive block calls");
 		const nstack = stack.concat(bdef);
-		bdef.blocks.filter(b => bs.CallBlock.isPrototypeOf(b)).forEach(b => {
-			check_recursive_calls(b.bdef, nstack);
+		bdef.blocks.filter(b => bs.CallBlock.isPrototypeOf(b) && b.type == 'bdef').forEach(b => {
+			check_recursive_calls(b.ref, nstack);
 		});
 		bdef.bdefs.forEach(bd => check_recursive_calls(bd, nstack));
 	}
@@ -465,7 +482,8 @@
 		b.id = i_bdef.id;
 		b.inputs_N = i_bdef.inputs_N;
 		b.outputs_N = i_bdef.outputs_N;
-		b.bdef = i_bdef;
+		b.ref = i_bdef;
+		b.type = 'bdef';
 		b.init();
 		for (let i = 0; i < i_bdef.inputs_N; i++) {
 			const c = Object.create(bs.CompositeBlock.Connection);
@@ -1191,6 +1209,21 @@
 		let bd = bdef;
 		while (bd) {
 			let r = bd.bdefs.find(b => 
+				(b.id == id) && 
+				(b.i_ports.length == inputDataTypes.length) &&
+				(b.i_ports.map(p => p.datatype()).every((t, i) => t == inputDataTypes[i])) &&
+				(b.o_ports.length == outputs_N));
+			if (r)
+				return { r, bd };
+			bd = bd.bdef_father;
+		}
+	}
+
+	function findCdefBySignature (id, inputDataTypes, outputs_N, bdef) {
+		console.log(id, inputDataTypes.join(','), outputs_N)
+		let bd = bdef;
+		while (bd) {
+			let r = bd.cdefs.find(b => 
 				(b.id == id) && 
 				(b.i_ports.length == inputDataTypes.length) &&
 				(b.i_ports.map(p => p.datatype()).every((t, i) => t == inputDataTypes[i])) &&

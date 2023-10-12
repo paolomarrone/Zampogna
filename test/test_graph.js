@@ -276,9 +276,7 @@
 		var gvizs = util.graphToGraphviz(g);
 		fs.writeFileSync(outputDir + "/T" + t + ".dot", gvizs);
 		graph.flatten(g, GoodTests[t].options);
-		console.log("OOO")
 		var gvizs = util.graphToGraphviz(g);
-		console.log("UUU")
 		fs.writeFileSync(outputDir + "/T" + t + "Flattened.dot", gvizs);
 	}
 
