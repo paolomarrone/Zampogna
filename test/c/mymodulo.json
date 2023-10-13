@@ -12,17 +12,15 @@
 	],
 	"block_outputs": [
 		{ 
-			"type": "int32",
-			"updaterate": "i0 i1"
+			"type": "int32"
 		},
 		{
-			"type": "int32",
-			"updaterate": "i0 i1"
+			"type": "int32"
 		}
 	],
 
 	"process1": {
-		"f_name": "modulo",
+		"f_name": "modulo_process1",
 
 		"f_outputs": [],
 		"f_inputs": [

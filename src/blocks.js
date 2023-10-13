@@ -514,29 +514,16 @@
 		throw new Error("Unrecongized type: " + x);
 	};
 
-	function parseUprate (x) {
-		if (x == "const")
-			return us.UpdateRateConstant;
-		if (x == "fs")
-			return us.UpdateRateFs;
-		if (x == "control")
-			return us.UpdateRateControl;
-		if (x == "audio")
-			return us.UpdateRateAudio;
-
-		x = x.split(/[ ]+/);
-		x = x.map(d => d[1]).filter(d => d != '');
-		return x;
-	};
-
 	const CBlock = Object.create(Block);
 	CBlock.operation = "CBLOCK";
 	CBlock.id = undefined;
 	CBlock.inputs_N = undefined;
 	CBlock.outputs_N = undefined;
+	CBlock.header = undefined;
 	CBlock.funcs = undefined;
 	CBlock.init = function (desc) {
 		this.id = desc.block_name;
+		this.header = desc.header;
 		this.inputs_N = desc.block_inputs.length;
 		this.outputs_N = desc.block_outputs.length;
 		this.funcs = {
@@ -552,15 +539,8 @@
 		desc.block_outputs.forEach((x, i) => {
 			const dt = parseType(x.type); 
 			this.o_ports[i].datatype = () => dt;
-			const ur = parseUprate(x.updaterate);
-			if (!Array.isPrototypeOf(ur))
-				this.o_ports[i].updaterate = () => ur;
-			if (ur.length == 0)
-				throw new Error("Undefined output updaterate");
-			this.o_ports[i].updaterate = () => {
-				us.max.apply(null, this.i_ports.filter((x, i) => ur.includes(i)).map(p => p.updaterate()));
-			};
 		});
+		Block.setMaxOutputUpdaterate.call(this);
 	};
 	CBlock.clone = function () { // No sense in cloning this
 		return this;

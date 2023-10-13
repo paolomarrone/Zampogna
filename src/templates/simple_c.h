@@ -3,6 +3,8 @@
 #ifndef _{{=it.name.toUpperCase()}}_H
 #define _{{=it.name.toUpperCase()}}_H
 
+{{=it.includes.toString(0)}}
+
 {{?it.parameters.length > 0}}
 enum {
 	{{~it.parameters:c}}
@@ -34,6 +36,7 @@ struct _{{=it.name}} {
 typedef struct _{{=it.name}} {{=it.name}};
 
 
+void {{=it.name}}_consts_init();
 void {{=it.name}}_init({{=it.name}} *instance);
 void {{=it.name}}_set_sample_rate({{=it.name}} *instance, float sample_rate);
 void {{=it.name}}_reset({{=it.name}} *instance);
@@ -42,7 +45,15 @@ float {{=it.name}}_get_parameter({{=it.name}} *instance, int index);
 void {{=it.name}}_set_parameter({{=it.name}} *instance, int index, float value);
 
 
+void {{=it.name}}_consts_init() {
+
+{{=it.consts_init.toString(1)}}
+
+}
+
 void {{=it.name}}_init({{=it.name}} *instance) {
+
+	{{=it.name}}_consts_init();
 
 {{=it.init.toString(1)}}
 

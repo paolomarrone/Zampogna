@@ -12,8 +12,7 @@
 	],
 	"block_outputs": [
 		{
-			"type": "float32",
-			"updaterate": "i0 i1"
+			"type": "float32"
 		}
 	],
 

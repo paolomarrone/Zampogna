@@ -1220,7 +1220,6 @@
 	}
 
 	function findCdefBySignature (id, inputDataTypes, outputs_N, bdef) {
-		console.log(id, inputDataTypes.join(','), outputs_N)
 		let bd = bdef;
 		while (bd) {
 			let r = bd.cdefs.find(b => 

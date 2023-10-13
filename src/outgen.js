@@ -19,7 +19,6 @@
  * - For the future: Control grouping system should be trated in the same way of user IFs. In the graph itself
  * 
  * - Check memory updates order. Might be better to save reads in vars.
- * - 
  * 
  */
 
@@ -174,13 +173,33 @@
 			};
 			function normalize (id) {
 				id = id.replace(/[^a-zA-Z0-9_]/, '');
-				if (id.lenght == 0)
+				if (id.length == 0)
 					id = '_';
 				if (id[0].match(/[0-9]/))
 					id = '_' + id;
 				return id;
 			};
 		};
+		funcs.Include = function (id) {
+			this.s = new LazyString();
+			this.s.add("#include \"", id, "\"");
+			this.toString = function () {
+				return this.s.toString();
+			};
+		};
+		funcs.Includes = function () {
+			this.v = [];
+			this.s = new funcs.Statements();
+			this.add = function (id) {
+				if (this.v.includes(id))
+					return;
+				this.v.push(id);
+				this.s.add(new funcs.Include(id));
+			};
+			this.toString = function (tabs) {
+				return this.s.toString(tabs);
+			};
+		}
 		funcs.MemoryDeclaration = function (type, id, size) {
 			this.s = new LazyString();
 			this.s.add(funcs.getTypeDecl(type), ' ', id, '[', size, '];');
@@ -198,13 +217,15 @@
 				return this.s.toString();
 			}
 		};
-		funcs.Declaration = function (isStatic, isConst, type, id, lonely) {
+		funcs.Declaration = function (isStatic, isConst, type, isPointer, id, lonely) {
 			this.s = new LazyString();
 			if (isStatic)
 				this.s.add(funcs.getStaticKey(), ' ');
 			if (isConst)
 				this.s.add(funcs.getConstKey(), ' ');
 			this.s.add(funcs.getTypeDecl(type), ' ');
+			if (isPointer)
+				this.s.add('*');
 			this.s.add(id);
 			if (lonely)
 				this.s.add(";");
@@ -306,6 +327,7 @@
 			name: "",
 
 			identifiers: new funcs.Identifiers(),
+			includes: new funcs.Includes(),
 
 			audio_inputs: [],
 			audio_outputs: [],
@@ -318,6 +340,7 @@
 			coefficients: new funcs.Statements(),
 
 			// Assignments
+			consts_init: new funcs.Statements(),
 			init: new funcs.Statements(),
 			reset: new funcs.Statements(),
 			constants: new funcs.Statements(),
@@ -366,17 +389,17 @@
 		});
 		program.parameters.forEach(p => {
 			const id = p;
-			const d = new funcs.Declaration(false, false, ts.DataTypeFloat32, id, true);
+			const d = new funcs.Declaration(false, false, ts.DataTypeFloat32, false, id, true);
 			program.parameter_states.add(d);
 		});
 		program.parameters.forEach(p => {
 			const id = program.identifiers.add(p + '_z1');
-			const d = new funcs.Declaration(false, false, ts.DataTypeFloat32, id, true);
+			const d = new funcs.Declaration(false, false, ts.DataTypeFloat32, false, id, true);
 			program.parameter_states.add(d);
 		});
 		program.parameters.forEach(p => {
 			const id = program.identifiers.add(p + '_CHANGED');
-			const d = new funcs.Declaration(false, false, ts.DataTypeBool, id, true);
+			const d = new funcs.Declaration(false, false, ts.DataTypeBool, false, id, true);
 			program.parameter_states.add(d);
 		});
 		
@@ -406,7 +429,57 @@
 		}
 		*/
 
-	
+
+		function dispatch (b, ur) {
+			const outblocks = bdef.connections.filter(c => c.in.block == b).map(c => c.out.block);
+			
+			var locality = undefined; // 0 = constant, 1 = object, 2 = local
+			var whereDec = undefined;
+			var whereAss = undefined;
+
+			const outblockurs = outblocks.map(bb => us.max.apply(null, bb.i_ports.concat(bb.o_ports)));
+			const maxour = us.max.apply(null, outblockurs);
+
+			locality = maxour.level <= ur.level ? 2 : 1;
+
+			if (ur == us.UpdateRateConstant) {
+				locality = 0;
+				whereDec = program.constants;
+				whereAss = program.consts_init;
+			}
+			if (ur == us.UpdateRateFs) {
+				if (locality == 2)
+					whereDec = program.fs_update;
+				else
+					whereDec = program.coefficients;
+				whereAss = program.fs_update;
+			}
+			if (ur == us.UpdateRateControl) {
+				const g = program.control_coeffs_update.getOrAddGroup(b.control_dependencies);
+				if (locality == 2) {
+					locality = outblocks.every(bb => Set.checkEquality(b.control_dependencies, bb.control_dependencies)) ? 2 : 1;
+				}
+				if (locality == 2) {
+					whereDec = g;
+				}
+				else {
+					whereDec = program.coefficients;
+				}
+				whereAss = g;
+			}
+			if (ur == us.UpdateRateAudio) {
+				locality = 2;
+				whereDec = program.audio_update;
+				whereAss = program.audio_update;
+			}
+
+			return {
+				locality: locality,
+				whereDec: whereDec,
+				whereAss: whereAss
+			};
+		}
+
 
 		function convert_block (b) {
 			
@@ -417,64 +490,35 @@
 			const op0 = b.o_ports[0];
 
 			if (bs.VarBlock.isPrototypeOf(b)) {
-
-				const outblocks = bdef.connections.filter(c => c.in == b.o_ports[0]).map(c => c.out.block);
-				const ur = b.o_ports[0].updaterate();
-
-				var locality = undefined;
-				var whereDec = undefined;
-				var whereAss = undefined;
-
-				const outblockurs = outblocks.map(bb => us.max.apply(null, bb.i_ports.concat(bb.o_ports)));
-				const maxour = us.max.apply(null, outblockurs);
 				
-				locality = maxour.level <= ur.level;
+				const ur = b.o_ports[0].updaterate();
+				const r = dispatch(b, ur);
+				const locality = r.locality;
+				const whereDec = r.whereDec;
+				const whereAss = r.whereAss;
 
-				if (ur == us.UpdateRateConstant) {
-					locality = true;
-					whereDec = program.constants;
-					whereAss = program.constants;
-				}
-				if (ur == us.UpdateRateFs) {
-					if (locality)
-						whereDec = program.fs_update;
-					else
-						whereDec = program.coefficients;
-					whereAss = program.fs_update;
-				}
-				if (ur == us.UpdateRateControl) {
-					const g = program.control_coeffs_update.getOrAddGroup(b.control_dependencies);
-					if (locality) {
-						locality = outblocks.every(bb => Set.checkEquality(b.control_dependencies, bb.control_dependencies));
-					}
-					if (locality) {
-						whereDec = g;
-					}
-					else {
-						whereDec = program.coefficients;
-					}
-					whereAss = g;
-				}
-				if (ur == us.UpdateRateAudio) {
-					locality = true;
-					whereDec = program.audio_update;
-					whereAss = program.audio_update;
-				}
+				const id = program.identifiers.add(b.id);
 
-				var id = program.identifiers.add(b.id);
-				if (locality) {
+				if (locality == 0) {
 					op0.code.add(id);
-					const d = new funcs.Declaration(false, true, b.datatype(), id, false);
-					const a = new funcs.Assignment(null, input_codes[0], d);
-					whereAss.add(a);	
+					const d = new funcs.Declaration(false, false, b.datatype(), false, id, true);
+					const a = new funcs.Assignment(id, input_codes[0], null);
+					whereDec.add(d);
+					whereAss.add(a);
 				}
-				else {
+				else if (locality == 1) {
 					const refid = funcs.getObjectPrefix() + id;
 					op0.code.add(refid);
-					const d = new funcs.Declaration(false, false, b.datatype(), id, true);
+					const d = new funcs.Declaration(false, false, b.datatype(), false, id, true);
 					const a = new funcs.Assignment(refid, input_codes[0], null);
 					whereDec.add(d);
 					whereAss.add(a);
+				}
+				else if (locality == 2) {
+					op0.code.add(id);
+					const d = new funcs.Declaration(false, true, b.datatype(), false, id, false);
+					const a = new funcs.Assignment(null, input_codes[0], d);
+					whereAss.add(a);	
 				}
 				return;
 			}
@@ -515,6 +559,99 @@
 				for (let i = 1; i < input_codes.length; i++)
 					op0.code.add( ', ', input_codes[1]);
 				op0.code.add(')');
+				return;
+			}
+			if (bs.CallBlock.isPrototypeOf(b) && b.type == "cdef") {
+				const cdef = b.ref;
+
+				program.includes.add(cdef.header);
+
+				if (cdef.funcs.init) {
+
+				}
+
+				if (cdef.funcs.reset) {
+
+				}
+
+				if (cdef.funcs.process1) {
+					const f = cdef.funcs.process1;
+
+					// Simplification: outputs might be declared in different places
+					const ur = us.max.apply(null, b.i_ports.concat(b.o_ports).map(p => p.updaterate()));
+					const r = dispatch(b, ur);
+					const locality = r.locality;
+					const whereDec = r.whereDec;
+					const whereAss = r.whereAss;
+
+					const prefix = locality == 1 ? funcs.getObjectPrefix() : "";
+
+					const inputs = [];
+					const outputs = [];
+					const decls = [];
+
+					for (let i = 0; i < f.f_inputs.length; i++) {
+						const input = f.f_inputs[i];
+						if (input[0] == 'i') {
+							inputs.push(input_codes[input[1]]);
+						}
+						if (input[0] == 'o') {
+							const type = b.o_ports[input[1]].datatype();
+							const id = program.identifiers.add('_x_');
+							const pid = prefix + id;
+							const decl = new funcs.Declaration(false, false, type, false, id, true);
+							const ref = '&' + pid;
+							decls.push(decl);
+							inputs.push(ref);
+							b.o_ports[input[1]].code.add(pid);
+						}
+					}
+					var alone = false;
+					if (decls.length > 0) {
+						alone = true;
+					}
+					if (f.f_outputs.length == 0) {
+						alone = true;
+					}
+					else {
+						const output = f.f_outputs[0];
+						if (true) { //(decls.length > 0) {
+							const type = b.o_ports[output[1]].datatype();
+							const id = program.identifiers.add('_x_');
+							const pid = prefix + id;
+							const decl = new funcs.Declaration(false, false, type, false, id, true);
+							decls.push(decl);
+							b.o_ports[output[1]].code.add(pid);
+							outputs.push(id);
+						}
+						else {
+
+						}
+					}
+
+					alone = true; // tmp
+					const stmt = new LazyString();
+					if (alone) {
+						if (outputs.length > 0) {
+							stmt.add(outputs[0], ' = ');
+						}
+						stmt.add(f.f_name, '(');
+						for (let i = 0; i < inputs.length; i++) {
+							stmt.add(inputs[i]);
+							if (i != inputs.length - 1)
+								stmt.add(', ');
+						}
+						stmt.add(');');
+					}
+					else {
+
+					}					
+
+					decls.forEach(d => whereDec.add(d));
+					whereAss.add(stmt);
+
+				}
+
 				return;
 			}
 

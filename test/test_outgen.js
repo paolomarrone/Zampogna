@@ -331,12 +331,31 @@
 			code: `
 
 				include mypowf
+				include mymodulo
 
 				y = asd (x) {
-					y = mypowf(x, 2.0)
+					int a, int b = mymodulo(2, 3)
+					c = float(a + b)
+					y = mypowf(x, c)
 				}
 			`,
 			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
+		},
+		{
+			code: `
+
+				include mypowf
+				include mymodulo
+
+				y = asd (x, v) {
+					int a, int b = mymodulo(2, 3)
+					int e = a - b
+					c = float(e + b + int(fs * 2.0))
+					d = c * c * v * v
+					y = mypowf(x, mypowf(d, c * mypowf(2.0, c - x)))
+				}
+			`,
+			options: { initial_block_id: "asd", control_inputs: ['v'], optimizations: default_optimizations }
 		},
 	];
 

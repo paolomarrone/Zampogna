@@ -308,10 +308,6 @@
 		case "CALL_EXPR":
 		{
 			let bdefs = scope.findGlobally(expr.id);
-			if (bdefs.length < 1) { // TODO: fix
-				warn("using external function");
-				break;
-			}
 			let found = false;
 			for (let b of bdefs) {
 				if (b.name != "BLOCK_DEFINITION")
@@ -323,8 +319,12 @@
 				found = true;
 				break;
 			}
-			if (!found)
-				err("No matching block found: " + expr.id + ", " + expr.args.length + ".. " + bdefs.map(b => b.id + b.inputs.length).join(", "));
+			if (found)
+				break;
+
+			// Might be a C block call
+			expr.outputs_N = outputsN;
+			expr_outputsN = outputsN;
 			break;
 		}
 		case "ARRAY_CONST":
@@ -336,7 +336,7 @@
 		}
 
 		if (expr_outputsN != outputsN)
-			err("Number of outputs accepted != number of block outputs");
+			err("Number of outputs accepted != number of block outputs: " + expr_outputsN + ", " + outputsN);
 
 		if (expr.args)
 			expr.args.forEach(arg => analyze_expr(arg, scope, 1, false));
