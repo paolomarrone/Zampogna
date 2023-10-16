@@ -526,11 +526,27 @@
 		this.header = desc.header;
 		this.inputs_N = desc.block_inputs.length;
 		this.outputs_N = desc.block_outputs.length;
+		this.state = desc.state;
+		this.coeffs = desc.coeffs;
+
 		this.funcs = {
 			init: desc.init,
-			reset: desc.reset,
-			process1: desc.process1
+			set_sample_rate: desc.set_sample_rate,
+			reset_coeffs: desc.reset_coeffs,
+			reset_state: desc.reset_state,
+			update_coeffs_ctrl: desc.update_coeffs_ctrl,
+			update_coeffs_audio: desc.update_coeffs_audio,
+			process1: desc.process1,
+			setters: []
 		};
+		if (desc.parameters)
+			desc.parameters.forEach(p => {
+				this.funcs.setters.push({
+					f_name: desc.prefix + "_set_" + p.name,
+					f_inputs: ["coeffs", p.map],
+					f_outputs: []
+				});
+			});
 		this.createPorts(this.inputs_N, this.outputs_N);
 		desc.block_inputs.forEach((x, i) => {
 			const dt = parseType(x.type); 

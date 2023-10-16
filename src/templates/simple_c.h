@@ -30,6 +30,9 @@ struct _{{=it.name}} {
 	// Coefficients
 {{=it.coefficients.toString(1)}}
 
+	// Sun-moculdes
+{{=it.submodules.toString(1)}}
+
 	float fs;
 	char firstRun;
 };

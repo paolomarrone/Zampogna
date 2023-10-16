@@ -338,6 +338,7 @@
 			memory_declarations: new funcs.Statements(),
 			states: new funcs.Statements(),
 			coefficients: new funcs.Statements(),
+			submodules: new funcs.Statements(),
 
 			// Assignments
 			consts_init: new funcs.Statements(),
@@ -363,6 +364,12 @@
 			bdef.o_ports.forEach(p => p.code = new LazyString());
 		}());
 
+		bdef.blocks.filter(b => bs.CallBlock.isPrototypeOf(b) && b.type == "cdef").forEach(b => {
+			if (b.ref.state)
+				program.identifiers.add(b.ref.state);
+			if (b.ref.coeffs)
+				program.identifiers.add(b.ref.coeffs);
+		});
 		program.name = program.identifiers.add(bdef.id); // Buh_0
 		bdef.i_ports.filter(p => p.updaterate() == us.UpdateRateAudio).forEach(p => {
 			const id = program.identifiers.add(p.id);
@@ -564,15 +571,69 @@
 			if (bs.CallBlock.isPrototypeOf(b) && b.type == "cdef") {
 				const cdef = b.ref;
 
+				// Include
 				program.includes.add(cdef.header);
+
+				var state, coeffs;
+
+				// Sub components declaration
+				if (cdef.state) {
+					const id = program.identifiers.add(cdef.state);
+					console.log(cdef.state, id)
+					const decl = cdef.state + ' ' + id + ';';
+					program.submodules.add(decl);
+					state = '&' + funcs.getObjectPrefix() + id;
+				}
+				if (cdef.coeffs) {
+					const id = program.identifiers.add(cdef.coeffs);
+					const decl = cdef.coeffs + ' ' + id + ';';
+					program.submodules.add(decl);
+					state = '&' + funcs.getObjectPrefix() + id;
+				}
+
+				// functions dispatching
+
+				/*
+					init
+					set_sample_rate
+					reset_coeffs
+					reset_state
+					update_coeffs_ctrl
+					update_coeffs_audio
+					process1
+					setters: []
+				*/
 
 				if (cdef.funcs.init) {
 
 				}
 
-				if (cdef.funcs.reset) {
+				if (cdef.set_sample_rate) {
 
 				}
+
+				if (cdef.reset_coeffs) {
+
+				}
+
+				if (cdef.reset_state) {
+
+				}
+				
+				if (cdef.update_coeffs_ctrl) {
+
+				}
+
+				if (cdef.update_coeffs_audio) {
+
+				}
+
+				if (cdef.setters) {
+					cdef.setters.forEach(setter => {
+
+					});
+				}
+
 
 				if (cdef.funcs.process1) {
 					const f = cdef.funcs.process1;
@@ -650,6 +711,9 @@
 					decls.forEach(d => whereDec.add(d));
 					whereAss.add(stmt);
 
+				}
+				else {
+					throw new Error("process1 is required");
 				}
 
 				return;
