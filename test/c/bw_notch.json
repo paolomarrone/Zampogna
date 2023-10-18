@@ -1,7 +1,13 @@
 {
+	"wrapper": [
+		"y = bw_notch (x, cutoff, Q, prewarp_at_cutoff, prewarp_freq) { \n",
+		"    y.init, y = bw_notch_(x.fs, x.init, x, cutoff, prewarp_at_cutoff, Q, prewarp_freq); \n",
+		"} \n"
+	],
+
 	"header": "bw_notch.h",
 	
-	"block_name": "bw_notch",
+	"block_name": "bw_notch_",
 	"block_inputs": [
 		{
 			"type": "float32",

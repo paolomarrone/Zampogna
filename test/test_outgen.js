@@ -363,7 +363,7 @@
 				include bw_notch
 
 				y = asd (x) {
-					_, y = bw_notch(fs, 0.0, x, 666.666, 0.4, 0.3, 0.2)
+					y = bw_notch(x, 666.666, 0.4, 0.3, 0.2)
 				}
 			`,
 			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
