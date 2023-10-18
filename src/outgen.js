@@ -347,6 +347,8 @@
 			constants: new funcs.Statements(),
 			fs_update: new funcs.Statements(),
 			control_coeffs_update: new funcs.ControlCoeffs(),
+			update_coeffs_ctrl: new funcs.Statements(),
+			update_coeffs_audio: new funcs.Statements(),
 			audio_update: new funcs.Statements(),
 			memory_updates: new funcs.Statements(),
 
@@ -579,7 +581,6 @@
 				// Sub components declaration
 				if (cdef.state) {
 					const id = program.identifiers.add(cdef.state);
-					console.log(cdef.state, id)
 					const decl = cdef.state + ' ' + id + ';';
 					program.submodules.add(decl);
 					state = '&' + funcs.getObjectPrefix() + id;
@@ -588,62 +589,12 @@
 					const id = program.identifiers.add(cdef.coeffs);
 					const decl = cdef.coeffs + ' ' + id + ';';
 					program.submodules.add(decl);
-					state = '&' + funcs.getObjectPrefix() + id;
+					coeffs = '&' + funcs.getObjectPrefix() + id;
 				}
 
 				// functions dispatching
-
-				/*
-					init
-					set_sample_rate
-					reset_coeffs
-					reset_state
-					update_coeffs_ctrl
-					update_coeffs_audio
-					process1
-					setters: []
-				*/
-
-				if (cdef.funcs.init) {
-
-				}
-
-				if (cdef.set_sample_rate) {
-
-				}
-
-				if (cdef.reset_coeffs) {
-
-				}
-
-				if (cdef.reset_state) {
-
-				}
-				
-				if (cdef.update_coeffs_ctrl) {
-
-				}
-
-				if (cdef.update_coeffs_audio) {
-
-				}
-
-				if (cdef.setters) {
-					cdef.setters.forEach(setter => {
-
-					});
-				}
-
-
-				if (cdef.funcs.process1) {
-					const f = cdef.funcs.process1;
-
-					// Simplification: outputs might be declared in different places
-					const ur = us.max.apply(null, b.i_ports.concat(b.o_ports).map(p => p.updaterate()));
-					const r = dispatch(b, ur);
-					const locality = r.locality;
-					const whereDec = r.whereDec;
-					const whereAss = r.whereAss;
+	
+				function get_decls_assignments (locality, f) {
 
 					const prefix = locality == 1 ? funcs.getObjectPrefix() : "";
 
@@ -653,6 +604,12 @@
 
 					for (let i = 0; i < f.f_inputs.length; i++) {
 						const input = f.f_inputs[i];
+						if (input == 'state') {
+							inputs.push(state);
+						}
+						if (input == "coeffs") {
+							inputs.push(coeffs);
+						}
 						if (input[0] == 'i') {
 							inputs.push(input_codes[input[1]]);
 						}
@@ -706,11 +663,134 @@
 					}
 					else {
 
-					}					
+					}
 
+					return {
+						decls: decls,
+						assignments: [stmt]
+					};
+				}
+
+
+				if (cdef.funcs.init) {
+					const f = cdef.funcs.init;
+
+					const locality = 1;
+					const whereDec = program.init;
+					const whereAss = program.init;
+
+					const rr = get_decls_assignments(locality, f);
+					const decls = rr.decls;
+					const assignments = rr.assignments;
+				
 					decls.forEach(d => whereDec.add(d));
-					whereAss.add(stmt);
+					assignments.forEach(a => whereAss.add(a));
+				}
 
+				if (cdef.funcs.set_sample_rate) {
+					const f = cdef.funcs.set_sample_rate;
+
+					const locality = 1;
+					const whereDec = program.fs_update;
+					const whereAss = program.fs_update;
+
+					const rr = get_decls_assignments(locality, f);
+					const decls = rr.decls;
+					const assignments = rr.assignments;
+					decls.forEach(d => whereDec.add(d));
+					assignments.forEach(a => whereAss.add(a));
+				}
+
+				if (cdef.funcs.reset_coeffs) {
+					const f = cdef.funcs.reset_coeffs;
+
+					const locality = 1;
+					const whereDec = program.reset; // TODO: program.reset_coeffs and reset_state
+					const whereAss = program.reset;
+
+					const rr = get_decls_assignments(locality, f);
+					const decls = rr.decls;
+					const assignments = rr.assignments;
+					decls.forEach(d => whereDec.add(d));
+					assignments.forEach(a => whereAss.add(a));
+				}
+
+				if (cdef.funcs.reset_state) {
+					const f = cdef.funcs.reset_state;
+
+					const locality = 1;
+					const whereDec = program.reset; // TODO: program.reset_coeffs and reset_state
+					const whereAss = program.reset;
+
+					const rr = get_decls_assignments(locality, f);
+					const decls = rr.decls;
+					const assignments = rr.assignments;
+					decls.forEach(d => whereDec.add(d));
+					assignments.forEach(a => whereAss.add(a));
+				}
+				
+				if (cdef.funcs.update_coeffs_ctrl) {
+					const f = cdef.funcs.update_coeffs_ctrl;
+
+					const locality = 1;
+					const whereDec = program.update_coeffs_ctrl;
+					const whereAss = program.update_coeffs_ctrl;
+
+					const rr = get_decls_assignments(locality, f);
+					const decls = rr.decls;
+					const assignments = rr.assignments;
+					decls.forEach(d => whereDec.add(d));
+					assignments.forEach(a => whereAss.add(a));
+				}
+
+				if (cdef.funcs.update_coeffs_audio) {
+					const f = cdef.funcs.update_coeffs_audio;
+
+					const locality = 1;
+					const whereDec = program.update_coeffs_audio;
+					const whereAss = program.update_coeffs_audio;
+
+					const rr = get_decls_assignments(locality, f);
+					const decls = rr.decls;
+					const assignments = rr.assignments;
+					decls.forEach(d => whereDec.add(d));
+					assignments.forEach(a => whereAss.add(a));
+				}
+
+				cdef.funcs.setters.forEach(setter => {
+					/*
+					const f = setter;
+
+					const r = dispatch(b, ur);
+
+					const locality = 1;
+					const whereDec = program.control_coeffs_update;
+					const whereAss = program.control_coeffs_update;
+
+					const rr = get_decls_assignments(locality, f);
+					const decls = rr.decls;
+					const assignments = rr.assignments;
+					decls.forEach(d => whereDec.add(d));
+					assignments.forEach(a => whereAss.add(a));
+					*/
+				});
+
+				if (cdef.funcs.process1) {
+					const f = cdef.funcs.process1;
+
+					// Simplification: outputs might be declared in different places
+					const ur = us.max.apply(null, b.i_ports.concat(b.o_ports).map(p => p.updaterate()));
+					const r = dispatch(b, ur);
+					const locality = r.locality;
+					const whereDec = r.whereDec;
+					const whereAss = r.whereAss;
+
+					const rr = get_decls_assignments(locality, f);
+					const decls = rr.decls;
+					const assignments = rr.assignments;
+				
+					decls.forEach(d => whereDec.add(d));
+					assignments.forEach(a => whereAss.add(a));
 				}
 				else {
 					throw new Error("process1 is required");

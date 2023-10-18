@@ -82,7 +82,10 @@
 				s = filereader(filename);
 				if (s) {
 					included_files.push(filename);
-					jsons.push(JSON.parse(s));
+					const j = JSON.parse(s);
+					if (j.wrapper)
+						toparse.push(j.wrapper.join('\n'));
+					jsons.push(j);
 					return;
 				}
 				throw new Error("Invalid/Not found included file");

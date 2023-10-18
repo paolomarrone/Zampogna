@@ -1,4 +1,3 @@
-// TODO
 
 #ifndef _{{=it.name.toUpperCase()}}_H
 #define _{{=it.name.toUpperCase()}}_H
@@ -85,14 +84,18 @@ void {{=it.name}}_process({{=it.name}} *instance, {{?it.audio_inputs.length > 0}
 	
 {{=it.control_coeffs_update.toString(1)}}
 
+{{=it.update_coeffs_ctrl.toString(1)}}
+
 	{{~it.parameters:c}}
 	instance->{{=c}}_CHANGED = 0;{{~}}
 
 	if (instance->firstRun) {
-		{{=it.reset}}
+{{=it.reset.toString(2)}}
 	}
 
 	for (int i = 0; i < nSamples; i++) {
+
+{{=it.update_coeffs_audio.toString(2)}}
 
 {{=it.audio_update.toString(2)}}
 		

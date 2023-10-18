@@ -528,6 +528,7 @@
 		this.outputs_N = desc.block_outputs.length;
 		this.state = desc.state;
 		this.coeffs = desc.coeffs;
+		this.prefix = desc.prefix;
 
 		this.funcs = {
 			init: desc.init,
