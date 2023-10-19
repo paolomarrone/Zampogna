@@ -79,12 +79,11 @@
 			type_false: '0',
 			float_f_postfix: true,
 			reserved_keywords: [
-				"auto", "else", "long", "switch", "break", "enum",
-				"register", "typedef", "case", "extern", "return",
-				"union", "char", "float", "short", "unsigned",
-				"const", "for", "signed", "void", "continue", "goto",
-				"sizeof", "volatile", "default", "if", "static",
-				"while", "do", "int", "struct", "_Packed", "double"
+				"auto", "else", "long", "switch", "break", "enum", "register",
+				"typedef", "case", "extern", "return", "union", "char",
+				"float", "short", "unsigned", "const", "for", "signed", 
+				"void", "continue", "goto", "sizeof", "volatile", "default",
+				"if", "static", "while", "do", "int", "struct", "_Packed", "double"
 			]
 		};
 
@@ -119,14 +118,15 @@
 			}
 			: (n) => n + "";
 		funcs["getInt"] = (n) => n;
-		funcs["getBool"] = (n) => n == "true" ? keys.type_true : keys.type_false;
+		funcs["getBool"] = (n) => n ? keys.type_true : keys.type_false;
 		funcs["getConstant"] = (n, datatype) => {
 			if (ts.DataTypeFloat32 == datatype)
 				return funcs.getFloat(n);
 			if (ts.DataTypeInt32 == datatype)
 				return funcs.getInt(n);
-			if (ts.DataTypeBool == datatype)
+			if (ts.DataTypeBool == datatype) {
 				return funcs.getBool(n);
+			}
 			throw new Error("getConstant. Type error");
 		};
 		funcs["getObjectPrefix"] = () => keys.object_prefix;
@@ -366,6 +366,7 @@
 			bdef.o_ports.forEach(p => p.code = new LazyString());
 		}());
 
+		// TODO: fix: calls -> cdef : n -> 1
 		bdef.blocks.filter(b => bs.CallBlock.isPrototypeOf(b) && b.type == "cdef").forEach(b => {
 			if (b.ref.state)
 				program.identifiers.add(b.ref.state);
@@ -373,6 +374,7 @@
 				program.identifiers.add(b.ref.coeffs);
 		});
 		program.name = program.identifiers.add(bdef.id); // Buh_0
+		program.identifiers.add('_' + bdef.id);
 		bdef.i_ports.filter(p => p.updaterate() == us.UpdateRateAudio).forEach(p => {
 			const id = program.identifiers.add(p.id);
 			const code = new LazyString(id, funcs.getArrayIndexer('i'));
@@ -439,7 +441,7 @@
 		*/
 
 
-		function dispatch (b, ur) {
+		function dispatch (b, ur, control_dependencies) {
 			const outblocks = bdef.connections.filter(c => c.in.block == b).map(c => c.out.block);
 			
 			var locality = undefined; // 0 = constant, 1 = object, 2 = local
@@ -464,9 +466,9 @@
 				whereAss = program.fs_update;
 			}
 			if (ur == us.UpdateRateControl) {
-				const g = program.control_coeffs_update.getOrAddGroup(b.control_dependencies);
+				const g = program.control_coeffs_update.getOrAddGroup(control_dependencies);
 				if (locality == 2) {
-					locality = outblocks.every(bb => Set.checkEquality(b.control_dependencies, bb.control_dependencies)) ? 2 : 1;
+					locality = outblocks.every(bb => Set.checkEquality(control_dependencies, bb.control_dependencies)) ? 2 : 1;
 				}
 				if (locality == 2) {
 					whereDec = g;
@@ -501,7 +503,7 @@
 			if (bs.VarBlock.isPrototypeOf(b)) {
 				
 				const ur = b.o_ports[0].updaterate();
-				const r = dispatch(b, ur);
+				const r = dispatch(b, ur, b.control_dependencies);
 				const locality = r.locality;
 				const whereDec = r.whereDec;
 				const whereAss = r.whereAss;
@@ -758,21 +760,21 @@
 				}
 
 				cdef.funcs.setters.forEach(setter => {
-					/*
 					const f = setter;
-
-					const r = dispatch(b, ur);
-
-					const locality = 1;
-					const whereDec = program.control_coeffs_update;
-					const whereAss = program.control_coeffs_update;
+					
+					const valueinputport = b.i_ports[f.f_inputs[1][1]];
+					const inb = bdef.connections.find(c => c.out == valueinputport).in.block;
+					const r = dispatch(b, valueinputport.updaterate(), inb.control_dependencies);
+					const locality = r.locality;
+					const whereDec = r.whereDec;
+					const whereAss = r.whereAss;
 
 					const rr = get_decls_assignments(locality, f);
 					const decls = rr.decls;
 					const assignments = rr.assignments;
+				
 					decls.forEach(d => whereDec.add(d));
 					assignments.forEach(a => whereAss.add(a));
-					*/
 				});
 
 				if (cdef.funcs.process1) {
@@ -780,7 +782,7 @@
 
 					// Simplification: outputs might be declared in different places
 					const ur = us.max.apply(null, b.i_ports.concat(b.o_ports).map(p => p.updaterate()));
-					const r = dispatch(b, ur);
+					const r = dispatch(b, ur, b.control_dependencies);
 					const locality = r.locality;
 					const whereDec = r.whereDec;
 					const whereAss = r.whereAss;

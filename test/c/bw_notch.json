@@ -1,7 +1,7 @@
 {
 	"wrapper": [
-		"y = bw_notch (x, cutoff, Q, prewarp_at_cutoff, prewarp_freq) { \n",
-		"    y.init, y = bw_notch_(x.fs, x.init, x, cutoff, prewarp_at_cutoff, Q, prewarp_freq); \n",
+		"y = bw_notch (x, cutoff, Q, bool prewarp_at_cutoff, prewarp_freq) { \n",
+		"    y.init, y = bw_notch_(x.fs, x.init, x, cutoff, Q, prewarp_at_cutoff, prewarp_freq); \n",
 		"} \n"
 	],
 
@@ -32,7 +32,7 @@
 			"info": "Q"
 		},
 		{
-			"type": "float32",
+			"type": "bool",
 			"info": "prewarp_at_cutoff"
 		},
 		{

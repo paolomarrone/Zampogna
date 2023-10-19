@@ -13,8 +13,6 @@ enum {
 };
 {{?}}
 
-{{=it.constants.toString(0)}}
-
 struct _{{=it.name}} {
 	
 	// Parameters
@@ -38,7 +36,7 @@ struct _{{=it.name}} {
 typedef struct _{{=it.name}} {{=it.name}};
 
 
-void {{=it.name}}_consts_init();
+void {{=it.name}}_consts_init({{=it.name}} *instance);
 void {{=it.name}}_init({{=it.name}} *instance);
 void {{=it.name}}_set_sample_rate({{=it.name}} *instance, float sample_rate);
 void {{=it.name}}_reset({{=it.name}} *instance);
@@ -47,7 +45,9 @@ float {{=it.name}}_get_parameter({{=it.name}} *instance, int index);
 void {{=it.name}}_set_parameter({{=it.name}} *instance, int index, float value);
 
 
-void {{=it.name}}_consts_init() {
+{{=it.constants.toString(0)}}
+
+void {{=it.name}}_consts_init({{=it.name}} *instance) {
 
 {{=it.consts_init.toString(1)}}
 
@@ -55,9 +55,9 @@ void {{=it.name}}_consts_init() {
 
 void {{=it.name}}_init({{=it.name}} *instance) {
 
-	{{=it.name}}_consts_init();
-
 {{=it.init.toString(1)}}
+
+	{{=it.name}}_consts_init(instance);
 
 }
 

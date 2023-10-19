@@ -362,11 +362,13 @@
 
 				include bw_notch
 
-				y = asd (x) {
-					y = bw_notch(x, 666.666, 0.4, 0.3, 0.2)
+				y = asd (x, c, q) {
+					cutoff = (20.0e3 - 20.0) * c * c * c + 20.0
+					Q =  0.5 + 9.5 * q;
+					y = bw_notch(x, cutoff, Q, true, 1000.0)
 				}
 			`,
-			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
+			options: { initial_block_id: "asd", control_inputs: ['c', 'q'], optimizations: default_optimizations }
 		},
 	];
 
