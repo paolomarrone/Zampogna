@@ -1,0 +1,104 @@
+{
+	"wrapper": [
+		"y = bw_osc_saw (x, x_inc, bool antialiasing) { \n",
+		"    y = bw_osc_saw_(x.fs, x, x_inc, antialiasing); \n",
+		"} \n"
+	],
+
+	"header": [ 
+		"#include \"bw_osc_saw.h\"",
+		"static inline float bw_osc_saw_process1_wrapper (",
+				"\t\tconst bw_osc_saw_coeffs * BW_RESTRICT coeffs",
+				"\t\tfloat x,",
+				"\t\tfloat x_inc) {",
+			"\tif (coeffs->antialiasing)",
+				"\t\treturn bw_osc_saw_process1_antialias(coeffs, x, x_inc);",
+			"\telse",
+				"\t\treturn bw_osc_saw_process1(coeffs, x);",
+		"}"
+	],
+	
+	"block_name": "bw_osc_saw_",
+	"block_inputs": [
+		{
+			"type": "float32",
+			"info": "fs",
+			"updaterate": "fs"
+		},
+		{
+			"type": "float32",
+			"info": "x"
+		},
+		{
+			"type": "float32",
+			"info": "x_inc"
+		},
+		{
+			"type": "bool",
+			"name": "antialiasing",
+			"isParameter": true
+		}
+	],
+	"block_outputs": [
+		{
+			"type": "float32",
+			"info": "y"
+		}
+	],
+
+	"coeffs": "bw_osc_saw_coeffs",
+	"prefix": "bw_osc_saw",
+
+	"init": {
+		"f_name": "bw_osc_saw_init",
+		"f_outputs" : [],
+		"f_inputs" : [
+			"coeffs"
+		]
+	},
+
+	"set_sample_rate": {
+		"f_name": "bw_osc_saw_set_sample_rate",
+		"f_outputs": [],
+		"f_inputs": [
+			"coeffs",
+			"i0"
+		]
+	},
+
+	"reset_coeffs": {
+		"f_name": "bw_osc_saw_reset_coeffs",
+		"f_outputs" : [],
+		"f_inputs" : [
+			"coeffs"
+		]
+	},
+
+	"update_coeffs_ctrl": {
+		"f_name": "bw_osc_saw_update_coeffs_ctrl",
+		"f_outputs" : [],
+		"f_inputs" : [
+			"coeffs"
+		]
+	},
+
+	"update_coeffs_audio": {
+		"f_name": "bw_osc_saw_update_coeffs_audio",
+		"f_outputs" : [],
+		"f_inputs" : [
+			"coeffs"
+		]
+	},
+
+	"process1": {
+		"f_name": "bw_osc_saw_process1_wrapper",
+		"f_outputs": [
+			"o0"
+		],
+		"f_inputs": [
+			"coeffs",
+			"i1",
+			"i2"
+		]
+	}
+}

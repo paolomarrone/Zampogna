@@ -1,13 +1,13 @@
 {
 	"wrapper": [
-		"y = bw_notch (x, cutoff, Q, bool prewarp_at_cutoff, prewarp_freq) { \n",
-		"    y.init, y = bw_notch_(x.fs, x.init, x, cutoff, Q, prewarp_at_cutoff, prewarp_freq); \n",
+		"y = bw_fuzz (x, fuzz, volume) { \n",
+		"    y.init, y = bw_fuzz_(x.fs, x.init, x, fuzz, volume); \n",
 		"} \n"
 	],
 
-	"header": "#include \"bw_notch.h\"",
+	"header": "#include \"bw_fuzz.h\"",
 	
-	"block_name": "bw_notch_",
+	"block_name": "bw_fuzz_",
 	"block_inputs": [
 		{
 			"type": "float32",
@@ -16,32 +16,21 @@
 		},
 		{
 			"type": "float32",
-			"info": "initial_state",
+			"info": "x_0",
 			"updaterate": "const"
 		},
 		{
 			"type": "float32",
-			"info": "x",
+			"info": "x"
+		},
+		{
+			"type": "float32",
+			"name": "fuzz",
 			"isParameter": true
 		},
 		{
 			"type": "float32",
-			"name": "cutoff",
-			"isParameter": true
-		},
-		{
-			"type": "float32",
-			"name": "Q",
-			"isParameter": true
-		},
-		{
-			"type": "bool",
-			"name": "prewarp_at_cutoff",
-			"isParameter": true
-		},
-		{
-			"type": "float32",
-			"name": "prewarp_freq",
+			"name": "volume",
 			"isParameter": true
 		}
 	],
@@ -57,12 +46,12 @@
 	],
 
 
-	"state": "bw_notch_state",
-	"coeffs": "bw_notch_coeffs",
-	"prefix": "bw_notch",
+	"state": "bw_fuzz_state",
+	"coeffs": "bw_fuzz_coeffs",
+	"prefix": "bw_fuzz",
 
 	"init": {
-		"f_name": "bw_notch_init",
+		"f_name": "bw_fuzz_init",
 		"f_outputs" : [],
 		"f_inputs" : [
 			"coeffs"
@@ -70,7 +59,7 @@
 	},
 
 	"set_sample_rate": {
-		"f_name": "bw_notch_set_sample_rate",
+		"f_name": "bw_fuzz_set_sample_rate",
 		"f_outputs": [],
 		"f_inputs": [
 			"coeffs",
@@ -79,7 +68,7 @@
 	},
 
 	"reset_coeffs": {
-		"f_name": "bw_notch_reset_coeffs",
+		"f_name": "bw_fuzz_reset_coeffs",
 		"f_outputs" : [],
 		"f_inputs" : [
 			"coeffs"
@@ -87,7 +76,7 @@
 	},
 
 	"reset_state": {
-		"f_name": "bw_notch_reset_state",
+		"f_name": "bw_fuzz_reset_state",
 		"f_outputs" : [
 			"o0"
 		],
@@ -99,7 +88,7 @@
 	},
 
 	"update_coeffs_ctrl": {
-		"f_name": "bw_notch_update_coeffs_ctrl",
+		"f_name": "bw_fuzz_update_coeffs_ctrl",
 		"f_outputs" : [],
 		"f_inputs" : [
 			"coeffs"
@@ -107,7 +96,7 @@
 	},
 
 	"update_coeffs_audio": {
-		"f_name": "bw_notch_update_coeffs_audio",
+		"f_name": "bw_fuzz_update_coeffs_audio",
 		"f_outputs" : [],
 		"f_inputs" : [
 			"coeffs"
@@ -115,7 +104,7 @@
 	},
 
 	"process1": {
-		"f_name": "bw_notch_process1",
+		"f_name": "bw_fuzz_process1",
 		"f_outputs": [
 			"o1"
 		],

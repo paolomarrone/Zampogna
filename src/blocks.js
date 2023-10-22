@@ -523,7 +523,12 @@
 	CBlock.funcs = undefined;
 	CBlock.init = function (desc) {
 		this.id = desc.block_name;
-		this.header = desc.header;
+		if (typeof desc.header == 'string')
+			this.header = desc.header;
+		else if (desc.header instanceof Array)
+			this.header = desc.header.join('\n');
+		else
+			throw new Error("Bad header format");
 		this.inputs_N = desc.block_inputs.length;
 		this.outputs_N = desc.block_outputs.length;
 		this.state = desc.state;
@@ -540,14 +545,15 @@
 			process1: desc.process1,
 			setters: []
 		};
-		if (desc.parameters)
-			desc.parameters.forEach(p => {
-				this.funcs.setters.push({
-					f_name: desc.prefix + "_set_" + p.name,
-					f_inputs: ["coeffs", p.map],
-					f_outputs: []
-				});
+		desc.block_inputs.forEach((x, i) => {
+			if (!x.isParameter)
+				return;
+			this.funcs.setters.push({
+				f_name: desc.prefix + "_set_" + x.name,
+				f_inputs: ["coeffs", 'i' + i],
+				f_outputs: []
 			});
+		});
 		this.createPorts(this.inputs_N, this.outputs_N);
 		desc.block_inputs.forEach((x, i) => {
 			const dt = parseType(x.type); 

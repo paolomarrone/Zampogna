@@ -1,0 +1,125 @@
+{
+	"wrapper": [
+		"y, y_0, y_inc, y_inc_0 = bw_phase_gen (phase_0, x_mod, frequency, portamento_tau) { \n",
+		"    y_0, y_inc_0, y, y_inc = bw_phase_gen_(fs, phase_0, x_mod, frequency, portamento_tau); \n",
+		"} \n"
+	],
+
+	"header": "#include \"bw_phase_gen.h\"",
+	
+	"block_name": "bw_phase_gen_",
+	"block_inputs": [
+		{
+			"type": "float32",
+			"info": "fs",
+			"updaterate": "fs"
+		},
+		{
+			"type": "float32",
+			"info": "phase_0",
+			"updaterate": "const"
+		},
+		{
+			"type": "float32",
+			"info": "x_mod"
+		},
+		{
+			"type": "float32",
+			"name": "frequency",
+			"isParameter": true
+		},
+		{
+			"type": "float32",
+			"name": "portamento_tau",
+			"isParameter": true
+		}
+	],
+	"block_outputs": [
+		{ 
+			"type": "float32",
+			"info": "y_0"
+		},
+		{ 
+			"type": "float32",
+			"info": "y_inc_0"
+		},
+		{
+			"type": "float32",
+			"info": "y"
+		},
+		{
+			"type": "float32",
+			"info": "y_inc"
+		}
+	],
+
+
+	"state": "bw_phase_gen_state",
+	"coeffs": "bw_phase_gen_coeffs",
+	"prefix": "bw_phase_gen",
+
+	"init": {
+		"f_name": "bw_phase_gen_init",
+		"f_outputs" : [],
+		"f_inputs" : [
+			"coeffs"
+		]
+	},
+
+	"set_sample_rate": {
+		"f_name": "bw_phase_gen_set_sample_rate",
+		"f_outputs": [],
+		"f_inputs": [
+			"coeffs",
+			"i0"
+		]
+	},
+
+	"reset_coeffs": {
+		"f_name": "bw_phase_gen_reset_coeffs",
+		"f_outputs" : [],
+		"f_inputs" : [
+			"coeffs"
+		]
+	},
+
+	"reset_state": {
+		"f_name": "bw_phase_gen_reset_state",
+		"f_outputs" : [],
+		"f_inputs" : [
+			"coeffs",
+			"state",
+			"i1",
+			"o0",
+			"o1"
+		]
+	},
+
+	"update_coeffs_ctrl": {
+		"f_name": "bw_phase_gen_update_coeffs_ctrl",
+		"f_outputs" : [],
+		"f_inputs" : [
+			"coeffs"
+		]
+	},
+
+	"update_coeffs_audio": {
+		"f_name": "bw_phase_gen_update_coeffs_audio",
+		"f_outputs" : [],
+		"f_inputs" : [
+			"coeffs"
+		]
+	},
+
+	"process1": {
+		"f_name": "bw_phase_gen_process1_mod",
+		"f_outputs": [],
+		"f_inputs": [
+			"coeffs",
+			"state",
+			"i2",
+			"o2",
+			"o3"
+		]
+	}
+}

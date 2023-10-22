@@ -180,13 +180,6 @@
 				return id;
 			};
 		};
-		funcs.Include = function (id) {
-			this.s = new LazyString();
-			this.s.add("#include \"", id, "\"");
-			this.toString = function () {
-				return this.s.toString();
-			};
-		};
 		funcs.Includes = function () {
 			this.v = [];
 			this.s = new funcs.Statements();
@@ -194,7 +187,7 @@
 				if (this.v.includes(id))
 					return;
 				this.v.push(id);
-				this.s.add(new funcs.Include(id));
+				this.s.add(id, '\n');
 			};
 			this.toString = function (tabs) {
 				return this.s.toString(tabs);

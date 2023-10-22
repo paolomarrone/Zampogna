@@ -1,0 +1,99 @@
+{
+	"wrapper": [
+		"yL, yR = bw_balance (xL, xR, balance) { \n",
+		"    yL, yR = bw_balance_(xL.fs, xL, xR, balance); \n",
+		"} \n"
+	],
+
+	"header": "#include \"bw_balance.h\"",
+	
+	"block_name": "bw_balance_",
+	"block_inputs": [
+		{
+			"type": "float32",
+			"info": "fs",
+			"updaterate": "fs"
+		},
+		{
+			"type": "float32",
+			"info": "xL"
+		},
+		{
+			"type": "float32",
+			"info": "xR"
+		},
+		{
+			"type": "float32",
+			"name": "balance",
+			"isParameter": true
+		}
+	],
+	"block_outputs": [
+		{
+			"type": "float32",
+			"info": "yR"
+		},
+		{
+			"type": "float32",
+			"info": "yR"
+		}
+	],
+
+
+	"state": "",
+	"coeffs": "bw_balance_coeffs",
+	"prefix": "bw_balance",
+
+	"init": {
+		"f_name": "bw_balance_init",
+		"f_outputs" : [],
+		"f_inputs" : [
+			"coeffs"
+		]
+	},
+
+	"set_sample_rate": {
+		"f_name": "bw_balance_set_sample_rate",
+		"f_outputs": [],
+		"f_inputs": [
+			"coeffs",
+			"i0"
+		]
+	},
+
+	"reset_coeffs": {
+		"f_name": "bw_balance_reset_coeffs",
+		"f_outputs" : [],
+		"f_inputs" : [
+			"coeffs"
+		]
+	},
+
+	"update_coeffs_ctrl": {
+		"f_name": "bw_balance_update_coeffs_ctrl",
+		"f_outputs" : [],
+		"f_inputs" : [
+			"coeffs"
+		]
+	},
+
+	"update_coeffs_audio": {
+		"f_name": "bw_balance_update_coeffs_audio",
+		"f_outputs" : [],
+		"f_inputs" : [
+			"coeffs"
+		]
+	},
+
+	"process1": {
+		"f_name": "bw_balance_process1",
+		"f_outputs": [],
+		"f_inputs": [
+			"coeffs",
+			"i1",
+			"i2",
+			"o0",
+			"o1"
+		]
+	}
+}

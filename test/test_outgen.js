@@ -370,6 +370,42 @@
 			`,
 			options: { initial_block_id: "asd", control_inputs: ['c', 'q'], optimizations: default_optimizations }
 		},
+		{
+			code: `
+
+				include bw_balance
+
+				yL, yR = asd (xL, xR, b) {
+					yL, yR = bw_balance(xL, xR, b);
+				}
+			`,
+			options: { initial_block_id: "asd", control_inputs: ['b'], optimizations: default_optimizations }
+		},
+		{
+			code: `
+
+				include bw_osc_saw
+
+				y = asd (f) {
+					y = bw_osc_saw(0.0, 0.0, true)
+				}
+			`,
+			options: { initial_block_id: "asd", control_inputs: ['f'], optimizations: default_optimizations }
+		},
+		{
+			code: `
+
+				include bw_phase_gen
+				include bw_osc_saw
+
+				y = asd (f) {
+					frequency = f * f * f * 20000.0 + 0.1
+					g, _, g_inc, _ = bw_phase_gen(0.0, 0.0, frequency, 0.0)
+					y = bw_osc_saw(g, g_inc, true)
+				}
+			`,
+			options: { initial_block_id: "asd", control_inputs: ['f'], optimizations: default_optimizations }
+		},
 	];
 
 	const BadTests = [
