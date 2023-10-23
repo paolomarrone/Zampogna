@@ -1,0 +1,138 @@
+{
+	"wrapper": [
+		"y = bw_env_gen (bool gate, attack, decay, sustain, release) {",
+		"    y.init, y = bw_env_gen_(fs, gate.init, gate, attack, decay, sustain, release);",
+		"}"
+	],
+
+	"header": [
+		"#include \"bw_env_gen.h\"",
+		"static inline void bw_env_gen_update_coeffs_ctrl_wrapper(",
+		"        bw_env_gen_coeffs * BW_RESTRICT coeffs,",
+		"        bw_env_gen_state * BW_RESTRICT        state,",
+		"        char                                  gate) {",
+		"    bw_env_gen_update_coeffs_ctrl(coeffs);",
+		"    bw_env_gen_process_ctrl(coeffs, state, gate);",
+		"}"
+	],
+	
+	"block_name": "bw_env_gen_",
+	"block_inputs": [
+		{
+			"type": "float32",
+			"info": "fs",
+			"updaterate": "fs"
+		},
+		{
+			"type": "bool",
+			"info": "gate_0",
+			"updaterate": "const"
+		},
+		{
+			"type": "bool",
+			"info": "gate"
+		},
+		{
+			"type": "float32",
+			"name": "attack",
+			"isParameter": true
+		},
+		{
+			"type": "float32",
+			"name": "decay",
+			"isParameter": true
+		},
+		{
+			"type": "float32",
+			"name": "sustain",
+			"isParameter": true
+		},
+		{
+			"type": "float32",
+			"name": "release",
+			"isParameter": true
+		}
+	],
+	"block_outputs": [
+		{ 
+			"type": "float32",
+			"info": "initial_state"
+		},
+		{
+			"type": "float32",
+			"info": "y",
+			"updaterate": "audio"
+		}
+	],
+
+
+	"state": "bw_env_gen_state",
+	"coeffs": "bw_env_gen_coeffs",
+	"prefix": "bw_env_gen",
+
+	"init": {
+		"f_name": "bw_env_gen_init",
+		"f_outputs" : [],
+		"f_inputs" : [
+			"coeffs"
+		]
+	},
+
+	"set_sample_rate": {
+		"f_name": "bw_env_gen_set_sample_rate",
+		"f_outputs": [],
+		"f_inputs": [
+			"coeffs",
+			"i0"
+		]
+	},
+
+	"reset_coeffs": {
+		"f_name": "bw_env_gen_reset_coeffs",
+		"f_outputs" : [],
+		"f_inputs" : [
+			"coeffs"
+		]
+	},
+
+	"reset_state": {
+		"f_name": "bw_env_gen_reset_state",
+		"f_outputs" : [
+			"o0"
+		],
+		"f_inputs" : [
+			"coeffs",
+			"state",
+			"i1"
+		]
+	},
+
+	"update_coeffs_ctrl": {
+		"f_name": "bw_env_gen_update_coeffs_ctrl_wrapper",
+		"f_outputs" : [],
+		"f_inputs" : [
+			"coeffs",
+			"state",
+			"i2"
+		]
+	},
+
+	"update_coeffs_audio": {
+		"f_name": "bw_env_gen_update_coeffs_audio",
+		"f_outputs" : [],
+		"f_inputs" : [
+			"coeffs"
+		]
+	},
+
+	"process1": {
+		"f_name": "bw_env_gen_process1",
+		"f_outputs": [
+			"o1"
+		],
+		"f_inputs": [
+			"coeffs",
+			"state"
+		]
+	}
+}

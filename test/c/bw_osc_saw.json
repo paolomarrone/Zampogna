@@ -1,14 +1,14 @@
 {
 	"wrapper": [
 		"y = bw_osc_saw (x, x_inc, bool antialiasing) { \n",
-		"    y = bw_osc_saw_(x.fs, x, x_inc, antialiasing); \n",
+		"    y = bw_osc_saw_(fs, x, x_inc, antialiasing); \n",
 		"} \n"
 	],
 
 	"header": [ 
 		"#include \"bw_osc_saw.h\"",
 		"static inline float bw_osc_saw_process1_wrapper (",
-				"\t\tconst bw_osc_saw_coeffs * BW_RESTRICT coeffs",
+				"\t\tconst bw_osc_saw_coeffs * BW_RESTRICT coeffs,",
 				"\t\tfloat x,",
 				"\t\tfloat x_inc) {",
 			"\tif (coeffs->antialiasing)",

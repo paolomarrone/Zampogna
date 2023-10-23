@@ -115,7 +115,6 @@
 		return "{" + this.operation + ":" + this.i_ports.length + ":" + this.o_ports.length + " }";
 	};
 	Block.flatten = function () {};
-	//Block.isUseless = function () { return false }; // TODO
 
 
 	const VarBlock = Object.create(Block);
@@ -183,8 +182,7 @@
 			return this.block.memoryblock.datatype();
 		};
 		this.o_ports[0].updaterate = function () {
-			//return this.block.i_ports[0].updaterate();
-			return us.UpdateRateAudio; // Simplification. TODO: fix
+			return this.block.i_ports[0].updaterate(); // Default. Set audio if loop
 		};
 	};
 	MemoryReaderBlock.validate = function () {
@@ -513,6 +511,17 @@
 			return ts.DataTypeBool;
 		throw new Error("Unrecongized type: " + x);
 	};
+	function parseUpdateRate(x) {
+		if (x == "const")
+			return us.UpdateRateConstant;
+		if (x == "fs")
+			return us.UpdateRateFs;
+		if (x == "control")
+			return us.UpdateRateControl;
+		if (x == "audio")
+			return us.UpdateRateAudio;
+		throw new Error("Unrecongized updaterate");
+	};
 
 	const CBlock = Object.create(Block);
 	CBlock.operation = "CBLOCK";
@@ -555,6 +564,7 @@
 			});
 		});
 		this.createPorts(this.inputs_N, this.outputs_N);
+		Block.setMaxOutputUpdaterate.call(this);
 		desc.block_inputs.forEach((x, i) => {
 			const dt = parseType(x.type); 
 			this.i_ports[i].datatype = () => dt;
@@ -562,8 +572,11 @@
 		desc.block_outputs.forEach((x, i) => {
 			const dt = parseType(x.type); 
 			this.o_ports[i].datatype = () => dt;
+			if (x.updaterate) {
+				const ur = parseUpdateRate(x.updaterate);
+				this.o_ports[i].updaterate = () => ur;
+			}
 		});
-		Block.setMaxOutputUpdaterate.call(this);
 	};
 	CBlock.clone = function () { // No sense in cloning this
 		return this;

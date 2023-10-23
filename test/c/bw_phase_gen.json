@@ -45,11 +45,13 @@
 		},
 		{
 			"type": "float32",
-			"info": "y"
+			"info": "y",
+			"updaterate": "audio"
 		},
 		{
 			"type": "float32",
-			"info": "y_inc"
+			"info": "y_inc",
+			"updaterate": "audio"
 		}
 	],
 

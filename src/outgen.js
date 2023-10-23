@@ -366,7 +366,8 @@
 			if (b.ref.coeffs)
 				program.identifiers.add(b.ref.coeffs);
 		});
-		program.name = program.identifiers.add(bdef.id); // Buh_0
+		program.name = "Buh_0";
+		//program.name = program.identifiers.add(bdef.id); // Buh_0
 		program.identifiers.add('_' + bdef.id);
 		bdef.i_ports.filter(p => p.updaterate() == us.UpdateRateAudio).forEach(p => {
 			const id = program.identifiers.add(p.id);
@@ -635,7 +636,7 @@
 							const decl = new funcs.Declaration(false, false, type, false, id, true);
 							decls.push(decl);
 							b.o_ports[output[1]].code.add(pid);
-							outputs.push(id);
+							outputs.push(pid);
 						}
 						else {
 
@@ -671,7 +672,7 @@
 					const f = cdef.funcs.init;
 
 					const locality = 1;
-					const whereDec = program.init;
+					const whereDec = program.coefficients;
 					const whereAss = program.init;
 
 					const rr = get_decls_assignments(locality, f);
@@ -686,7 +687,7 @@
 					const f = cdef.funcs.set_sample_rate;
 
 					const locality = 1;
-					const whereDec = program.fs_update;
+					const whereDec = program.coefficients;
 					const whereAss = program.fs_update;
 
 					const rr = get_decls_assignments(locality, f);
@@ -700,7 +701,7 @@
 					const f = cdef.funcs.reset_coeffs;
 
 					const locality = 1;
-					const whereDec = program.reset; // TODO: program.reset_coeffs and reset_state
+					const whereDec = program.coefficients; // TODO: program.reset_coeffs and reset_state
 					const whereAss = program.reset;
 
 					const rr = get_decls_assignments(locality, f);
@@ -714,7 +715,7 @@
 					const f = cdef.funcs.reset_state;
 
 					const locality = 1;
-					const whereDec = program.reset; // TODO: program.reset_coeffs and reset_state
+					const whereDec = program.coefficients; // TODO: program.reset_coeffs and reset_state
 					const whereAss = program.reset;
 
 					const rr = get_decls_assignments(locality, f);
@@ -727,9 +728,18 @@
 				if (cdef.funcs.update_coeffs_ctrl) {
 					const f = cdef.funcs.update_coeffs_ctrl;
 
+					const i_ports = [];
+					for (let i = 0; i < f.f_inputs.length; i++) {
+						const input = f.f_inputs[i];
+						if (input[0] == 'i') {
+							i_ports.push(b.i_ports[input[1]]);
+						}
+					}
+					const ur = us.max.apply(null, i_ports.map(p => p.updaterate()));
+
 					const locality = 1;
-					const whereDec = program.update_coeffs_ctrl;
-					const whereAss = program.update_coeffs_ctrl;
+					const whereDec = program.coefficients;
+					const whereAss = ur == us.UpdateRateAudio ? program.update_coeffs_audio : program.update_coeffs_ctrl;
 
 					const rr = get_decls_assignments(locality, f);
 					const decls = rr.decls;
@@ -742,7 +752,7 @@
 					const f = cdef.funcs.update_coeffs_audio;
 
 					const locality = 1;
-					const whereDec = program.update_coeffs_audio;
+					const whereDec = program.coefficients;
 					const whereAss = program.update_coeffs_audio;
 
 					const rr = get_decls_assignments(locality, f);

@@ -406,6 +406,53 @@
 			`,
 			options: { initial_block_id: "asd", control_inputs: ['f'], optimizations: default_optimizations }
 		},
+		{
+			code: `
+				y = saw_generator(frequency) {
+					
+					phaseInc = mapFreq(frequency) / fs
+					phase = frac(delay(phase) + phaseInc)
+					phase.init = 0.0
+					y = 2.0 * phase - 1.0
+				
+				}
+
+				y = mapFreq (fr) {
+					y = fr * fr * fr * 10000.0 + 20.0
+				}
+
+				y = frac (x) {
+					y = x - float(int(x))
+				}
+
+				float y = delay (float x) {
+				    mem[1] float s
+				    y = s[0]
+				    s[0] = x
+				    s.init = x
+				}
+			`,
+			options: { initial_block_id: "saw_generator", control_inputs: ['frequency'], optimizations: default_optimizations }
+		},
+		{
+			code: `
+
+				include bw_phase_gen
+				include bw_osc_saw
+				include bw_env_gen
+
+				y = asd (gate, attack, release) {
+					bool ga = gate > 0.5
+					a = attack * 10.0
+					r = release * 10.0
+					g, _, g_inc, _ = bw_phase_gen(0.0, 0.0, 440.0, 0.0)
+					s = bw_osc_saw(g, g_inc, true)
+					e = bw_env_gen(ga, a, 0.01, 1.0, r);
+					y = s * e;
+				}
+			`,
+			options: { initial_block_id: "asd", control_inputs: ['gate', 'attack', 'release'], optimizations: default_optimizations }
+		},
 	];
 
 	const BadTests = [

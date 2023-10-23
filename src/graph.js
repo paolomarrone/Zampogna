@@ -715,6 +715,34 @@
 				p.updaterate = () => us.UpdateRateAudio;
 		});
 		bdef.i_ports[0].updaterate = () => us.UpdateRateFs;
+
+		bdef.blocks.filter(b => bs.CallBlock.isPrototypeOf(b) && b.type == 'cdef').forEach(b => {
+			b.o_ports.forEach((p, i) => {
+				const u = b.ref.o_ports[i].updaterate;
+				p.updaterate = u;
+			});
+		});
+
+		// Detecting memory loops and setting updaterate to Audio for now
+		const mems = bdef.blocks.filter(b => bs.MemoryReaderBlock.isPrototypeOf(b)).map(b => b.memoryblock);
+		mems.forEach(m => {
+			const ws = bdef.blocks.filter(b => bs.MemoryWriterBlock.isPrototypeOf(b) && b.memoryblock == m);
+			ws.forEach(w => f(w));
+
+			bdef.blocks.forEach(b => delete b.__visited__);
+			function f (b) {
+				if (b.__visited__)
+					return;
+				b.__visited__ = true;
+				if (bs.MemoryReaderBlock.isPrototypeOf(b) && b.memoryblock == m) {
+					b.o_ports[0].updaterate = () => us.UpdateRateAudio;
+				}
+				bdef.connections.filter(c => c.out.block == b).forEach(c => {
+					f (c.in.block);
+				});
+			};
+		});
+
 		bdef.propagateUpdateRates();
 
 		// TODO: think about memory update rate. Readings should be up-bounded to writings...?
