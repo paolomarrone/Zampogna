@@ -29,8 +29,18 @@
 	const path = require("path");
 	const templates = {
 		//"matlab": 			String(fs.readFileSync(path.join(__dirname, "templates", "matlab_template.txt"))),
-		"simple_c":			String(fs.readFileSync(path.join(__dirname, "templates", "simple_c.h"))),
-		"bw":				String(fs.readFileSync(path.join(__dirname, "templates", "bw_module.h"))),
+		"simple_c": String(fs.readFileSync(path.join(__dirname, "templates", "simple_c.h"))),
+		"bw": {
+			"src": {
+				"module_h": String(fs.readFileSync(path.join(__dirname, "templates", "bw_example", "src", "bw_example.h"))),
+				"module_c": String(fs.readFileSync(path.join(__dirname, "templates", "bw_example", "src", "bw_example.c"))),
+				"config_h": String(fs.readFileSync(path.join(__dirname, "templates", "bw_example", "src", "config.h"))),
+			},
+			"vst3": {
+				"config_vst3_h": String(fs.readFileSync(path.join(__dirname, "templates", "bw_example", "vst3", "config_vst3.h"))),
+				"Makefile": String(fs.readFileSync(path.join(__dirname, "templates", "bw_example", "vst3", "Makefile")))
+			}
+		}	
 	};
 	const bs = require("./blocks").BlockTypes;
 	const ts = require("./types");
@@ -146,7 +156,7 @@
 		funcs.Identifiers = function () {
 			this.ids = [];
 			const nuostr = Array.from(funcs.getReservedKeywords());
-			nuostr.push('i', 'instance', 'n_samples', 'sample_rate');
+			nuostr.push('i', 'instance', 'n_samples', 'sample_rate', 'firstRun', 'x', 'y');
 			nuostr.forEach(k => {
 				this.ids.push( {
 					raw: k,
@@ -172,7 +182,7 @@
 				throw new Error("Identifier almost impossible error");
 			};
 			function normalize (id) {
-				id = id.replace(/[^a-zA-Z0-9_]/, '');
+				id = id.replace(/[^a-zA-Z0-9_]/g, '');
 				if (id.length == 0)
 					id = '_';
 				if (id[0].match(/[0-9]/))
@@ -333,8 +343,11 @@
 			coefficients: new funcs.Statements(),
 			submodules: new funcs.Statements(),
 
+			// mem reqs/sets
+			mem_reqs: [],
+			mem_sets: [],
+
 			// Assignments
-			consts_init: new funcs.Statements(),
 			init: new funcs.Statements(),
 			reset: new funcs.Statements(),
 			constants: new funcs.Statements(),
@@ -359,6 +372,7 @@
 			bdef.o_ports.forEach(p => p.code = new LazyString());
 		}());
 
+		// TODO: check order and uniqueness in some weird cases, like a parameter called fs...
 		// TODO: fix: calls -> cdef : n -> 1
 		bdef.blocks.filter(b => bs.CallBlock.isPrototypeOf(b) && b.type == "cdef").forEach(b => {
 			if (b.ref.state)
@@ -366,19 +380,37 @@
 			if (b.ref.coeffs)
 				program.identifiers.add(b.ref.coeffs);
 		});
-		program.name = "Buh_0";
-		//program.name = program.identifiers.add(bdef.id); // Buh_0
+		bdef.i_ports.filter(p => p.updaterate() == us.UpdateRateControl).forEach(p => {
+			const id = program.identifiers.add(p.id);
+			const code = funcs.getObjectPrefix() + id;
+			program.parameters.push(id);
+			p.code = code;
+		});
+		program.parameters.forEach(p => {
+			const id = program.identifiers.add(p + '_z1');
+			const d = new funcs.Declaration(false, false, ts.DataTypeFloat32, false, id, true);
+			program.parameter_states.add(d);
+		});
+		program.parameters.forEach(p => {
+			const id = program.identifiers.add(p + '_CHANGED');
+			const d = new funcs.Declaration(false, false, ts.DataTypeBool, false, id, true);
+			program.parameter_states.add(d);
+		});	
+		program.parameters.forEach(p => {
+			program.identifiers.add('p_' + p);
+		});
+		program.parameters.forEach(p => {
+			const id = p;
+			const d = new funcs.Declaration(false, false, ts.DataTypeFloat32, false, id, true);
+			program.parameter_states.add(d);
+		});
+		//program.name = "Buh_0";
+		program.name = program.identifiers.add(bdef.id); // Buh_0
 		program.identifiers.add('_' + bdef.id);
 		bdef.i_ports.filter(p => p.updaterate() == us.UpdateRateAudio).forEach(p => {
 			const id = program.identifiers.add(p.id);
 			const code = new LazyString(id, funcs.getArrayIndexer('i'));
 			program.audio_inputs.push(id);
-			p.code = code;
-		});
-		bdef.i_ports.filter(p => p.updaterate() == us.UpdateRateControl).forEach(p => {
-			const id = program.identifiers.add(p.id);
-			const code = funcs.getObjectPrefix() + id;
-			program.parameters.push(id);
 			p.code = code;
 		});
 		bdef.i_ports.filter(p => p.updaterate() == us.UpdateRateFs).forEach(p => {
@@ -391,21 +423,6 @@
 			const code = new LazyString(id, funcs.getArrayIndexer('i'));
 			program.audio_outputs.push(id);
 			p.code = code;
-		});
-		program.parameters.forEach(p => {
-			const id = p;
-			const d = new funcs.Declaration(false, false, ts.DataTypeFloat32, false, id, true);
-			program.parameter_states.add(d);
-		});
-		program.parameters.forEach(p => {
-			const id = program.identifiers.add(p + '_z1');
-			const d = new funcs.Declaration(false, false, ts.DataTypeFloat32, false, id, true);
-			program.parameter_states.add(d);
-		});
-		program.parameters.forEach(p => {
-			const id = program.identifiers.add(p + '_CHANGED');
-			const d = new funcs.Declaration(false, false, ts.DataTypeBool, false, id, true);
-			program.parameter_states.add(d);
 		});
 		
 
@@ -423,7 +440,41 @@
 	
 		if (t == 'C') {
 			return [
-				{ name: bdef.id + ".h", str: doT.template(templates["simple_c"])(program) },
+				{ 
+					path: '.',
+					name: bdef.id + ".h",
+					str: doT.template(templates["simple_c"])(program) 
+				},
+			];
+		}
+
+		if (t == 'bw') {
+			return [
+				{
+					path: path.join(bdef.id, 'src'),
+					name: bdef.id + '.h',
+					str: doT.template(templates.bw.src.module_h)(program) 
+				},
+				{
+					path: path.join(bdef.id, 'src'),
+					name: bdef.id + '.c',
+					str: doT.template(templates.bw.src.module_c)(program) 
+				},
+				{
+					path: path.join(bdef.id, 'src'),
+					name: 'config.h',
+					str: doT.template(templates.bw.src.config_h)(program) 
+				},
+				{
+					path: path.join(bdef.id, 'vst3'),
+					name: 'config_vst3.h',
+					str: doT.template(templates.bw.vst3.config_vst3_h)(program) 
+				},
+				{
+					path: path.join(bdef.id, 'vst3'),
+					name: 'Makefile',
+					str: doT.template(templates.bw.vst3.Makefile)(program) 
+				},
 			];
 		}
 		/*
@@ -450,7 +501,7 @@
 			if (ur == us.UpdateRateConstant) {
 				locality = 0;
 				whereDec = program.constants;
-				whereAss = program.consts_init;
+				whereAss = program.init;
 			}
 			if (ur == us.UpdateRateFs) {
 				if (locality == 2)
@@ -531,12 +582,12 @@
 				const id = program.identifiers.add(b.id);
 				const d = new funcs.MemoryDeclaration(b.datatype(), id, input_codes[0]);
 				b.code.add(funcs.getObjectPrefix(), id);
-				// TODO: memreq, memset... ?
 
 				program.memory_declarations.add(d);
 
 				const i = new funcs.MemoryInit(b.code, input_codes[0], input_codes[1]);
 				program.init.add(i);
+				program.reset.add(i);
 
 				return;
 			}
@@ -672,7 +723,7 @@
 					const f = cdef.funcs.init;
 
 					const locality = 1;
-					const whereDec = program.coefficients;
+					const whereDec = program.constants;
 					const whereAss = program.init;
 
 					const rr = get_decls_assignments(locality, f);
@@ -681,6 +732,22 @@
 				
 					decls.forEach(d => whereDec.add(d));
 					assignments.forEach(a => whereAss.add(a));
+				}
+
+				if (cdef.funcs.mem_req) {
+					const f = cdef.funcs.mem_req;
+
+					program.mem_reqs.push(
+						f.f_name + '(' + coeffs + ')'
+					);
+				}
+
+				if (cdef.funcs.mem_set) {
+					const f = cdef.funcs.mem_set;
+
+					program.mem_sets.push(
+						f.f_name + '(' + coeffs + ', ' + state + ', mem)'
+					);
 				}
 
 				if (cdef.funcs.set_sample_rate) {

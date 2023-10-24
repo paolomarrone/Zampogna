@@ -536,8 +536,10 @@
 	}
 
 	// replace properties with blocks/connections
+	// Assuming bdef flattened
 	function normalize_properties (bdef) {
-		// Assuming bdef flattened
+
+		// I propose to remove this blasfemy
 		(function explicitize_init (bdef) {
 			// y.init = x -> y.init = x.init
 			bdef.properties.filter(p => p.type == 'init').forEach(p => {

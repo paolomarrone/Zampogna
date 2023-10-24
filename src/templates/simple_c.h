@@ -36,28 +36,19 @@ struct _{{=it.name}} {
 typedef struct _{{=it.name}} {{=it.name}};
 
 
-void {{=it.name}}_consts_init({{=it.name}} *instance);
 void {{=it.name}}_init({{=it.name}} *instance);
 void {{=it.name}}_set_sample_rate({{=it.name}} *instance, float sample_rate);
 void {{=it.name}}_reset({{=it.name}} *instance);
-void {{=it.name}}_process({{=it.name}} *instance, {{?it.audio_inputs.length > 0}} {{=it.audio_inputs.map(x => 'const float *' + x).join(', ')}}, {{?}}{{?it.audio_outputs.length > 0}}{{=it.audio_outputs.map(x => 'float *' + x).join(', ')}}, {{?}}int nSamples);
+void {{=it.name}}_process({{=it.name}} *instance, {{?it.audio_inputs.length > 0}} {{=it.audio_inputs.map(x => 'const float *' + x).join(', ')}}, {{?}}{{?it.audio_outputs.length > 0}}{{=it.audio_outputs.map(x => 'float *' + x).join(', ')}}, {{?}}int n_samples);
 float {{=it.name}}_get_parameter({{=it.name}} *instance, int index);
 void {{=it.name}}_set_parameter({{=it.name}} *instance, int index, float value);
 
 
 {{=it.constants.toString(0)}}
 
-void {{=it.name}}_consts_init({{=it.name}} *instance) {
-
-{{=it.consts_init.toString(1)}}
-
-}
-
 void {{=it.name}}_init({{=it.name}} *instance) {
 
 {{=it.init.toString(1)}}
-
-	{{=it.name}}_consts_init(instance);
 
 }
 
@@ -73,7 +64,7 @@ void {{=it.name}}_set_sample_rate({{=it.name}} *instance, float sample_rate) {
 
 }
 
-void {{=it.name}}_process({{=it.name}} *instance, {{?it.audio_inputs.length > 0}} {{=it.audio_inputs.map(x => 'const float *' + x).join(', ')}}, {{?}}{{?it.audio_outputs.length > 0}}{{=it.audio_outputs.map(x => 'float *' + x).join(', ')}}, {{?}}int nSamples) {
+void {{=it.name}}_process({{=it.name}} *instance, {{?it.audio_inputs.length > 0}} {{=it.audio_inputs.map(x => 'const float *' + x).join(', ')}}, {{?}}{{?it.audio_outputs.length > 0}}{{=it.audio_outputs.map(x => 'float *' + x).join(', ')}}, {{?}}int n_samples) {
 	
 	if (instance->firstRun) {{{~it.parameters:c}}
 		instance->{{=c}}_CHANGED = 1;{{~}}
@@ -93,7 +84,7 @@ void {{=it.name}}_process({{=it.name}} *instance, {{?it.audio_inputs.length > 0}
 {{=it.reset.toString(2)}}
 	}
 
-	for (int i = 0; i < nSamples; i++) {
+	for (int i = 0; i < n_samples; i++) {
 
 {{=it.update_coeffs_audio.toString(2)}}
 
@@ -126,6 +117,5 @@ void {{=it.name}}_set_parameter({{=it.name}} *instance, int index, float value) 
 		{{~}}
 	}
 }
-
 
 #endif

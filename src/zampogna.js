@@ -15,13 +15,13 @@
 
 (function() {
 
-	const fs = require("fs");
-
-	const util   = require("./util");
-
-	const parser  = require("./grammar");
-	const syntax  = require("./syntaxer");
-	const graph   = require("./graph");
+	const prepro = require("../src/preprocessor");
+	const parser = require("../src/grammar");
+	const syntax = require("../src/syntax");
+	const graph  = require("../src/graph");
+	const schdlr = require("../src/scheduler");
+	const outgen = require("../src/outgen");
+	const util   = require("../src/util");
 
 	
 	const options_descr = `
@@ -31,20 +31,24 @@
 		initial_block_inputs_n: number
 		control_inputs: array of strings
 		initial_values: array of { id: string, value: string } objects
-		target_language: simpleC/MATLAB
+		target_language: simpleC/bw
 		optimizations: object of properties
 			{
-				"remove_useless_vars": true
-				"merge_max_blocks": true
-				"simplifly_max_blocks": true
-				"negative_consts": true
-				"negative_negative": true
-				"unify_consts": true
+				remove_dead_graph: true,
+				negative_negative: true,
+				negative_consts: true,
+				unify_consts: true,
+				remove_useless_vars: true,
+				merge_max_blocks: true,
+				simplifly_max_blocks1: true,
+				simplifly_max_blocks2: true,
+				lazyfy_subexpressions_rates: true,
+				lazyfy_subexpressions_controls: true,
 			}
 
 	`;
 
-	function compile (code, options_ = {}) {
+	function compile (code, filereader, options_ = {}) {
 
 		const options = {
 			debug_mode: false,
@@ -52,8 +56,19 @@
 			initial_block_inputs_n: -1, // Optional (and not checked) if there's a unique bdef with that id. All input types must be float32
 			control_inputs: [], // List of ids. Inputs with such ids will carry UpdateRateControl
 			initial_values: [],
-			optimizations: [],
-			target_language: ""
+			target_language: "",
+			optimizations: {
+				remove_dead_graph: true,
+				negative_negative: true,
+				negative_consts: true,
+				unify_consts: true,
+				remove_useless_vars: true,
+				merge_max_blocks: true,
+				simplifly_max_blocks1: true,
+				simplifly_max_blocks2: true,
+				lazyfy_subexpressions_rates: true,
+				lazyfy_subexpressions_controls: true,
+			},
 		};
 
 		for (let p in options_) {
@@ -61,34 +76,30 @@
 		}
 
 		try {
+			
+			const r = prepro.preprocess(code, filereader);
+			code = r[0];
+			const jsons = r[1];
 
-			// Include builtin code
-			const builtin = String(fs.readFileSync("builtin.crm"));
-
-			code = builtin + code;
-
-			// Parsing
 			const AST = parser.parse(code);
-			//if (options.debug_mode)
-			//	util.printAST(AST);
-
-			// Extended Syntax analysis
 			syntax.validateAST(AST);
 
-			// AST -> Graphes
-			//const graphes = grapher.ASTToGraph(AST, options);
+			const g = graph.ASTToGraph(AST, options, jsons);
+			graph.flatten(g, options);
+			graph.optimize(g, options);
 
+			const s = schdlr.schedule(g, options);
+
+			const o = outgen.convert(g, s, options);
+
+			return o;
 
 		} catch (e) {
 			console.error(e);
 			return;
 		}
-
 	}
 
-
-	exports = {
-		compile
-	};
+	exports.compile = compile;
 
 }());

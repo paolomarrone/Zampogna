@@ -1,0 +1,19 @@
+include bw_reverb
+include bw_comb
+
+yL, yR = reverb (x_l, x_r, predelay, bandwidth, damping, decay, wet, delay_ff, delay_fb, coeff_blend, coeff_ff, coeff_fb) {
+	pre = 0.1 * predelay
+	ban = 20.0 + (20.0e3 - 20.0) * bandwidth * bandwidth * bandwidth
+	dam = 20.0 + (20.0e3 - 20.0) * damping * damping * damping
+	dec = decay * 0.98
+
+	yL_, yR_ = bw_reverb (x_l, x_r, pre, ban, dam, dec, wet)
+
+	ff = coeff_ff * 2.0 - 1.0
+	fb = 1.99 * coeff_fb - 0.995
+	max = 5.0
+
+	yL = bw_comb(max, yL_, delay_ff, delay_fb, coeff_blend, ff, fb);
+	yR = bw_comb(max, yR_, delay_ff, delay_fb, coeff_blend, ff, fb);
+
+}

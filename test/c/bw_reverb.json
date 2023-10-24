@@ -1,0 +1,171 @@
+{
+	"wrapper": [
+		"yL, yR = bw_reverb (x_l, x_r, predelay, bandwidth, damping, decay, wet) {",
+		"    yL.init, yR.init, yL, yR = bw_reverb_(fs, x_l.init, x_r.init, x_l, x_r, predelay, bandwidth, damping, decay, wet);",
+		"}"
+	],
+
+	"header": "#include \"bw_reverb.h\"",
+	
+	"block_name": "bw_reverb_",
+	"block_inputs": [
+		{
+			"type": "float32",
+			"info": "fs",
+			"updaterate": "fs"
+		},
+		{
+			"type": "float32",
+			"info": "x_l_0",
+			"updaterate": "const"
+		},
+		{
+			"type": "float32",
+			"info": "x_r_0",
+			"updaterate": "const"
+		},
+		{
+			"type": "float32",
+			"info": "x_l"
+		},
+		{
+			"type": "float32",
+			"info": "x_r"
+		},
+		{
+			"type": "float32",
+			"name": "predelay",
+			"isParameter": true
+		},
+		{
+			"type": "float32",
+			"name": "bandwidth",
+			"isParameter": true
+		},
+		{
+			"type": "float32",
+			"name": "damping",
+			"isParameter": true
+		},
+		{
+			"type": "float32",
+			"name": "decay",
+			"isParameter": true
+		},
+		{
+			"type": "float32",
+			"name": "wet",
+			"isParameter": true
+		}
+	],
+	"block_outputs": [
+		{ 
+			"type": "float32",
+			"info": "y_l_0"
+		},
+		{ 
+			"type": "float32",
+			"info": "y_r_0"
+		},
+		{
+			"type": "float32",
+			"info": "y_l"
+		},
+		{
+			"type": "float32",
+			"info": "y_r"
+		}
+	],
+
+
+	"state": "bw_reverb_state",
+	"coeffs": "bw_reverb_coeffs",
+	"prefix": "bw_reverb",
+
+	"init": {
+		"f_name": "bw_reverb_init",
+		"f_outputs" : [],
+		"f_inputs" : [
+			"coeffs"
+		]
+	},
+
+	"mem_req": {
+		"f_name": "bw_reverb_mem_req",
+		"f_outputs": [
+			"size"
+		],
+		"f_inputs": [
+			"ceffs"
+		]
+	},
+
+	"mem_set": {
+		"f_name": "bw_reverb_mem_set",
+		"f_outputs": [],
+		"f_inputs": [
+			"ceffs",
+			"state",
+			"mem"
+		]
+	},
+
+	"set_sample_rate": {
+		"f_name": "bw_reverb_set_sample_rate",
+		"f_outputs": [],
+		"f_inputs": [
+			"coeffs",
+			"i0"
+		]
+	},
+
+	"reset_coeffs": {
+		"f_name": "bw_reverb_reset_coeffs",
+		"f_outputs" : [],
+		"f_inputs" : [
+			"coeffs"
+		]
+	},
+
+	"reset_state": {
+		"f_name": "bw_reverb_reset_state",
+		"f_outputs" : [],
+		"f_inputs" : [
+			"coeffs",
+			"state",
+			"i1",
+			"i2",
+			"o0",
+			"o1"
+		]
+	},
+
+	"update_coeffs_ctrl": {
+		"f_name": "bw_reverb_update_coeffs_ctrl",
+		"f_outputs" : [],
+		"f_inputs" : [
+			"coeffs"
+		]
+	},
+
+	"update_coeffs_audio": {
+		"f_name": "bw_reverb_update_coeffs_audio",
+		"f_outputs" : [],
+		"f_inputs" : [
+			"coeffs"
+		]
+	},
+
+	"process1": {
+		"f_name": "bw_reverb_process1",
+		"f_outputs": [],
+		"f_inputs": [
+			"coeffs",
+			"state",
+			"i3",
+			"i4",
+			"o2",
+			"o3"
+		]
+	}
+}

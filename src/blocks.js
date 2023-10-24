@@ -500,6 +500,11 @@
 		r.type = this.type;
 		return r;
 	};
+	CallBlock.toString = function () {
+		if (!this.ref)
+			return "{ Generic CALL }";
+		return "{ CALL: " + this.ref.toString() + " }";
+	};
 
 
 	function parseType (x) {
@@ -546,6 +551,8 @@
 
 		this.funcs = {
 			init: desc.init,
+			mem_req: desc.mem_req,
+			mem_set: desc.mem_set,
 			set_sample_rate: desc.set_sample_rate,
 			reset_coeffs: desc.reset_coeffs,
 			reset_state: desc.reset_state,
