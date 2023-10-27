@@ -453,6 +453,32 @@
 			`,
 			options: { initial_block_id: "asd", control_inputs: ['gate', 'attack', 'release'], optimizations: default_optimizations }
 		},
+		{
+			code: `
+
+				include bw_reverb
+				include bw_comb
+
+				yL, yR = reverb (x_l, x_r, predelay, bandwidth, damping, decay, wet, delay_ff, delay_fb, coeff_blend, coeff_ff, coeff_fb) {
+					
+					pre = 0.1 * predelay
+					ban = 20.0 + (20.0e3 - 20.0) * bandwidth * bandwidth * bandwidth
+					dam = 20.0 + (20.0e3 - 20.0) * damping * damping * damping
+					dec = decay * 0.98
+
+					yL_, yR_ = bw_reverb (x_l, x_r, pre, ban, dam, dec, wet)
+
+					ff = coeff_ff * 2.0 - 1.0
+					fb = 1.99 * coeff_fb - 0.995
+					max = 5.0
+
+					yL = bw_comb(max, yL_, delay_ff, delay_fb, coeff_blend, ff, fb);
+					yR = bw_comb(max, yR_, delay_ff, delay_fb, coeff_blend, ff, fb);
+
+				}
+			`,
+			options: { initial_block_id: "reverb", target_language: 'bw', control_inputs: ["predelay", "bandwidth", "damping", "decay", "wet", "delay_ff", "delay_fb", "coeff_blend", "coeff_ff", "coeff_fb"], optimizations: default_optimizations }
+		},
 	];
 
 	const BadTests = [
@@ -474,7 +500,10 @@
 	}
 
 	function runGoodTest (t) {
-		GoodTests[t].options.target_language = "C"; // See this
+		if (!GoodTests[t].options.target_language)
+			GoodTests[t].options.target_language = "C"; // See this
+		const outdir = path.join(outputDir, 'T' + t);
+		fs.mkdirSync(outdir, { recursive: true });
 		const r = preprocessor.preprocess(GoodTests[t].code, filereader);
 		const code = r[0];
 		const jsons = r[1];
@@ -482,16 +511,21 @@
 		syntax.validateAST(AST);
 		const g = graph.ASTToGraph(AST, GoodTests[t].options, jsons);
 		var gvizs = util.graphToGraphviz(g);
-		fs.writeFileSync(outputDir + "/T" + t + ".dot", gvizs);
+		fs.writeFileSync(outdir + "/T" + ".dot", gvizs);
 		graph.flatten(g, GoodTests[t].options);
 		var gvizs = util.graphToGraphviz(g);
-		fs.writeFileSync(outputDir + "/T" + t + "Flattened.dot", gvizs);
+		fs.writeFileSync(outdir + "/T" + "Flattened.dot", gvizs);
 		graph.optimize(g, GoodTests[t].options);
 		var gvizs = util.graphToGraphviz(g);
-		fs.writeFileSync(outputDir + "/T" + t + "Optimized.dot", gvizs);
+		fs.writeFileSync(outdir + "/T" + "Optimized.dot", gvizs);
 		const s = schdlr.schedule(g, GoodTests[t].options);
-		const o = outgen.convert(g, s, GoodTests[t].options);
-		fs.writeFileSync(outputDir + "/T" + t + "Out.c", o[0].str);
+		const files = outgen.convert(g, s, GoodTests[t].options);
+		files.forEach(f => {
+			const outdirr = path.join(outdir, GoodTests[t].options.target_language, f.path);
+			fs.mkdirSync(outdirr, { recursive: true });
+			fs.writeFile(path.join(outdirr, f.name), f.str, err => { if (err) throw err });
+		});
+		//fs.writeFileSync(outputDir + "/T" + t + "Out.c", o[0].str);
 	}
 
 	const GoodTestResults = [];
