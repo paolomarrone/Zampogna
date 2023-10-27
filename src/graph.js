@@ -540,11 +540,15 @@
 	function normalize_properties (bdef) {
 
 		// I propose to remove this blasfemy
+		// This is also a bad place for this
 		(function explicitize_init (bdef) {
-			// y.init = x -> y.init = x.init
+			// y.init = expr -> y.init = (expr).init
 			bdef.properties.filter(p => p.type == 'init').forEach(p => {
 				const c = bdef.connections.find(c => c.out == p.block.i_ports[0]);
 				if (!c)
+					return;
+				// This is a not nice cheating too:
+				if (bs.CallBlock.isPrototypeOf(c.in.block) && c.in.block.type == 'cdef')
 					return;
 				const v = convert_property(c.in.block, "init", bdef);
 				c.in = v.o_ports[0];

@@ -54,7 +54,6 @@ void {{=it.name}}_process({{=it.name}} *instance, const float** x, float** y, in
 	
 {{=it.control_coeffs_update.toString(1)}}
 
-{{=it.update_coeffs_ctrl.toString(1)}}
 
 	{{~it.parameters:c}}
 	instance->{{=c}}_CHANGED = 0;{{~}}
@@ -62,6 +61,8 @@ void {{=it.name}}_process({{=it.name}} *instance, const float** x, float** y, in
 	if (instance->firstRun) {
 {{=it.reset.toString(2)}}
 	}
+
+{{=it.update_coeffs_ctrl.toString(1)}}
 
 	for (int i = 0; i < n_samples; i++) {
 

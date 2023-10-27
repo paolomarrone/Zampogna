@@ -746,7 +746,7 @@
 					const f = cdef.funcs.mem_set;
 
 					program.mem_sets.push(
-						f.f_name + '(' + coeffs + ', ' + state + ', mem)'
+						f.f_name + '(' + coeffs + ', ' + state + ', m)'
 					);
 				}
 
