@@ -54,7 +54,7 @@ static struct config_io_bus config_buses_out[NUM_BUSES_OUT] = {
 
 static struct config_parameter config_parameters[NUM_PARAMETERS] = {
 	{{~it.parameters:p}}
-	{ "{{=p}}", "{{=p}}", "", 0, 0, 0, 0.5f },{{~}}
+	{ "{{=p}}", "{{=p}}", "", 0, 0, 0, {{=it.parameters_initialValues[p]}} },{{~}}
 };
 
 // Internal API

@@ -2,17 +2,26 @@
 
 ## DEV branch!  
 
-A programming language for Audio DSP
+# Main addition with respect to main branch:
 
-- Declarative
-- Synchronous Data flow
-- Minimalistic
-- Modular
-
-
-https://ciaramella.dev
+- Datatypes
+  * float32, int32, bool
+  * Strong typing
+    * Cast alawys required
+  * If not specific -> float32
+- Arrays
+  * Delay lines
+- Signal properties
+  * .init
+    * automatic inference and propagation
+  * .fs
+    * automatic inference and propagation
+- Include other .crm files
+- Include C code
+  * Brickworks modules
+  * Described by JSON files
 
 
 
 # Credits
-Ciaramella and Zampogna are being developed by [Orastron](http://orastron.com "Orastron") in collaboration with the University of Udine.
+Ciaramella and Zampogna are being developed by [Orastron](http://orastron.com "Orastron")

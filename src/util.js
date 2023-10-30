@@ -113,10 +113,11 @@
 
 	// Is this the best place for this?
 
-	const fs = require("fs");
-	const path = require("path");
 
 	function get_filereader (dirs) {
+	
+		const fs = require("fs");
+		const path = require("path");
 
 		return function (filename) {
 

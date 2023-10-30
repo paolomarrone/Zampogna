@@ -202,7 +202,7 @@
 			this.toString = function (tabs) {
 				return this.s.toString(tabs);
 			};
-		}
+		};
 		funcs.MemoryDeclaration = function (type, id, size) {
 			this.s = new LazyString();
 			this.s.add(funcs.getTypeDecl(type), ' ', id, '[', size, '];');
@@ -335,6 +335,7 @@
 			audio_inputs: [],
 			audio_outputs: [],
 			parameters: [],
+			parameters_initialValues: {},
 
 			// Instance properties // Declarations
 			parameter_states: new funcs.Statements(), // p, p_z1, p_CHANGED
@@ -385,6 +386,9 @@
 			const code = funcs.getObjectPrefix() + id;
 			program.parameters.push(id);
 			p.code = code;
+			program.parameters_initialValues[id] = options.initial_values[p.id]
+				? funcs.getFloat(options.initial_values[p.id])
+				: funcs.getFloat(0.5);
 		});
 		program.parameters.forEach(p => {
 			const id = program.identifiers.add(p + '_z1');
@@ -404,8 +408,7 @@
 			const d = new funcs.Declaration(false, false, ts.DataTypeFloat32, false, id, true);
 			program.parameter_states.add(d);
 		});
-		//program.name = "Buh_0";
-		program.name = program.identifiers.add(bdef.id); // Buh_0
+		program.name = program.identifiers.add(bdef.id);
 		program.identifiers.add('_' + bdef.id);
 		bdef.i_ports.filter(p => p.updaterate() == us.UpdateRateAudio).forEach(p => {
 			const id = program.identifiers.add(p.id);
@@ -477,14 +480,8 @@
 				},
 			];
 		}
-		/*
-		if (t == 'MATLAB') {
-			return [
-				{ name: bdef.id + '.m', str: doT.template(templates["matlab"])(program) }
-			]
-		}
-		*/
 
+		throw new Error("Not recognized target language");
 
 		function dispatch (b, ur, control_dependencies) {
 			const outblocks = bdef.connections.filter(c => c.in.block == b).map(c => c.out.block);

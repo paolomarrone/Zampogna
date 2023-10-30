@@ -75,29 +75,23 @@
 			options[p] = options_[p];
 		}
 
-		try {
-			
-			const r = prepro.preprocess(code, filereader);
-			code = r[0];
-			const jsons = r[1];
 
-			const AST = parser.parse(code);
-			syntax.validateAST(AST);
+		const r = prepro.preprocess(code, filereader);
+		code = r[0];
+		const jsons = r[1];
 
-			const g = graph.ASTToGraph(AST, options, jsons);
-			graph.flatten(g, options);
-			graph.optimize(g, options);
+		const AST = parser.parse(code);
+		syntax.validateAST(AST);
 
-			const s = schdlr.schedule(g, options);
+		const g = graph.ASTToGraph(AST, options, jsons);
+		graph.flatten(g, options);
+		graph.optimize(g, options);
 
-			const o = outgen.convert(g, s, options);
+		const s = schdlr.schedule(g, options);
 
-			return o;
+		const o = outgen.convert(g, s, options);
 
-		} catch (e) {
-			console.error(e);
-			return;
-		}
+		return o;
 	}
 
 	exports.compile = compile;

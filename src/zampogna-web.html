@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script src="zampogna-web.js"></script>
+
+<script>
+window.onload = function () {
+
+
+
+	var cb = document.getElementById("compile");
+
+	cb.onclick = function () {
+
+		let code = document.getElementById("code").value;
+		let initial_block = document.getElementById("initialBlock").value.trim();
+		let initial_block_n = document.getElementById("initialBlock_n").value.trim();
+		let parameters = document.getElementById("parameters").value;
+		parameters = parameters.trim().split(",").map(x => x.trim()).filter(x => x != "");
+		let initial_values_ = document.getElementById("initialvalues").value.trim();
+		const initial_values = {};
+		if (initial_values_ != "")
+			initial_values_.split(',').map(o => o.split('=')).forEach(e => initial_values[e[0]] = e[1]);
+		let target_lang = document.getElementById("target").value.trim();
+		
+		let messages = document.getElementById("messages");
+		let output = document.getElementById("output");
+		
+
+		const z_options = {
+			initial_block_id: initial_block,
+			initial_block_inputs_n: initial_block_n,
+			control_inputs: parameters,
+			initial_values: initial_values,
+			target_language: target_lang,
+		};
+		try {
+			messages.value = "";
+			output.innerHTML = "";
+			const files = zampogna.compile(code, null, z_options);
+			files.forEach(f => {
+				output.innerHTML += "<p>" + f.path + "/" + f.name + "</p>";
+				output.innerHTML += "<textarea rows=50 cols =100>" + f.str + "</textarea>";
+			});
+		}
+		catch (e) {
+			console.log("error", e)
+			messages.value = "\n" + e.toString();
+		}
+
+	}
+};
+</script>
+</head>
+<body>
+	<h1>zampogna-web</h1>
+
+	<p>Ciaramella Code</p>
+	<textarea id="code" rows="50" cols="100"></textarea>
+
+	<p>initial block</p>
+	<textarea id="initialBlock" rows="1" cols="50"></textarea>
+	<textarea id="initialBlock_n" rows="1" cols="5"></textarea>
+	
+	<p>parameters (v, w, f)</p>
+	<textarea id="parameters" rows="1" cols="50"></textarea>
+	
+	<p>initial values (v=0.2, w=0.4)</p>
+	<textarea id="initialvalues" rows="1" cols="50"></textarea>
+	
+	<p>target language (C, bw)</p>
+	<textarea id="target"></textarea>
+
+	<p>Compile</p>
+	<button id="compile">Compile</button>
+
+	<p>messages</p>
+	<textarea id="messages" rows="10" cols="100"></textarea>
+	
+	<h3>output</h3>
+	<div id="output">
+
+	</div>
+
+</body>
+</html>
