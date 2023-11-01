@@ -15,31 +15,25 @@
 
 (function() {
 
-	const UpdateRateGeneric = {};
-	UpdateRateGeneric.level = undefined;
-	UpdateRateGeneric.toString = () => "UpdateRateGeneric";
-
-	const UpdateRateConstant = Object.create(UpdateRateGeneric);
+	const UpdateRateConstant = {};
 	UpdateRateConstant.level = 0;
 	UpdateRateConstant.toString = () => "UpdateRateConstant";
 
-	const UpdateRateFs = Object.create(UpdateRateGeneric);
+	const UpdateRateFs = {};
 	UpdateRateFs.level = 1;
 	UpdateRateFs.toString = () => "UpdateRateFs";
 
-	const UpdateRateControl = Object.create(UpdateRateGeneric);
+	const UpdateRateControl = {};
 	UpdateRateControl.level = 2;
 	UpdateRateControl.toString = () => "UpdateRateControl";
 	
-	const UpdateRateAudio = Object.create(UpdateRateGeneric);
+	const UpdateRateAudio = {};
 	UpdateRateAudio.level = 3;
 	UpdateRateAudio.toString = () => "UpdateRateAudio";
 
 	function max (...x) {
 		var r = x[0];
 		for (let k of x) {
-			//if (k == UpdateRateGeneric)
-			//	throw new Error("UpdateRateGeneric");
 			if (k.level > r.level)
 				r = k;
 		}
@@ -49,8 +43,6 @@
 	function min (...x) {
 		var r = x[0];
 		for (let k of x) {
-			//if (k == UpdateRateGeneric)
-			//	throw new Error("UpdateRateGeneric");
 			if (k.level < r.level)
 				r = k;
 		}
@@ -66,7 +58,6 @@
 		return true;
 	}
 
-	exports["UpdateRateGeneric"] = UpdateRateGeneric;
 	exports["UpdateRateConstant"] = UpdateRateConstant;
 	exports["UpdateRateFs"] = UpdateRateFs;
 	exports["UpdateRateControl"] = UpdateRateControl;
