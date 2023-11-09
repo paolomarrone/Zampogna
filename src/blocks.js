@@ -662,7 +662,26 @@
 		};
 
 		set_o_ports_datatype () { 
-			
+			// Assuming inplicit input types defined
+			this.o_ports.forEach(p => {
+
+			});
+
+			const f = (b) =>  {
+				if (b._visited_)
+					return;
+				b._visited_ = true;
+				// WIP HERE
+				if (b == this)
+					return;
+
+
+				b.i_ports.forEach(p => {
+					const c = this.connections.find(c => c.out == p);
+					f(c.in.block);
+					c.out.datatype = c.in.datatype;
+				});
+			};
 		};
 		
 		set_o_ports_updaterate () {
