@@ -35,11 +35,15 @@
 				"module_h": String(fs.readFileSync(path.join(__dirname, "templates", "bw_example", "src", "bw_example.h"))),
 				"module_c": String(fs.readFileSync(path.join(__dirname, "templates", "bw_example", "src", "bw_example.c"))),
 				"config_h": String(fs.readFileSync(path.join(__dirname, "templates", "bw_example", "src", "config.h"))),
+				"config_js": String(fs.readFileSync(path.join(__dirname, "templates", "bw_example", "src", "config.js"))),
 			},
 			"vst3": {
 				"config_vst3_h": String(fs.readFileSync(path.join(__dirname, "templates", "bw_example", "vst3", "config_vst3.h"))),
 				"Makefile": String(fs.readFileSync(path.join(__dirname, "templates", "bw_example", "vst3", "Makefile")))
-			}
+			},
+			"web": {
+				"Makefile": String(fs.readFileSync(path.join(__dirname, "templates", "bw_example", "web", "Makefile")))
+			},
 		}	
 	};
 	const bs = require("./blocks").BlockTypes;
@@ -469,6 +473,11 @@
 					str: doT.template(templates.bw.src.config_h)(program) 
 				},
 				{
+					path: path.join(bdef.id, 'src'),
+					name: 'config.js',
+					str: doT.template(templates.bw.src.config_js)(program) 
+				},
+				{
 					path: path.join(bdef.id, 'vst3'),
 					name: 'config_vst3.h',
 					str: doT.template(templates.bw.vst3.config_vst3_h)(program) 
@@ -477,6 +486,11 @@
 					path: path.join(bdef.id, 'vst3'),
 					name: 'Makefile',
 					str: doT.template(templates.bw.vst3.Makefile)(program) 
+				},
+				{
+					path: path.join(bdef.id, 'web'),
+					name: 'Makefile',
+					str: doT.template(templates.bw.web.Makefile)(program) 
 				},
 			];
 		}
