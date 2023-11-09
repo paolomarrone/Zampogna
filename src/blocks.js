@@ -642,11 +642,32 @@
 		}
 	};
 
+	class Property {
+		whose; // Typically an output port
+		whom;  // Typically an output port
+		type;  // "fs" or "init". We should probably add "size" for memory
+		constructor (whose, whom, type) {
+			this.whose = whose;
+			this.shom = whom;
+			this.type = type;
+		};
+		validate () {
+			if (!this.whose || !this.whom)
+				throw new Error("Bad property");
+			if (this.type != "init" || this.type == "fs")
+				throw new Error("Unsupported property type");
+		};
+		toString () {
+			return '[' + this.type + " of " + this.whose + " = " + this.whom + ']';
+		};
+	};
+
 	class CompositeBlock extends Block {
 		operation = "COMPOSITE_BLOCK_DEFINITION";
 		id;
 		blocks;
 		connections;
+		properties;
 
 		compositeBlockFather;
 		compositeBlocks;
@@ -657,35 +678,59 @@
 			super();
 			this.blocks = [];
 			this.connections = [];
+			this.properties = [];
 			this.compositeBlocks = [];
 			this.cBlocks = [];
 		};
 
+		// Assuming implicit input types defined
 		set_o_ports_datatype () { 
-			// Assuming inplicit input types defined
-			this.o_ports.forEach(p => {
-
-			});
-
+			const g = (p) => this.connections.find(c => c.out == p);
 			const f = (b) =>  {
-				if (b._visited_)
+				if (b._visited_ || b == this)
 					return;
 				b._visited_ = true;
-				// WIP HERE
-				if (b == this)
-					return;
-
-
 				b.i_ports.forEach(p => {
-					const c = this.connections.find(c => c.out == p);
-					f(c.in.block);
+					const c = g(p);
+					if (!c)
+						return;
+					f (c.in.block);
 					c.out.datatype = c.in.datatype;
 				});
+				b.set_o_ports_datatype();
 			};
+			this.o_ports.forEach(p => {
+				const c = g(p);
+				if (!c)
+					return;
+				f (c.in.block); 
+			});
+			this.blocks.forEach(b => delete b._visited_);
 		};
 		
+		// Assuming implicit input update rates defined
 		set_o_ports_updaterate () {
-			
+			const g = (p) => this.connections.find(c => c.out == p);
+			const f = (b) =>  {
+				if (b._visited_ || b == this)
+					return;
+				b._visited_ = true;
+				b.i_ports.forEach(p => {
+					const c = g(p);
+					if (!c)
+						return;
+					f (c.in.block);
+					c.out.updaterate = c.in.datatype;
+				});
+				b.set_o_ports_updaterate();
+			};
+			this.o_ports.forEach(p => {
+				const c = g(p);
+				if (!c)
+					return;
+				f (c.in.block); 
+			});
+			this.blocks.forEach(b => delete b._visited_);
 		};
 
 		flatten () {
@@ -769,6 +814,7 @@
 				if (inb_i == -1 && oub_i == -1)
 					throw new Error("Invalid connection found");
 			});
+			r.properties = r.properties.concat(this.properties); // TODO: Not so
 			r.compositeBlocks = this.compositeBlocks; // No need to clone this
 			r.cBlocks = this.cBlocks // No need to clone
 			r.compositeBlockFather = father;
