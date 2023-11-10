@@ -643,8 +643,8 @@
 	};
 
 	class Property {
-		whose; // Typically an output port
-		whom;  // Typically an output port
+		whose; // output port
+		whom;  // output port
 		type;  // "fs" or "init". We should probably add "size" for memory
 		constructor (whose, whom, type) {
 			this.whose = whose;
@@ -654,6 +654,8 @@
 		validate () {
 			if (!this.whose || !this.whom)
 				throw new Error("Bad property");
+			if (this.whose.type() != 'out' || this.whom.type != 'out')
+				throw new Error("Property ports must be out");
 			if (this.type != "init" || this.type == "fs")
 				throw new Error("Unsupported property type");
 		};
@@ -814,181 +816,52 @@
 				if (inb_i == -1 && oub_i == -1)
 					throw new Error("Invalid connection found");
 			});
-			r.properties = r.properties.concat(this.properties); // TODO: Not so
+			this.properties.forEach((prop, i) => {
+				const whose_b_i = this.blocks.indexOf(prop.whose.block);
+				const whom_b_i  = this.blocks.indexOf(prop.whom.block);
+				if (whose_b_i != -1 && whom_b_i != -1) {
+					r.properties.push(new Property(
+						r.blocks[whose_b_i] ["o_ports"] [prop.whose.index()],
+						r.blocks[whom_b_i]  ["o_ports"] [prop.whom.index()],
+						prop.type
+					));
+					return;
+				}
+				if (whose_b_i == -1 && whom_b_i != -1) {
+					r.properties.push(new Property(
+						prop.whose,
+						r.blocks[whom_b_i] ["o_ports"] [prop.whom.index()],
+						prop.type
+					));
+					return;
+				}
+				if (whose_b_i != -1 && whom_b_i == -1)
+					throw new Error("Implicit output");
+				if (whose_b_i == -1 && whom_b_i == -1)
+					throw new Error("Invalid connection found");
+			});
 			r.compositeBlocks = this.compositeBlocks; // No need to clone this
 			r.cBlocks = this.cBlocks // No need to clone
 			r.compositeBlockFather = father;
 			return r;
 		};
+
+		validate () {
+			super.validate();
+			this.blocks.forEach(b => b.validate());
+			this.connections.forEach(c => c.validate());
+			this.properties.forEach(p => p.validate());
+			this.compositeBlocks.forEach(b => b.validate());
+			this.cBlock.forEach(b => b.validate());
+		};
+	};
+
+	class Select extends Block {
+		// TODO
 	};
 
 
 /*
-	const Property = {};
-	Property.of = undefined; // Block
-	Property.type = undefined; // "fs" or "init"
-	Property.block = undefined; // VarBlock
-	Property.validate = function () {
-		if (!this.of || !this.block)
-			throw new Error("Invalid Property");
-	};
-	Property.clone = function () {
-		if (!this.__clone__)
-			return this;
-		if (this.__clone__ != 1)
-			return this.__clone__;
-		const r = Object.create(Property);
-		this.__clone__ = r;
-		r.of = this.of.clone();
-		r.type = this.type;
-		r.block = this.block.clone();
-		return r;
-	};
-	Property.toString = function () {
-		return '[' + this.type + " of " + this.of + " = " + this.block + ']';
-	};
-
-	const CompositeBlock = Object.create(Block); // A.k.a. Graph
-	CompositeBlock.Connection = Connection;
-	CompositeBlock.Property = Property;
-	CompositeBlock.id = "";
-	CompositeBlock.operation = "COMPOSITE_BLOCK";
-	CompositeBlock.blocks = undefined;        // Array of Blocks
-	CompositeBlock.connections = undefined;   // Array of Connections
-	CompositeBlock.properties = undefined;    // Array of Properties
-	CompositeBlock.bdefs = undefined;         // Array of CompositeBlocks
-	CompositeBlock.bdef_father = undefined;   // CompositeBlock
-	CompositeBlock.cdefs = undefined;         // Array of CBlocks
-	CompositeBlock.inputs_N = 0;
-	CompositeBlock.outputs_N = 0;
-	CompositeBlock.init = function () {
-		Block.init.call(this, this.inputs_N, this.outputs_N);
-		this.blocks = [];
-		this.connections = [];
-		this.properties = [];
-		this.bdefs = [];
-		this.cdefs = [];
-	};
-	CompositeBlock.propagateDataTypes = function () {
-		this.connections.forEach(c => {
-			const i = c.in;
-			c.out.datatype = function () {
-				return i.datatype();
-			};
-		});
-		this.bdefs.forEach(bd => bd.propagateDataTypes());
-	};
-	CompositeBlock.propagateUpdateRates = function () {
-		this.connections.forEach(c => {
-			const cc = c;
-			c.out.updaterate = function () {
-				return cc.in.updaterate();
-			};
-		});
-		this.bdefs.forEach(bd => bd.propagateUpdateRates());
-	};
-	CompositeBlock.validate = function () {
-		Block.validate.call(this);
-		this.blocks.forEach(b => b.validate());
-//		this.blocks.forEach(b => {
-//			b.o_ports.forEach(p => {
-//				const cs = this.connections.filter(c => c.out == p)
-//				if (cs > 1)
-//					throw new Error("Too many connections toward port: " + p.toString());
-//				if (cs < 1)
-//					throw new Error("Too few connections toward port: " + p.toString());
-//			});
-//		});
-		this.connections.forEach(c => c.validate());
-		const t = this.properties.map(p => p.block);
-		if (t.length != new Set(t).size)
-			throw new Error("A block can be used for only one property");
-		this.bdefs.forEach(bd => bd.validate());
-	};
-	CompositeBlock.toString = function () {
-		return "{ CompositeBlock: " + this.id + " }"
-	};
-	CompositeBlock.flatten = function () {
-		this.blocks.filter(b => CallBlock.isPrototypeOf(b) && b.type == 'bdef').forEach(b => {
-			b.ref.setToBeCloned();
-			const bb = b.ref.clone();
-			bb.flatten();
-			this.blocks = this.blocks.concat(bb.blocks);
-			this.connections = this.connections.concat(bb.connections);
-			this.properties = this.properties.concat(bb.properties);
-			this.cdefs = this.cdefs.concat(bb.cdefs);
-			b.ref.clean();
-
-			b.i_ports.forEach((p, i) => {
-				const np = bb.i_ports[i];
-				const csext = this.connections.filter(c => c.out == p);
-				const csint = this.connections.filter(c => c.in == np);
-				if (csext.length != 1)
-					throw new Error("Found invalid number of connectrions toward input");
-				this.connections.splice(this.connections.indexOf(csext[0]), 1);
-				csint.forEach(c => c.in = csext[0].in );
-			});
-
-			b.o_ports.forEach((p, i) => {
-				const np = bb.o_ports[i];
-				const csext = this.connections.filter(c => c.in == p); 
-				const csint = this.connections.filter(c => c.out == np);
-				if (csint.length != 1)
-					throw new Error("Found invalid number of connectrions toward output");
-				this.connections.splice(this.connections.indexOf(csint[0]), 1);
-				csext.forEach(c => c.in = csint[0].in);
-			});
-
-			this.blocks.splice(this.blocks.indexOf(b), 1);
-		});
-		this.bdefs = [];
-	};
-//		Instructions to clone:
-//			call setToBeCloned
-//			call clone
-//			call clean
-	
-	CompositeBlock.setToBeCloned = function () {
-		Block.setToBeCloned.call(this);
-		this.blocks.forEach(b => b.setToBeCloned());
-		this.connections.forEach(c => c.__clone__ = 1);
-		this.properties.forEach(p => p.__clone__ = 1);
-		this.bdefs.forEach(bdef => bdef.setToBeCloned());
-	};
-	CompositeBlock.clone = function () {
-		if (!this.__clone__)
-			return this;
-		if (this.__clone__ != 1)
-			return this.__clone__;
-		const r = Block.clone.call(this);
-		this.__clone__ = r;
-		r.id = this.id;
-		r.inputs_N = this.inputs_N;
-		r.outputs_N = this.outputs_N;
-		r.blocks = this.blocks.map(b => b.clone());
-		r.connections = this.connections.map(c => c.clone());
-		r.properties = this.properties.map(p => p.clone());
-		r.bdef_father = this.bdef_father.clone();
-		r.bdefs = this.bdefs.map(bd => bd.clone());
-		r.cdefs = this.cdefs; // no need to clone
-		return r;
-	};
-	CompositeBlock.clean = function () {
-		this.blocks.forEach(b => {
-			b.i_ports.forEach(p => delete p.__clone__);
-			b.o_ports.forEach(p => delete p.__clone__);
-			delete b.__clone__;
-		});
-		this.connections.forEach(c => delete c.__clone__);
-		this.properties.forEach(p => delete p.__clone__);
-		this.bdefs.forEach(bd => bd.clean());
-		this.i_ports.forEach(p => delete p.__clone__);
-		this.o_ports.forEach(p => delete p.__clone__);
-		delete this.__clone__;
-	};
-
-
-
 	const IfthenelseBlock = Object.create(Block);
 	IfthenelseBlock.operation = "???";
 	IfthenelseBlock.nOutputs = undefined;
