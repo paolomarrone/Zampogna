@@ -1,0 +1,25 @@
+{
+	"header": "#include \"bw_math.h\"",
+	"block_name": "bw_log2f",
+	"block_inputs": [
+		{
+			"type": "float32"
+		}
+	],
+	"block_outputs": [
+		{
+			"type": "float32"
+		}
+	],
+
+	"process1": {
+		"f_name": "bw_log2f",
+
+		"f_outputs": [
+			"o0"
+		],
+		"f_inputs": [
+			"i0"
+		]
+	}
+}

@@ -1,0 +1,29 @@
+{
+	"header": "#include \"bw_math.h\"",
+	"block_name": "bw_maxi32",
+	"block_inputs": [
+		{
+			"type": "int32"
+		},
+		{
+			"type": "int32"
+		}
+	],
+	"block_outputs": [
+		{
+			"type": "int32"
+		}
+	],
+
+	"process1": {
+		"f_name": "bw_maxi32",
+
+		"f_outputs": [
+			"o0"
+		],
+		"f_inputs": [
+			"i0",
+			"i1"
+		]
+	}
+}

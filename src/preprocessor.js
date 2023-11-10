@@ -88,7 +88,7 @@
 					jsons.push(j);
 					return;
 				}
-				throw new Error("Invalid/Not found included file");
+				throw new Error("Invalid/Not found included file: " + include);
 			});
 		}
 

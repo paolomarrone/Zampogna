@@ -1,0 +1,29 @@
+{
+	"header": "#include \"bw_math.h\"",
+	"block_name": "bw_copysignf",
+	"block_inputs": [
+		{
+			"type": "float32"
+		}
+	],
+	"block_outputs": [
+		{
+			"type": "float32"
+		},
+		{
+			"type": "float32"
+		}
+	],
+
+	"process1": {
+		"f_name": "bw_copysignf",
+
+		"f_outputs": [
+			"o0"
+		],
+		"f_inputs": [
+			"i0",
+			"i1"
+		]
+	}
+}
