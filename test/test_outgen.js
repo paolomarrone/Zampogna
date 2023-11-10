@@ -55,7 +55,7 @@
 					y = i * (v * 2.0)
 				}
 			`,
-			options: { initial_block_id: "volume", control_inputs: ['v'], optimizations: default_optimizations }
+			options: { initial_block_id: "volume", control_inputs: ['v'], initial_values: {v:0.3}, optimizations: default_optimizations }
 		},
 		{
 			code: `
@@ -69,7 +69,7 @@
 				    s.init = x
 				}
 			`,
-			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
+			options: { initial_block_id: "asd", control_inputs: [], initial_values: {}, optimizations: default_optimizations }
 		},
 		{
 			code: `
@@ -99,7 +99,7 @@
 				}
 
 			`,
-			options: { initial_block_id: "asd", control_inputs: ['lol'], optimizations: default_optimizations }
+			options: { initial_block_id: "asd", control_inputs: ['lol'], initial_values: {}, optimizations: default_optimizations }
 		},		
 		{
 			code: `
@@ -115,7 +115,7 @@
 				    s.init = x
 				}
 			`,
-			options: { initial_block_id: "lp1", control_inputs: ['v'], optimizations: default_optimizations }
+			options: { initial_block_id: "lp1", control_inputs: ['v'], initial_values: {}, optimizations: default_optimizations }
 		},		
 		{
 			code: `
@@ -135,7 +135,7 @@
 				    s.init = x
 				}
 			`,
-			options: { initial_block_id: "lp3", control_inputs: ['fr'], optimizations: default_optimizations }
+			options: { initial_block_id: "lp3", control_inputs: ['fr'], initial_values: {}, optimizations: default_optimizations }
 		},
 		{
 			code: `
@@ -226,7 +226,7 @@
 				    s.init = x
 				}
 			`,
-			options: { initial_block_id: "EQregalia", control_inputs: ['low', 'high', 'peak'], optimizations: default_optimizations }
+			options: { initial_block_id: "EQregalia", control_inputs: ['low', 'high', 'peak'], initial_values: {}, optimizations: default_optimizations }
 		},
 		{
 			code: `
@@ -239,7 +239,7 @@
 					h = 0.5
 				}
 			`,
-			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
+			options: { initial_block_id: "asd", control_inputs: [], initial_values: {}, optimizations: default_optimizations }
 		},
 		{
 			code: `
@@ -249,7 +249,7 @@
 					u = x
 				}
 			`,
-			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
+			options: { initial_block_id: "asd", control_inputs: [], initial_values: {}, optimizations: default_optimizations }
 		},
 		{
 			code: `
@@ -258,7 +258,7 @@
 					y = x * 2.0 + float(A)
 				}
 			`,
-			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
+			options: { initial_block_id: "asd", control_inputs: [], initial_values: {}, optimizations: default_optimizations }
 		},
 		{
 			code: `
@@ -269,7 +269,7 @@
 					u = float(int(t)) - A
 				}
 			`,
-			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
+			options: { initial_block_id: "asd", control_inputs: [], initial_values: {}, optimizations: default_optimizations }
 		},
 		{
 			code: `
@@ -279,7 +279,7 @@
 					y = V[0];
 				}
 			`,
-			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
+			options: { initial_block_id: "asd", control_inputs: [], initial_values: {}, optimizations: default_optimizations }
 		},
 		{
 			code: `
@@ -290,7 +290,7 @@
 					y = V[0];
 				}
 			`,
-			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
+			options: { initial_block_id: "asd", control_inputs: [], initial_values: {}, optimizations: default_optimizations }
 		},
 		{
 			code: `
@@ -302,7 +302,7 @@
 					u.fs = 2.0
 				}
 			`,
-			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
+			options: { initial_block_id: "asd", control_inputs: [], initial_values: {}, optimizations: default_optimizations }
 		},
 		{
 			code: `
@@ -313,7 +313,7 @@
 					u.init = 2.0
 				}
 			`,
-			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
+			options: { initial_block_id: "asd", control_inputs: [], initial_values: {}, optimizations: default_optimizations }
 		},
 		{
 			code: `
@@ -325,7 +325,7 @@
 					t.fs.init.fs.fs.fs = float(int(666.666 + (A.fs.init.fs * 2.0).init) ^ 5.init)
 				}
 			`,
-			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
+			options: { initial_block_id: "asd", control_inputs: [], initial_values: {}, optimizations: default_optimizations }
 		},
 		{
 			code: `
@@ -339,7 +339,7 @@
 					y = mypowf(x, c)
 				}
 			`,
-			options: { initial_block_id: "asd", control_inputs: [], optimizations: default_optimizations }
+			options: { initial_block_id: "asd", control_inputs: [], initial_values: {}, optimizations: default_optimizations }
 		},
 		{
 			code: `
@@ -355,7 +355,7 @@
 					y = mypowf(x, mypowf(d, c * mypowf(2.0, c - x)))
 				}
 			`,
-			options: { initial_block_id: "asd", control_inputs: ['v'], optimizations: default_optimizations }
+			options: { initial_block_id: "asd", control_inputs: ['v'], initial_values: {}, optimizations: default_optimizations }
 		},
 		{
 			code: `
@@ -368,7 +368,7 @@
 					y = bw_notch(x, cutoff, Q, true, 1000.0)
 				}
 			`,
-			options: { initial_block_id: "asd", control_inputs: ['c', 'q'], optimizations: default_optimizations }
+			options: { initial_block_id: "asd", control_inputs: ['c', 'q'], initial_values: {}, optimizations: default_optimizations }
 		},
 		{
 			code: `
@@ -379,7 +379,7 @@
 					yL, yR = bw_balance(xL, xR, b);
 				}
 			`,
-			options: { initial_block_id: "asd", control_inputs: ['b'], optimizations: default_optimizations }
+			options: { initial_block_id: "asd", control_inputs: ['b'], initial_values: {}, optimizations: default_optimizations }
 		},
 		{
 			code: `
@@ -390,7 +390,7 @@
 					y = bw_osc_saw(0.0, 0.0, true)
 				}
 			`,
-			options: { initial_block_id: "asd", control_inputs: ['f'], optimizations: default_optimizations }
+			options: { initial_block_id: "asd", control_inputs: ['f'], initial_values: {}, optimizations: default_optimizations }
 		},
 		{
 			code: `
@@ -404,7 +404,7 @@
 					y = bw_osc_saw(g, g_inc, true)
 				}
 			`,
-			options: { initial_block_id: "asd", control_inputs: ['f'], optimizations: default_optimizations }
+			options: { initial_block_id: "asd", control_inputs: ['f'], initial_values: {}, optimizations: default_optimizations }
 		},
 		{
 			code: `
@@ -432,7 +432,7 @@
 				    s.init = x
 				}
 			`,
-			options: { initial_block_id: "saw_generator", control_inputs: ['frequency'], optimizations: default_optimizations }
+			options: { initial_block_id: "saw_generator", control_inputs: ['frequency'], initial_values: {}, optimizations: default_optimizations }
 		},
 		{
 			code: `
@@ -451,7 +451,7 @@
 					y = s * e;
 				}
 			`,
-			options: { initial_block_id: "asd", control_inputs: ['gate', 'attack', 'release'], optimizations: default_optimizations }
+			options: { initial_block_id: "asd", control_inputs: ['gate', 'attack', 'release'], initial_values: {}, optimizations: default_optimizations }
 		},
 		{
 			code: `
@@ -477,7 +477,7 @@
 
 				}
 			`,
-			options: { initial_block_id: "reverb", target_language: 'bw', control_inputs: ["predelay", "bandwidth", "damping", "decay", "wet", "delay_ff", "delay_fb", "coeff_blend", "coeff_ff", "coeff_fb"], optimizations: default_optimizations }
+			options: { initial_block_id: "reverb", target_language: 'bw', control_inputs: ["predelay", "bandwidth", "damping", "decay", "wet", "delay_ff", "delay_fb", "coeff_blend", "coeff_ff", "coeff_fb"], initial_values: {}, optimizations: default_optimizations }
 		},
 	];
 

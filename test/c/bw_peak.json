@@ -1,13 +1,13 @@
 {
 	"wrapper": [
-		"y = bw_notch (x, cutoff, Q, bool prewarp_at_cutoff, prewarp_freq) { \n",
-		"    y.init, y = bw_notch_(fs, x.init, x, cutoff, Q, prewarp_at_cutoff, prewarp_freq); \n",
+		"y = bw_peak (x, cutoff, Q, bool prewarp_at_cutoff, prewarp_freq, peak_gain_lin, bandwidth, bool use_bandwidth) { \n",
+		"    y.init, y = bw_peak_(fs, x.init, x, cutoff, Q, prewarp_at_cutoff, prewarp_freq, peak_gain_lin, bandwidth, use_bandwidth); \n",
 		"} \n"
 	],
 
-	"header": "#include \"bw_notch.h\"",
+	"header": "#include \"bw_peak.h\"",
 	
-	"block_name": "bw_notch_",
+	"block_name": "bw_peak_",
 	"block_inputs": [
 		{
 			"type": "float32",
@@ -42,6 +42,21 @@
 			"type": "float32",
 			"name": "prewarp_freq",
 			"isParameter": true
+		},
+		{
+			"type": "float32",
+			"name": "peak_gain_lin",
+			"isParameter": true
+		},
+		{
+			"type": "float32",
+			"name": "bandwidth",
+			"isParameter": true
+		},
+		{
+			"type": "bool",
+			"name": "use_bandwidth",
+			"isParameter": true
 		}
 	],
 	"block_outputs": [
@@ -56,12 +71,12 @@
 	],
 
 
-	"state": "bw_notch_state",
-	"coeffs": "bw_notch_coeffs",
-	"prefix": "bw_notch",
+	"state": "bw_peak_state",
+	"coeffs": "bw_peak_coeffs",
+	"prefix": "bw_peak",
 
 	"init": {
-		"f_name": "bw_notch_init",
+		"f_name": "bw_peak_init",
 		"f_outputs" : [],
 		"f_inputs" : [
 			"coeffs"
@@ -69,7 +84,7 @@
 	},
 
 	"set_sample_rate": {
-		"f_name": "bw_notch_set_sample_rate",
+		"f_name": "bw_peak_set_sample_rate",
 		"f_outputs": [],
 		"f_inputs": [
 			"coeffs",
@@ -78,7 +93,7 @@
 	},
 
 	"reset_coeffs": {
-		"f_name": "bw_notch_reset_coeffs",
+		"f_name": "bw_peak_reset_coeffs",
 		"f_outputs" : [],
 		"f_inputs" : [
 			"coeffs"
@@ -86,7 +101,7 @@
 	},
 
 	"reset_state": {
-		"f_name": "bw_notch_reset_state",
+		"f_name": "bw_peak_reset_state",
 		"f_outputs" : [
 			"o0"
 		],
@@ -98,7 +113,7 @@
 	},
 
 	"update_coeffs_ctrl": {
-		"f_name": "bw_notch_update_coeffs_ctrl",
+		"f_name": "bw_peak_update_coeffs_ctrl",
 		"f_outputs" : [],
 		"f_inputs" : [
 			"coeffs"
@@ -106,7 +121,7 @@
 	},
 
 	"update_coeffs_audio": {
-		"f_name": "bw_notch_update_coeffs_audio",
+		"f_name": "bw_peak_update_coeffs_audio",
 		"f_outputs" : [],
 		"f_inputs" : [
 			"coeffs"
@@ -114,7 +129,7 @@
 	},
 
 	"process1": {
-		"f_name": "bw_notch_process1",
+		"f_name": "bw_peak_process1",
 		"f_outputs": [
 			"o1"
 		],

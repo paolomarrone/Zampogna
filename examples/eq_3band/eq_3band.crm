@@ -1,0 +1,32 @@
+include bw_ls2
+include bw_hs2
+include bw_peak
+include bw_math
+
+y = eq_3band (x, ls_cutoff, ls_gain, ls_Q, peak_cutoff, peak_gain, peak_bw, hs_cutoff, hs_gain, hs_Q) {
+	
+	mapped = map_freq (unmapped) {
+		mapped = 20.0 + (20.0e3 - 20.0) * unmapped * unmapped * unmapped
+	}
+	mapped = map_gain (unmapped) {
+		mapped = bw_dB2linf(-20.0 + 40.0 * unmapped)
+	}
+
+	l_cutoff = map_freq(ls_cutoff)
+	l_dc_gain = map_gain(ls_gain)
+	l_Q = 0.5 + 4.5 * ls_Q
+
+	p_cutoff = map_freq(peak_cutoff)
+	p_gain = map_gain(peak_gain)
+	p_bw = 0.01 + 1.99 * peak_bw
+
+	h_cutoff = map_freq(hs_cutoff)
+	h_gain = map_gain(hs_gain)
+	h_Q = 0.5 + 4.5 * hs_Q
+
+	t1 = bw_ls2 (x,  l_cutoff, l_Q, true, 1.0, l_dc_gain)
+	t2 = bw_peak(t1, p_cutoff, 0.5, true, 1.0, p_gain, p_bw, true);
+	t3 = bw_hs2 (t2, h_cutoff, h_Q, true, 1.0, h_gain);
+
+	y = t3
+}

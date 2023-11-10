@@ -1,13 +1,13 @@
 {
 	"wrapper": [
-		"y = bw_notch (x, cutoff, Q, bool prewarp_at_cutoff, prewarp_freq) { \n",
-		"    y.init, y = bw_notch_(fs, x.init, x, cutoff, Q, prewarp_at_cutoff, prewarp_freq); \n",
+		"y = bw_hs2 (x, cutoff, Q, bool prewarp_at_cutoff, prewarp_freq, high_gain_lin) { \n",
+		"    y.init, y = bw_hs2_(fs, x.init, x, cutoff, Q, prewarp_at_cutoff, prewarp_freq, high_gain_lin); \n",
 		"} \n"
 	],
 
-	"header": "#include \"bw_notch.h\"",
+	"header": "#include \"bw_hs2.h\"",
 	
-	"block_name": "bw_notch_",
+	"block_name": "bw_hs2_",
 	"block_inputs": [
 		{
 			"type": "float32",
@@ -42,6 +42,11 @@
 			"type": "float32",
 			"name": "prewarp_freq",
 			"isParameter": true
+		},
+		{
+			"type": "float32",
+			"name": "high_gain_lin",
+			"isParameter": true
 		}
 	],
 	"block_outputs": [
@@ -56,12 +61,12 @@
 	],
 
 
-	"state": "bw_notch_state",
-	"coeffs": "bw_notch_coeffs",
-	"prefix": "bw_notch",
+	"state": "bw_hs2_state",
+	"coeffs": "bw_hs2_coeffs",
+	"prefix": "bw_hs2",
 
 	"init": {
-		"f_name": "bw_notch_init",
+		"f_name": "bw_hs2_init",
 		"f_outputs" : [],
 		"f_inputs" : [
 			"coeffs"
@@ -69,7 +74,7 @@
 	},
 
 	"set_sample_rate": {
-		"f_name": "bw_notch_set_sample_rate",
+		"f_name": "bw_hs2_set_sample_rate",
 		"f_outputs": [],
 		"f_inputs": [
 			"coeffs",
@@ -78,7 +83,7 @@
 	},
 
 	"reset_coeffs": {
-		"f_name": "bw_notch_reset_coeffs",
+		"f_name": "bw_hs2_reset_coeffs",
 		"f_outputs" : [],
 		"f_inputs" : [
 			"coeffs"
@@ -86,7 +91,7 @@
 	},
 
 	"reset_state": {
-		"f_name": "bw_notch_reset_state",
+		"f_name": "bw_hs2_reset_state",
 		"f_outputs" : [
 			"o0"
 		],
@@ -98,7 +103,7 @@
 	},
 
 	"update_coeffs_ctrl": {
-		"f_name": "bw_notch_update_coeffs_ctrl",
+		"f_name": "bw_hs2_update_coeffs_ctrl",
 		"f_outputs" : [],
 		"f_inputs" : [
 			"coeffs"
@@ -106,7 +111,7 @@
 	},
 
 	"update_coeffs_audio": {
-		"f_name": "bw_notch_update_coeffs_audio",
+		"f_name": "bw_hs2_update_coeffs_audio",
 		"f_outputs" : [],
 		"f_inputs" : [
 			"coeffs"
@@ -114,7 +119,7 @@
 	},
 
 	"process1": {
-		"f_name": "bw_notch_process1",
+		"f_name": "bw_hs2_process1",
 		"f_outputs": [
 			"o1"
 		],
