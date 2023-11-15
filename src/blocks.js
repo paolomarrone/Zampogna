@@ -197,7 +197,7 @@
 			if (this.i_ports[0].datatype != ts.DataTypeInt32)
 				throw new Error("Memory index is not int32");
 			if (this.i_ports[1].datatype != this.memory.datatype)
-				throw new Error("Inconsistent datatype");;
+				throw new Error("Inconsistent datatype");
 		};
 	};
 
@@ -676,11 +676,12 @@
 		cBlocks;
 
 		// Set i_ports and o_ports from outside
-		constructor () {
+		constructor (father) {
 			super();
 			this.blocks = [];
 			this.connections = [];
 			this.properties = [];
+			this.compositeBlockFather = father;
 			this.compositeBlocks = [];
 			this.cBlocks = [];
 		};
@@ -857,32 +858,62 @@
 	};
 
 	class Select extends Block {
-		// TODO
+		operation = "SELECT";
+
+		constructor () {
+			super();
+			this.i_ports.push(new Port(this, ts.DataTypeBool, undefined)); // Condition
+			this.i_ports.push(new Port(this, undefined, undefined));
+			this.i_ports.push(new Port(this, undefined, undefined));
+			this.o_ports.push(new Port(this, undefined, undefined));
+		};
+		set_o_ports_datatype () {
+			this.o_ports[0].datatype = this.o_ports[1].datatype;
+		};
+		validate () {
+			super.validate();
+			if (this.i_ports[0].datatype != ts.DataTypeBool)
+				throw new Error("Select condition must be bool");
+			if (this.i_ports[1].datatype != this.i_ports[2].datatype)
+				throw new Error("Inconsistent datatypes");
+		};
 	};
 
+	class IfthenelseBlock extends CompositeBlock {
+		operation = "IF_THEN_ELSE_BLOCK";
+
+		constructor (father, branchT, branchF) {
+			super(father);
+			this.compositeBlocks.push(branchT);
+			this.compositeBlocks.push(branchF);
+			this.i_ports.push(new Port(this, ts.DataTypeBool, undefined)); // Condition
+			branchT.i_ports.forEach(p => { // gonna be empty as per Ciaramella syntax, but let's keep support for more frontends
+				this.i_ports.push(new Port(this, p.datatype, p.updaterate));
+			});
+			branchT.o_ports.forEach(p => {
+				this.o_ports.push(new Port(this, p.datatype, p.updaterate));
+			});
+			const callT = new CallCompositeBlock(branchT);
+			const callF = new CallCompositeBlock(branchF);
+			const selects = branchT.o_ports.map(x => new Select());
+			this.blocks = this.blocks.concat(selects);
+			callT.i_ports.forEach((p, i) => {
+				this.connections.push(new Connection(this.i_ports[i + 1], callT.i_ports[i]));
+				this.connections.push(new Connection(this.i_ports[i + 1], callF.i_ports[i]));
+			});
+			callT.o_ports.forEach((p, i) => {
+				this.connections.push(new Connection(this.i_ports[0],  selects[i].i_ports[0]));
+				this.connections.push(new Connection(callT.o_ports[i], selects[i].i_ports[1]));
+				this.connections.push(new Connection(callF.o_ports[i], selects[i].i_ports[2]));
+			});
+			selects.o_ports.forEach((p, i) => {
+				this.connections.push(new Connection(p, this.o_ports[i]));
+			});
+		};
+		// TODO; set of conditions of the blocks
+	};
 
 /*
-	const IfthenelseBlock = Object.create(Block);
-	IfthenelseBlock.operation = "???";
-	IfthenelseBlock.nOutputs = undefined;
-	IfthenelseBlock.init = function () {
-		const nInputs = 1 + this.nOutputs * 2; // Condition, outputs of 1st branch, output of 2nd branch
-		Block.init.call(this, nInputs, this.nOutputs);
-	};
-	IfthenelseBlock.setOutputDatatype = function () {
-		for (let i = 0; i < this.nOutputs; i++)
-			this.o_ports[i].datatype = this.i_ports[i + 1].datatype;
-	};
-	IfthenelseBlock.validate = function () {
-		Block.validate.call(this);
-		if (this.nOutputs == undefined || this.nOutputs < 1)
-			throw new Error("Unexpected outputs number");
-		if (this.i_ports[0].datatype != ts.DataTypeBool)
-			throw new Error("Ifthenelse condition must return a boolean");
-		for (let i = 0; i < this.nOutputs; i++)
-			if (this.i_ports[1 + i].datatype != this.i_ports[1 + i + this.nOutputs].datatype)
-				throw new Error("Inconsistent input datatypes");
-	};
 	IfthenelseBlock.flatten = function () {
 		// TODO
 		// Idea.
@@ -911,10 +942,9 @@
 		ModuloBlock,
 		CastBlock, CastF32Block, CastI32Block, CastBoolBlock,
 		MaxBlock,
-		CallBlock,
-		CBlock,
-		IfthenelseBlock,
 		CompositeBlock
+		CBlock,
+		CallCompositeBlock, CallCBlock,
+		Select, IfthenelseBlock,
 	};
-
 }());
