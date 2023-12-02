@@ -58,6 +58,17 @@
 		return true;
 	}
 
+	function parse(x) {
+		if (x == "const")
+			return us.UpdateRateConstant;
+		if (x == "fs")
+			return us.UpdateRateFs;
+		if (x == "control")
+			return us.UpdateRateControl;
+		if (x == "audio")
+			return us.UpdateRateAudio;
+	};
+
 	exports["UpdateRateConstant"] = UpdateRateConstant;
 	exports["UpdateRateFs"] = UpdateRateFs;
 	exports["UpdateRateControl"] = UpdateRateControl;
@@ -66,5 +77,6 @@
 	exports["max"] = max;
 	exports["min"] = min;
 	exports["equal"] = equal;
+	exports["parse"] = parse;
 
 }());

@@ -24,8 +24,18 @@
 	const DataTypeBool = {};
 	DataTypeBool.toString = () => "bool";
 
+	function parse (x) {
+		if (x == "float32")
+			return ts.DataTypeFloat32;
+		if (x == "int32")
+			return ts.DataTypeInt32;
+		if (x == "bool")
+			return ts.DataTypeBool;
+	};
+
 	exports["DataTypeFloat32"] = DataTypeFloat32;
 	exports["DataTypeInt32"] = DataTypeInt32;
 	exports["DataTypeBool"] = DataTypeBool;
+	exports["parse"] = parse;
 
 }());

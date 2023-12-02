@@ -551,25 +551,6 @@
 		};
 	};
 
-	function parseType (x) {
-		if (x == "float32")
-			return ts.DataTypeFloat32;
-		if (x == "int32")
-			return ts.DataTypeInt32;
-		if (x == "bool")
-			return ts.DataTypeBool;
-	};
-	function parseUpdateRate(x) {
-		if (x == "const")
-			return us.UpdateRateConstant;
-		if (x == "fs")
-			return us.UpdateRateFs;
-		if (x == "control")
-			return us.UpdateRateControl;
-		if (x == "audio")
-			return us.UpdateRateAudio;
-	};
-
 	class CBlock extends Block {
 		operation = "C_BLOCK_DEFINITION";
 		id;
@@ -582,10 +563,10 @@
 			// Assuming desc well formatted
 			this.id = desc.block_name;
 			desc.block_inputs.forEach(x => {
-				this.i_ports.push(new Port(this, parseType(x.type), undefined));
+				this.i_ports.push(new Port(this, ts.parse(x.type), undefined));
 			});
 			desc.block_outputs.forEach(x => {
-				this.o_ports.push(new Port(this, parseType(x.type), parseUpdateRate(x.updaterate)));
+				this.o_ports.push(new Port(this, ts.parse(x.type), us.parse(x.updaterate)));
 			});
 			this.header = desc.header instanceof Array ? desc.header.join('\n') : desc.header;
 			this.state = desc.state;
