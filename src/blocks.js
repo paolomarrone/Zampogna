@@ -182,8 +182,9 @@
 		constructor (memory) {
 			super();
 			this.memory = memory;
-			this.i_ports.push(new Port(this, ts.DataTypeInt32, undefined));
-			this.i_ports.push(new Port(this, memory.datatype, undefined));
+			this.i_ports.push(new Port(this, ts.DataTypeInt32, undefined)); // index
+			this.i_ports.push(new Port(this, memory.datatype, undefined));  // value
+			this.i_ports.push(new Port(this, ts.DataTypeBool, undefined));  // condition
 		};
 		clone (memory) {
 			const r = super.clone();
@@ -198,6 +199,8 @@
 				throw new Error("Memory index is not int32");
 			if (this.i_ports[1].datatype != this.memory.datatype)
 				throw new Error("Inconsistent datatype");
+			if (this.i_ports[2].datatype != ts.DataTypeBool)
+				throw new Error("Memory write condition must be true");
 		};
 	};
 
@@ -617,10 +620,12 @@
 		validate () {
 			if (this.in.datatype != this.out.datatype)
 				throw new Error("Connection got different datatypes");
+			if (this.in.updaterate != this.out.updaterate)
+				throw new Error("Connection got different updaterates");
 		};
 		toString () {
 			return this.in.toString() + " => " + this.out.toString();
-		}
+		};
 	};
 
 	class Property {
@@ -717,39 +722,41 @@
 			this.blocks.forEach(b => delete b._visited_);
 		};
 
+		expand_CallCompositeBlock (b) {
+			const bb = b.compositeBlock.clone();
+			bb.flatten();
+			this.blocks = this.blocks.concat(bb.blocks);
+			this.connections = this.connections.concat(bb.connections);
+			this.cBlocks = this.cBlocks.concat(bb.cBlocks);
+
+			b.i_ports.forEach((p, i) => {
+				const np = bb.i_ports[i];
+				const csext = this.connections.filter(c => c.out == p);
+				const csint = this.connections.filter(c => c.in == np);
+				if (csext.length != 1)
+					throw new Error("Found invalid number of connectrions toward input");
+				this.connections.splice(this.connections.indexOf(csext[0]), 1);
+				csint.forEach(c => c.in = csext[0].in);
+			});
+
+			b.o_ports.forEach((p, i) => {
+				const np = bb.o_ports[i];
+				const csext = this.connections.filter(c => c.in == p); 
+				const csint = this.connections.filter(c => c.out == np);
+				if (csint.length != 1)
+					throw new Error("Found invalid number of connectrions toward output");
+				this.connections.splice(this.connections.indexOf(csint[0]), 1);
+				csext.forEach(c => c.in = csint[0].in);
+			});
+			this.blocks.splice(this.blocks.indexOf(b), 1);
+		};
+
 		flatten () {
 			for (let i = 0; i < this.blocks.length; i++) {
 				const b = this.blocks[i];
 				if (!b instanceof CallCompositeBlock)
 					continue;
-
-				const bb = b.compositeBlock.clone();
-				bb.flatten();
-				this.blocks = this.blocks.concat(bb.blocks);
-				this.connections = this.connections.concat(bb.connections);
-				this.cBlocks = this.cBlocks.concat(bb.cBlocks);
-
-				b.i_ports.forEach((p, i) => {
-					const np = bb.i_ports[i];
-					const csext = this.connections.filter(c => c.out == p);
-					const csint = this.connections.filter(c => c.in == np);
-					if (csext.length != 1)
-						throw new Error("Found invalid number of connectrions toward input");
-					this.connections.splice(this.connections.indexOf(csext[0]), 1);
-					csint.forEach(c => c.in = csext[0].in );
-				});
-
-				b.o_ports.forEach((p, i) => {
-					const np = bb.o_ports[i];
-					const csext = this.connections.filter(c => c.in == p); 
-					const csint = this.connections.filter(c => c.out == np);
-					if (csint.length != 1)
-						throw new Error("Found invalid number of connectrions toward output");
-					this.connections.splice(this.connections.indexOf(csint[0]), 1);
-					csext.forEach(c => c.in = csint[0].in);
-				});
-
-				this.blocks.splice(i, 1);
+				this.expand_CallCompositeBlock(b);
 				i--;
 			}
 			this.compositeBlocks = [];
@@ -862,34 +869,57 @@
 
 	class IfthenelseBlock extends CompositeBlock {
 		operation = "IF_THEN_ELSE_BLOCK";
+		callT;
+		callF;
 
 		constructor (father, branchT, branchF) {
 			super(father);
 			this.compositeBlocks.push(branchT);
 			this.compositeBlocks.push(branchF);
-			this.i_ports.push(new Port(this, ts.DataTypeBool, undefined)); // Condition
+			this.i_ports.push(new Port(this, ts.DataTypeBool, undefined)); // condition
 			branchT.i_ports.forEach(p => { // gonna be empty as per Ciaramella syntax, but let's keep support for more frontends
 				this.i_ports.push(new Port(this, p.datatype, p.updaterate));
 			});
 			branchT.o_ports.forEach(p => {
 				this.o_ports.push(new Port(this, p.datatype, p.updaterate));
 			});
-			const callT = new CallCompositeBlock(branchT);
-			const callF = new CallCompositeBlock(branchF);
+			this.callT = new CallCompositeBlock(branchT);
+			this.callF = new CallCompositeBlock(branchF);
 			const selects = branchT.o_ports.map(x => new Select());
 			this.blocks = this.blocks.concat(selects);
-			callT.i_ports.forEach((p, i) => {
-				this.connections.push(new Connection(this.i_ports[i + 1], callT.i_ports[i]));
-				this.connections.push(new Connection(this.i_ports[i + 1], callF.i_ports[i]));
+			this.callT.i_ports.forEach((p, i) => {
+				this.connections.push(new Connection(this.i_ports[i + 1], this.callT.i_ports[i]));
+				this.connections.push(new Connection(this.i_ports[i + 1], this.callF.i_ports[i]));
 			});
-			callT.o_ports.forEach((p, i) => {
+			this.callT.o_ports.forEach((p, i) => {
 				this.connections.push(new Connection(this.i_ports[0],  selects[i].i_ports[0]));
-				this.connections.push(new Connection(callT.o_ports[i], selects[i].i_ports[1]));
-				this.connections.push(new Connection(callF.o_ports[i], selects[i].i_ports[2]));
+				this.connections.push(new Connection(this.callT.o_ports[i], selects[i].i_ports[1]));
+				this.connections.push(new Connection(this.callF.o_ports[i], selects[i].i_ports[2]));
 			});
 			selects.o_ports.forEach((p, i) => {
 				this.connections.push(new Connection(p, this.o_ports[i]));
 			});
+		};
+		flatten () {
+			const mws = this.blocks.filter(b => b instanceof MemoryWriterBlock);
+			this.expand_CallCompositeBlock(this.callT);
+			const mwsbt = this.blocks.filter(b => b instanceof MemoryWriterBlock && !mws.includes(b));
+			mwsbt.forEach(b => {
+				const c = this.connections.find(c => c.out == b.i_ports[2]);
+				if (!c) {
+					this.connections.push(new Connection(this.i_ports[0], b.i_ports[2]));
+					return;
+				}
+				else {
+					const and = new LogicalAndBlock();
+					c.out = and.i_ports[0];
+					this.connections.push(new Connection(this.i_ports[0], and.i_ports[1]));
+					this.connections.push(new Connection(and.o_ports[0], b.i_ports[2]));
+				}
+			});
+			this.expand_CallCompositeBlock(this.callF);
+			// TODO second branch
+			super.flatten();
 		};
 		// TODO; set of conditions of the blocks
 	};
