@@ -15,6 +15,8 @@
 
 (function() {
 
+	'use strict';
+
 	const bs = require("./blocks").BlockTypes;
 	
 	function schedule (bdef, options) {

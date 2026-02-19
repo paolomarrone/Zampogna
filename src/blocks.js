@@ -1,5 +1,7 @@
 (function() {
 
+	'use strict';
+
 	const ts = require("./types");
 	const us = require("./uprates");
 

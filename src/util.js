@@ -1,7 +1,9 @@
 (function() {
 
+	'use strict';
+
 	function arrayIncludedIn (A, B) {
-		return A.every(a => B.some(b => a == b));
+		return A.every(a => B.some(b => a === b));
 	}
 
 	function setIncludedIn (A, B) { // if A is included in B
@@ -9,9 +11,9 @@
 	}
 
 	function setsEqual (A, B) {
-		A = Array.from(A);
-		B = Array.from(B);
-		return arrayIncludedIn(A, B) && arrayIncludedIn(B, A);
+		const arrayA = Array.from(A);
+		const arrayB = Array.from(B);
+		return arrayIncludedIn(arrayA, arrayB) && arrayIncludedIn(arrayB, arrayA);
 	}
 
 	function graphToGraphviz (g, path) {
@@ -123,7 +125,7 @@
 
 		return function (filename) {
 
-			for (var i = 0; i < dirs.length; i++) {
+			for (let i = 0; i < dirs.length; i++) {
 				const d = dirs[i];
 				try {
 					const p = path.join(d, filename);

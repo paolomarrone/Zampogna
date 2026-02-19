@@ -19,6 +19,8 @@
 
 (function() {
 
+	'use strict';
+
 	const util = require("util");
 
 	function ScopeTable (father) {
@@ -307,9 +309,9 @@
 		}
 		case "CALL_EXPR":
 		{
-			let bdefs = scope.findGlobally(expr.id);
+			const bdefs = scope.findGlobally(expr.id);
 			let found = false;
-			for (let b of bdefs) {
+			for (const b of bdefs) {
 				if (b.name != "BLOCK_DEFINITION")
 					err("Calling something that is not callable");
 				if (b.inputs.length != expr.args.length)

@@ -15,6 +15,8 @@
 
 (function() {
 
+	'use strict';
+
 	const ts = require("./types");
 	const bs = require("./blocks").BlockTypes;
 	const us = require("./uprates");

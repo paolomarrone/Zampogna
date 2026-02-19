@@ -1,5 +1,7 @@
 (function() {
 
+	'use strict';
+
 	const UpdateRateGeneric = {};
 	UpdateRateGeneric.level = undefined;
 	UpdateRateGeneric.toString = () => "UpdateRateGeneric";

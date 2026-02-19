@@ -1,5 +1,7 @@
 (function() {
 
+	'use strict';
+
 	const DataTypeGeneric = {};
 	DataTypeGeneric.toString = () => "GenericType";
 	

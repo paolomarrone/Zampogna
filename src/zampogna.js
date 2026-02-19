@@ -15,6 +15,8 @@
 
 (function() {
 
+	'use strict';
+
 	const prepro = require("../src/preprocessor");
 	const parser = require("../src/grammar");
 	const syntax = require("../src/syntax");

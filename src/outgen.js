@@ -24,6 +24,8 @@
 
 (function() {
 
+	'use strict';
+
 	const doT = require("dot");
 	const fs = require("fs");
 	const path = require("path");
@@ -487,12 +489,14 @@
 		function dispatch (b, ur, control_dependencies) {
 			const outblocks = bdef.connections.filter(c => c.in.block == b).map(c => c.out.block);
 			
-			var locality = undefined; // 0 = constant, 1 = object, 2 = local
-			var whereDec = undefined;
-			var whereAss = undefined;
+			let locality = undefined; // 0 = constant, 1 = object, 2 = local
+			let whereDec = undefined;
+			let whereAss = undefined;
 
-			const outblockurs = outblocks.map(bb => us.max.apply(null, bb.i_ports.concat(bb.o_ports)));
-			const maxour = us.max.apply(null, outblockurs);
+			const outblockurs = outblocks.map(bb =>
+				us.max.apply(null, bb.i_ports.concat(bb.o_ports).map(p => p.updaterate()))
+			);
+			const maxour = outblockurs.length > 0 ? us.max.apply(null, outblockurs) : ur;
 
 			locality = maxour.level <= ur.level ? 2 : 1;
 
@@ -621,7 +625,8 @@
 				// Include
 				program.includes.add(cdef.header);
 
-				var state, coeffs;
+				let state;
+				let coeffs;
 
 				// Sub components declaration
 				if (cdef.state) {
@@ -871,7 +876,8 @@
 
 			// Regular expressions now
 
-			var w0, w1;
+				let w0;
+				let w1;
 			if (b.i_ports.length == 1) {
 				w0 = new funcs.ParWrapper(input_codes[0], input_blocks[0].parLevel, b.parLevel);
 			}
@@ -954,7 +960,9 @@
 			}
 			
 			else {
-				throw new Error("Unexpected block type: " + b + b.ref.id + b.type);
+				const refId = b && b.ref ? b.ref.id : "N/A";
+				const btype = b && b.type ? b.type : "N/A";
+				throw new Error("Unexpected block type: " + b + " ref=" + refId + " type=" + btype);
 			}
 		};
 	};

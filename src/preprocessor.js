@@ -15,6 +15,8 @@
 
 (function() {
 
+	'use strict';
+
 	function parse_include (s) {
 		s = s.substr(8).replace(/[; \t]+$/, '');
 		var id = s.match(/[_a-zA-Z0-9]*/);
