@@ -14,6 +14,7 @@
 */
 
 (function() {
+	'use strict'
 
 	function compile(env, debug, code, initial_block, control_inputs, initial_values, target_lang) {
 		if (!env) {
@@ -43,22 +44,22 @@
 			}
 		}
 
-		let tree = env["parser"].parse(code);
+		const tree = env["parser"].parse(code);
 		if (debug) console.log(tree)
 		
-		let scopes = env["extended_syntax"].validate(tree)
+		const scopes = env["extended_syntax"].validate(tree)
 		if (debug) console.log(scopes.join("").toString())
 
-		let graphes = env["graph"].ASTToGraph(tree, initial_block, control_inputs, initial_values)
+		const graphes = env["graph"].ASTToGraph(tree, initial_block, control_inputs, initial_values)
 		if (debug) console.log("G1__: ", graphes[0])
 		if (debug) console.log("G2__: ", graphes[1])
 
-		let scheduled_blocks = env["scheduler"].schedule(graphes[0])
-		let scheduled_blocks_init = env["scheduler"].scheduleInit(graphes[1])
+		const scheduled_blocks = env["scheduler"].schedule(graphes[0])
+		const scheduled_blocks_init = env["scheduler"].scheduleInit(graphes[1])
 		if (debug) console.log(scheduled_blocks.map(b => b.operation + "   " + b.label() + " " + (b.val ? b.val : "")))
 		if (debug) console.log(scheduled_blocks_init.map(b => b.operation + "   " + b.label() + " " + (b.val ? b.val : "")))
 
-		let files = env["output_generation"].convert(env["doT"], env["templates"], target_lang, graphes[0], graphes[1], scheduled_blocks, scheduled_blocks_init)
+		const files = env["output_generation"].convert(env["doT"], env["templates"], target_lang, graphes[0], graphes[1], scheduled_blocks, scheduled_blocks_init)
 		return files
 	}
 

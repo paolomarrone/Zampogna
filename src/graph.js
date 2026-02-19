@@ -14,6 +14,7 @@
 */
 
 (function() {
+	'use strict'
 
 	function Graph (id) {
 		let self = this
@@ -23,13 +24,13 @@
 		this.input_ports = []  // external input
 		this.output_ports = [] // output toward outside
 		this.getOutputBlocks = function (block) {
-			let cs = self.connections.filter(c => c.in.block == block)
+			let cs = self.connections.filter(c => c.in.block === block)
 			cs.sort((a, b) => block.output_ports.indexOf(a.in) < block.output_ports.indexOf(b.in) ? -1 : 1)
 			return cs.map(p => p.out.block)
 		}
 		this.getInputBlocks = function (block) {
-			return block.input_ports.map(p => self.connections.find(c => c.out == p)).filter(
-				c => c != undefined).map(c => c.in.block)
+			return block.input_ports.map(p => self.connections.find(c => c.out === p)).filter(
+				c => c !== undefined).map(c => c.in.block)
 		}
 		this.clone = function () {
 			let c = new Graph(self.id)
@@ -80,10 +81,10 @@
 				c.connections.push(new_conn)
 			})
 
-			blocks.filter(b => b.operation == "IF_THEN_ELSE").forEach(b => {
+			blocks.filter(b => b.operation === "IF_THEN_ELSE").forEach(b => {
 				blocks.forEach(bb => {
-					let io = bb.__son__.if_owners.find(io => io.ifblock == b)
-					if (io != undefined) {
+					let io = bb.__son__.if_owners.find(io => io.ifblock === b)
+					if (io !== undefined) {
 						let ioi = bb.__son__.if_owners.indexOf(io)
 						bb.__son__.if_owners.splice(ioi, 1, {ifblock: b.__son__, branch: io.branch})
 					}
@@ -119,7 +120,7 @@
 		}
 	}
 
-	var blocksCounter = 0;
+	let blocksCounter = 0;
 
 	function Block (nInputs = 0, nOutputs = 0, operation = "", id = "", postfix = "", val = NaN, if_owners = []) {
 		let self = this
@@ -141,7 +142,7 @@
 				(p1, p2) { return  max(p1, p2)})
 		}
 		this.propagateUpdateRate = function () {
-			if (self.operation == "IF_THEN_ELSE") {
+			if (self.operation === "IF_THEN_ELSE") {
 				let cond_update_rate = self.input_ports[0].update_rate
 				for (let i = 0; i < self.output_ports.length; i++) {
 					let m = max(
@@ -234,7 +235,7 @@
 			let named_vars 	= {}
 			let expansions_count = 0
 
-			AST_root.stmts.filter(stmt => stmt.name == 'BLOCK_DEF').forEach(block => named_blocks[block.id.val] = block)
+			AST_root.stmts.filter(stmt => stmt.name === 'BLOCK_DEF').forEach(block => named_blocks[block.id.val] = block)
 
 			if (!named_blocks[initial_block])
 				throw new Error("Undefined initial block: " + initial_block + ". Available blocks: " + Object.keys(named_blocks))
@@ -245,13 +246,13 @@
 			named_vars[block_fs.id] = block_fs
 			graph.blocks.push(block_fs)
 
-			AST_root.stmts.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(stmt => stmt.outputs.forEach(function (output) {
+			AST_root.stmts.filter(stmt => stmt.name === 'ASSIGNMENT').forEach(stmt => stmt.outputs.forEach(function (output) {
 				let block_const = new Block(1, 1, 'VAR', output.val, postfix, NaN, undefined)
 				named_vars[block_const.id] = block_const
 				graph.blocks.push(block_const)
 			}))
 
-			AST_root.stmts.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(stmt => {
+			AST_root.stmts.filter(stmt => stmt.name === 'ASSIGNMENT').forEach(stmt => {
 				let ports = convertExpr(stmt.expr, {}, named_blocks, named_vars, [])
 				stmt.outputs.forEach((output, index) => {
 					let block_const = named_vars[output.val]
@@ -268,12 +269,12 @@
 
 			function expandCompositeBlock (block, expansion_stack, named_blocks, named_vars, if_owners) {
 				expansions_count++
-				if (block.id.val != "" && expansion_stack[block.id.val])
+				if (block.id.val !== "" && expansion_stack[block.id.val])
 					throw new Error("Recursive block expansion. Stack: " + Object.keys(expansion_stack) + "," + block.id.val)
 				expansion_stack[block.id.val] = true
 
 				let prefix  = '_' + block.id.val + '_'
-				let postfix = expansions_count == 1 ? "" : '_' + expansions_count
+				let postfix = expansions_count === 1 ? "" : '_' + expansions_count
 
 				let input_ports = []
 				let output_ports = []
@@ -285,14 +286,14 @@
 					input_ports.push(block_var.input_ports[0])
 				})
 
-				block.body.filter(stmt => stmt.name == 'BLOCK_DEF').forEach(block => named_blocks[block.id.val] = block)
+				block.body.filter(stmt => stmt.name === 'BLOCK_DEF').forEach(block => named_blocks[block.id.val] = block)
 
 				block.body.filter(stmt => ['ASSIGNMENT', 'ANONYM_BLOCK_DEF', 'IF_THEN_ELSE'].includes(stmt.name)).forEach(
 					stmt => stmt.outputs.forEach((output, index) => {
 						if (output.init)
 							return
 						let block_var = new Block(1, 1, "VAR", output.val, postfix, NaN, if_owners)
-						if (stmt.name == 'IF_THEN_ELSE')
+						if (stmt.name === 'IF_THEN_ELSE')
 							block_var.ifoutputindex = index
 						named_vars[block_var.id] = block_var
 						graph.blocks.push(block_var)
@@ -305,11 +306,11 @@
 
 				block.body.filter(stmt => ['ASSIGNMENT', 'ANONYM_BLOCK_DEF', 'IF_THEN_ELSE'].includes(stmt.name)).forEach(function (stmt) {
 					let ports;
-					if (stmt.name == 'ASSIGNMENT')
+					if (stmt.name === 'ASSIGNMENT')
 						ports = convertExpr(stmt.expr, {...expansion_stack}, {...named_blocks}, {...named_vars}, if_owners)
-					else if (stmt.name == 'ANONYM_BLOCK_DEF')
+					else if (stmt.name === 'ANONYM_BLOCK_DEF')
 						ports = expandCompositeBlock(stmt, {...expansion_stack}, {...named_blocks}, {...named_vars}, if_owners)
-					else if (stmt.name == 'IF_THEN_ELSE')
+					else if (stmt.name === 'IF_THEN_ELSE')
 						ports = convertIfthenelse(stmt, expansion_stack, named_blocks, named_vars, if_owners)
 
 					stmt.outputs.forEach(function (output, index) {
@@ -434,19 +435,19 @@
 				}
 			}
 			graph_init.blocks.forEach(function (block, blocki) {
-				if (block.operation == 'DELAY1_EXPR') {
+				if (block.operation === 'DELAY1_EXPR') {
 					let input_block = graph_init.getInputBlocks(block)[0]
 					graph_init.output_ports = graph_init.output_ports.concat(input_block.output_ports)
 					graph.getInputBlocks(graph.blocks[blocki])[0].block_init = input_block
 				}
 			})
 
-			graph_init.blocks.filter(b => b.operation == 'VAR').forEach(b => b.postfix = b.postfix + "_I")
+			graph_init.blocks.filter(b => b.operation === 'VAR').forEach(b => b.postfix = b.postfix + "_I")
 
 			graph_init.input_ports.map(p => p.block).forEach(function (block, blocki) {
 				block.operation = 'NUMBER'
 				block.input_ports = []
-				if (initial_values[block.id])
+				if (initial_values[block.id] !== undefined)
 					block.val = initial_values[block.id]
 				else
 					block.val = 0
@@ -460,7 +461,7 @@
 			
 			graph.output_ports.forEach(p => visitNode(p.block))
 			function visitNode(block, i) {
-				if (block.operation == 'IF_THEN_ELSE') {
+				if (block.operation === 'IF_THEN_ELSE') {
 					if (!block.visited) 
 						block.visited = []
 					if (block.visited.includes(i))
@@ -468,7 +469,7 @@
 					block.visited.push(i)
 
 					let inbs = graph.getInputBlocks(block)
-					if (block.visited.length == 1) {
+					if (block.visited.length === 1) {
 						visitNode(inbs[0], NaN)
 						newGraph.blocks.push(block)
 					}
@@ -485,7 +486,7 @@
 				}
 			}
 
-			graph.blocks.filter(b => b.visited && b.operation == "IF_THEN_ELSE").forEach(b => {
+			graph.blocks.filter(b => b.visited && b.operation === "IF_THEN_ELSE").forEach(b => {
 				for (let i = b.output_ports.length - 1; i >= 0; i--) {
 					if (!b.visited.includes(i)) {
 						b.input_ports.splice(i + 1 + b.output_ports.length, 1)
@@ -496,8 +497,8 @@
 			})
 
 			newGraph.connections = graph.connections.filter(c => 
-				  	newGraph.blocks.some(b => b == c.out.block && b.input_ports.concat(b.output_ports).includes(c.out))
-				&& 	newGraph.blocks.some(b => b == c.in.block  && b.input_ports.concat(b.output_ports).includes(c.in))
+				  	newGraph.blocks.some(b => b === c.out.block && b.input_ports.concat(b.output_ports).includes(c.out))
+				&& 	newGraph.blocks.some(b => b === c.in.block  && b.input_ports.concat(b.output_ports).includes(c.in))
 			)
 			newGraph.connections = Array.from(new Set(newGraph.connections))
 
@@ -511,23 +512,23 @@
 
 		function setStartingUpdateRates (graph) {
 			graph.input_ports.map(p => p.block).forEach(function (block) {
-				if (control_inputs.some(ctr => ctr == block.id))
+				if (control_inputs.some(ctr => ctr === block.id))
 					block.input_ports.forEach(p => p.update_rate = 2)
 				else
 					block.input_ports.forEach(p => p.update_rate = 3)
 			})
-			graph.blocks.filter(block => block.operation == 'NUMBER').forEach(
+			graph.blocks.filter(block => block.operation === 'NUMBER').forEach(
 				block => block.output_ports[0].update_rate = 0)
-			graph.blocks.filter(block => block.operation == 'SAMPLERATE').forEach(
+			graph.blocks.filter(block => block.operation === 'SAMPLERATE').forEach(
 				block => block.output_ports[0].update_rate = 1)
-			graph.blocks.filter(block => block.operation == 'DELAY1_EXPR').forEach(
+			graph.blocks.filter(block => block.operation === 'DELAY1_EXPR').forEach(
 				block => block.output_ports[0].update_rate = 3)
 		}
 
 		function setStartingUpdateRatesInit (graph_init) {
-			graph_init.blocks.filter(block => block.operation == 'NUMBER').forEach(
+			graph_init.blocks.filter(block => block.operation === 'NUMBER').forEach(
 				block => block.output_ports[0].update_rate = 0)
-			graph_init.blocks.filter(block => block.operation == 'SAMPLERATE').forEach(
+			graph_init.blocks.filter(block => block.operation === 'SAMPLERATE').forEach(
 				block => block.output_ports[0].update_rate = 1)
 		}
 
@@ -544,7 +545,7 @@
 
 				let input_blocks = graph.getInputBlocks(block)
 
-				if (block.operation == 'DELAY1_EXPR') {
+				if (block.operation === 'DELAY1_EXPR') {
 					blocks_delay.push(input_blocks[0])
 				}
 				else {
@@ -552,7 +553,7 @@
 					block.propagateUpdateRate()
 				}
 
-				graph.connections.filter(c => c.in.block == block).forEach(
+				graph.connections.filter(c => c.in.block === block).forEach(
 					c => c.out.update_rate = c.in.update_rate)
 			}
 
@@ -562,7 +563,7 @@
 		function propagateUpdateRateInit (graph_init) {
 			graph_init.crossDFS(function (block) {
 				block.propagateUpdateRate()
-				graph_init.connections.filter(c => c.in.block == block).forEach(
+				graph_init.connections.filter(c => c.in.block === block).forEach(
 					c => c.out.update_rate = block.output_ports[0].update_rate)
 			})
 		}
@@ -577,7 +578,7 @@
 					return
 				block.visited1 = true
 
-				if (block.operation == 'IF_THEN_ELSE' && !block.handled) {
+				if (block.operation === 'IF_THEN_ELSE' && !block.handled) {
 					visitIfThenElse(block)
 				}
 				graph.getInputBlocks(block).forEach(b => visitBlock1(b))
@@ -608,16 +609,16 @@
 				})
 
 				// We're just interested in the bool
-				graph.blocks.filter(b => b.__tobecopied__ != undefined).forEach(b => {
+				graph.blocks.filter(b => b.__tobecopied__ !== undefined).forEach(b => {
 					b.__tobecopied__ = b.__tobecopied__.res
 				})
 				
 				function visitBlock2(block) {
-					if (block == ifthenelse)
+					if (block === ifthenelse)
 						return "found"
-					if (block.__tobecopied__ == undefined)
+					if (block.__tobecopied__ === undefined)
 						block.__tobecopied__ = new MagicOR()
-					if (block.operation == "DELAY1_EXPR") {
+					if (block.operation === "DELAY1_EXPR") {
 						block.__tobecopied__.res = false
 						return
 					}
@@ -627,7 +628,7 @@
 
 					graph.getInputBlocks(block).forEach(b => {
 						let ret = visitBlock2(b)
-						if (ret == "found") {
+						if (ret === "found") {
 							//block.__ifoutput__ = true
 							block.__tobecopied__.res = true
 							return
@@ -637,13 +638,13 @@
 				}
 
 				// If an if has to be copied, all its blocks have to too
-				graph.blocks.filter(b => b.__tobecopied__ && b.operation == "IF_THEN_ELSE").forEach(b => {
+				graph.blocks.filter(b => b.__tobecopied__ && b.operation === "IF_THEN_ELSE").forEach(b => {
 					graph.blocks.filter(bb => bb.if_owners.map(i => i.ifblock).includes(b)).forEach(bb => {
 						bb.__tobecopied__ = true
 					})
 				})
 
-				//graph.blocks.filter(b => b.operation == "TIMES_EXPR").forEach(b=>
+				//graph.blocks.filter(b => b.operation === "TIMES_EXPR").forEach(b=>
 				
 				let tobecopied_blocks = graph.blocks.filter(b => b.__tobecopied__)
 				let copied_subgraph = graph.cloneSubGraph(tobecopied_blocks)
@@ -654,7 +655,7 @@
 					// remove conections to the second branch
 					let tobedeleted_connections = graph.connections.filter(c => 
 									c.in.block.__tobecopied__
-								&& 	c.out.block.if_owners.some(i => i.ifblock == ifthenelse && i.branch != 0))
+								&& 	c.out.block.if_owners.some(i => i.ifblock === ifthenelse && i.branch !== 0))
 					
 					tobedeleted_connections.forEach(dc => graph.connections.splice(graph.connections.indexOf(dc), 1))
 
@@ -672,7 +673,7 @@
 				{
 					let tobedeleted_connections = copied_subgraph.connections.filter(c =>
 							copied_subgraph.blocks.includes(c.in.block) 
-						&& 	c.out.block.if_owners.some(i => i.ifblock == ifthenelse && i.branch != 1))
+						&& 	c.out.block.if_owners.some(i => i.ifblock === ifthenelse && i.branch !== 1))
 					tobedeleted_connections.forEach(dc => copied_subgraph.connections.splice(copied_subgraph.connections.indexOf(dc), 1))
 
 					let tobeedited_connections = copied_subgraph.connections.filter(
@@ -684,16 +685,16 @@
 						})
 				}
 
-				//graph.blocks.filter(b => b.operation == "TIMES_EXPR").forEach(b=>
+				//graph.blocks.filter(b => b.operation === "TIMES_EXPR").forEach(b=>
 			
 				// Let's put the variables out
 				// The inner variables of the "inner" IFs must not be put out
 				let copiedifs = graph.blocks.filter(b =>
-					b.operation == "IF_THEN_ELSE" && b.__tobecopied__)
+					b.operation === "IF_THEN_ELSE" && b.__tobecopied__)
 				let copiedifinnervariables = graph.blocks.filter(b =>
-					b.operation == "VAR" && b.if_owners.map(i => i.ifblock).some(ib => copiedifs.includes(ib)))
+					b.operation === "VAR" && b.if_owners.map(i => i.ifblock).some(ib => copiedifs.includes(ib)))
 				let variables = graph.blocks.filter(b => 
-					b.__tobecopied__ && !copiedifinnervariables.includes(b)).filter(b => b.operation == "VAR")
+					b.__tobecopied__ && !copiedifinnervariables.includes(b)).filter(b => b.operation === "VAR")
 
 
 				variables.forEach(v => {
@@ -709,16 +710,16 @@
 					newblockvar.ifoutputindex = ifthenelse.output_ports.length - 1
 					newblockvar.block_init = v.block_init
 
-					graph.connections.filter(c => c.in.block == v && !c.out.block.if_owners.some(i => i.ifblock == ifthenelse)).forEach(c => {
-						let c2 = copied_subgraph.connections.find(cc => cc.in.block == c.in.block.__son__ && cc.out == c.out)
+					graph.connections.filter(c => c.in.block === v && !c.out.block.if_owners.some(i => i.ifblock === ifthenelse)).forEach(c => {
+						let c2 = copied_subgraph.connections.find(cc => cc.in.block === c.in.block.__son__ && cc.out === c.out)
 						c.in = newblockvar.output_ports[0]
 						copied_subgraph.connections.splice(copied_subgraph.connections.indexOf(c2), 1)
 					})
 
-					graph.connections.filter(c => c.in.block == v && c.out.block.operation == 'DELAY1_EXPR').forEach(c => {
+					graph.connections.filter(c => c.in.block === v && c.out.block.operation === 'DELAY1_EXPR').forEach(c => {
 						c.in = newblockvar.output_ports[0]
 					})
-					copied_subgraph.connections.filter(c => c.in.block == v.__son__ && c.out.block.operation == 'DELAY1_EXPR').forEach(c => {
+					copied_subgraph.connections.filter(c => c.in.block === v.__son__ && c.out.block.operation === 'DELAY1_EXPR').forEach(c => {
 						c.in = newblockvar.output_ports[0]
 					})
 
@@ -727,7 +728,7 @@
 					graph.connections.push(new Connection(v.__son__.output_ports[0], newinport2))
 
 					let oid = graph.output_ports.indexOf(v.output_ports[0])
-					if (oid != -1) {
+					if (oid !== -1) {
 						graph.output_ports[oid] = newblockvar.output_ports[0]
 					}
 
@@ -771,7 +772,7 @@
 				}
 				this.res = undefined
 				this.compute = function (stack = []) {
-					if (self.res != undefined)
+					if (self.res !== undefined)
 						return self.res
 					if (stack.includes(self)) 
 						return undefined
@@ -779,7 +780,7 @@
 					let left = false
 					for (let o of self.ops) {
 						let r = o.compute([...stack])
-						if (r != undefined) {
+						if (r !== undefined) {
 							if (r) {
 								self.res = true
 								break
@@ -788,7 +789,7 @@
 						else
 							left = true
 					}
-					if (self.res == undefined) {
+					if (self.res === undefined) {
 						if (left)
 							return undefined
 						else
@@ -822,7 +823,7 @@
 			}
 
 			function propagateControlDependencies () {
-				graph.input_ports.filter(p => p.update_rate == 2).forEach(function (p) {
+				graph.input_ports.filter(p => p.update_rate === 2).forEach(function (p) {
 					visitBlock(p.block, p.block.label())
 					graph.blocks.forEach(b => delete b.visited)
 				})

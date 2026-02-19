@@ -14,13 +14,14 @@
 */
 
 (function() {
+	'use strict'
 
 	function schedule (graph) {
-		let scheduled_nodes = []
+		const scheduled_nodes = []
 
 		let roots = [].concat(graph.output_ports.map(p => p.block))
-		roots = roots.concat(graph.blocks.filter(b => b.operation == 'DELAY1_EXPR'))
-		let stack = []
+		roots = roots.concat(graph.blocks.filter(b => b.operation === 'DELAY1_EXPR'))
+		const stack = []
 
 		roots.forEach(b => schedule_block(b))
 
@@ -29,7 +30,7 @@
 		return scheduled_nodes
 
 		function schedule_block(block) {
-			if (stack.some(b => block == b))
+			if (stack.some(b => block === b))
 				throw new Error("Found loop in scheduling at block: " + block + ". Stack: \n" + stack.join('\n'))
 
 			if (block.visited)
@@ -39,7 +40,7 @@
 			stack.push(block)
 
 			graph.getInputBlocks(block).forEach(function (b) {
-				if (b.operation != 'DELAY1_EXPR')
+				if (b.operation !== 'DELAY1_EXPR')
 					schedule_block(b)
 			})
 			scheduled_nodes.push(block)
@@ -48,10 +49,10 @@
 	}
 
 	function scheduleInit (graph) {
-		let scheduled_nodes = []
+		const scheduled_nodes = []
 
-		let roots = [].concat(graph.output_ports.map(p => p.block))
-		let stack = []
+		const roots = [].concat(graph.output_ports.map(p => p.block))
+		const stack = []
 
 		roots.forEach(b => schedule_block(b))
 
@@ -60,7 +61,7 @@
 		return scheduled_nodes
 
 		function schedule_block(block) {
-			if (stack.some(b => block == b))
+			if (stack.some(b => block === b))
 				throw new Error("Found loop in tnit scheduling at block: " + block + ". Stack: \n" + stack.join('\n'))
 
 			if (block.visited)

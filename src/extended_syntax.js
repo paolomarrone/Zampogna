@@ -13,8 +13,9 @@
 	Author: Paolo Marrone
 */
 (function() {
+	'use strict'
 
-	var ScopeTable = {
+	const ScopeTable = {
 		elements: {},
 		father: null,
 		id: "",
@@ -38,7 +39,7 @@
 		},
 
 		add: function (id, item) {
-			if (id == '_')
+			if (id === '_')
 				return
 			if (this.findLocal(id))
 				err("ID assigned twice: " + id);
@@ -58,8 +59,8 @@
 		}
 	}
 
-	var scopes = []
-	var scope_reserved = Object.create(ScopeTable)
+	let scopes = []
+	const scope_reserved = Object.create(ScopeTable)
 	scope_reserved.init("_reserved_")
 	scope_reserved.add("delay1", { 
 		type: 'func', 
@@ -92,8 +93,8 @@
 			block => analyze_block_body(scope_program, block))
 
 		for (let i in scope_program.elements) {
-			let item = scope_program.elements[i]
-			if (item.kind == 'const' && !item.used)
+			const item = scope_program.elements[i]
+			if (item.kind === 'const' && !item.used)
 				warn(item.kind + " " + i + " not used")
 		}
 
@@ -101,11 +102,11 @@
 	}
 
 	function analyze_block_signature(parent_scope, block) {
-		if (block.inputs.some(o => o.name != 'ID'))
+		if (block.inputs.some(o => o.name !== 'ID'))
 			err("Invalid arguments in block definition. Use only IDs")
 		if (block.outputs.some(o => o.init))
 			err("Cannot use '@' in block definitions")
-		if (block.outputs.some(o => o.val == '_'))
+		if (block.outputs.some(o => o.val === '_'))
 			err("Cannot use '_' in block definitions")
 		parent_scope.add(block.id.val, {
 			kind: 		"block",
@@ -115,7 +116,7 @@
 	}
 
 	function analyze_anonym_block_signature(block) {
-		if (block.outputs.some(o => o.val == '_'))
+		if (block.outputs.some(o => o.val === '_'))
 			err("Cannot use '_' in block definitions")
 		if (block.outputs.some(o => o.init))
 			err("Cannot use '@' in block definitions")
@@ -191,8 +192,8 @@
 		})
 
 		for (let i in scope_block.elements) {
-			let item = scope_block.elements[i]
-			if (item.kind == 'port_out' && !item.assigned)
+			const item = scope_block.elements[i]
+			if (item.kind === 'port_out' && !item.assigned)
 				err("Output port not assigned: " + i)
 			if (!item.used)
 				warn(item.kind + " " + i + " not used")
@@ -203,17 +204,17 @@
 		if (scope_reserved.find(id_node.val))
 			err(id_node.val + " is a reserved keyword");
 
-		let item = scope.findLocal(id_node.val)
+		const item = scope.findLocal(id_node.val)
 		if (item) {
-			if (item.kind == 'port_in')
+			if (item.kind === 'port_in')
 				err("Input ports cannot be assigned: " + id_node.val)
-			if (item.kind == 'port_out') {
+			if (item.kind === 'port_out') {
 				if (item.assigned)
 					err("Output ports can be assigned only once: " + id_node.val)
 				else
 					item.assigned = true
 			}
-			if (item.kind == 'var' || item.kind == 'const')
+			if (item.kind === 'var' || item.kind === 'const')
 				err("Variables can be assigned only once: " + id_node.val)
 		}
 		else
@@ -224,7 +225,7 @@
 	}
 
 	function analyze_left_assignment_init(scope, id_node) {
-		let item = scope.findLocal(id_node.val)
+		const item = scope.findLocal(id_node.val)
 
 		if (!item)
 			err("Cannot set initial value of undefined: " + id_node.val)
@@ -232,26 +233,26 @@
 		if (item.hasInit)
 			err("Cannot set initial value of variables more than once: " + id_node.val)
 
-		if (item.kind == 'port_in')
+		if (item.kind === 'port_in')
 			err("Cannot set initial value of input ports: " + id_node.val)
 
 		item.hasInit = true
 	}
 
 	function analyze_right_assignment(scope, expr_node, outputsN) {
-		if (expr_node.name == 'ID') {
-			let item = scope.find(expr_node.val)
+		if (expr_node.name === 'ID') {
+			const item = scope.find(expr_node.val)
 
 			if (!item)
 				err("ID not found: " + expr_node.val + ". Scope: \n" + scope)
 
-			if (item.kind == 'var' || item.kind == 'const' || item.kind == 'port_in' || item.kind == 'port_out')
+			if (item.kind === 'var' || item.kind === 'const' || item.kind === 'port_in' || item.kind === 'port_out')
 				item.used = true;
 			else
 				err("Unexpected identifier in expression: " + expr_node.val)
 		}
-		else if (expr_node.name == 'CALL_EXPR') {
-			let item = scope.find(expr_node.id.val)
+		else if (expr_node.name === 'CALL_EXPR') {
+			const item = scope.find(expr_node.id.val)
 
 			if (!item) {
 				warn("Using unknown external function " + expr_node.id.val)
@@ -264,7 +265,7 @@
 				if (item.inputsN != expr_node.args.length)
 					err(expr_node.id.val + " requires " + item.inputsN + " inputs while "  + expr_node.args.length + " were provided")
 
-				if (expr_node.id.val == 'delay1')
+				if (expr_node.id.val === 'delay1')
 					expr_node.kind = 'DELAY1_EXPR'
 				else
 					expr_node.kind = 'BLOCK_CALL'

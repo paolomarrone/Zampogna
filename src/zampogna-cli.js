@@ -16,6 +16,7 @@
 */
 
 (function() {
+	'use strict'
 	// Node env
 
 	const zampogna = require('./zampogna')
@@ -36,13 +37,13 @@
 	}
 	let input_code = "";
 
-	let args = process.argv.slice(2)
+	const args = process.argv.slice(2)
 
 	for (let a = 0; a < args.length; a++) {
-		let arg = args[a];
+		const arg = args[a];
 		if (options.hasOwnProperty(arg)) {
-			let value = args[a + 1]
-			if (value == undefined || options.hasOwnProperty(value))
+			const value = args[a + 1]
+			if (value === undefined || options.hasOwnProperty(value))
 				throw new Error("Bad syntax. " + usage);
 			options[arg] = value;
 			a++;
@@ -54,21 +55,21 @@
 		}
 	}
 
-	if (input_code == "")
+	if (input_code === "")
 		throw new Error("No input file. " + usage);
-	if (options["-i"] == "")
-		throw new Error("Specify the initial_block.", usage);
+	if (options["-i"] === "")
+		throw new Error("Specify the initial_block. " + usage);
 	
 	const supported_target_languages = ["C", "cpp", "VST2", "yaaaeapa", "MATLAB", "js", "d"];
 	if (!supported_target_languages.includes(options["-t"]))
 		throw new Error(options["-t"] + " is not a supported target language. Choose among: " + supported_target_languages.join(", "))
 
-	let debug = options["-d"].toLowerCase() == "true";
-	let control_inputs = options['-c'] ? options['-c'].split(',') : []
-	let initial_values = {}
+	const debug = options["-d"].toLowerCase() === "true";
+	const control_inputs = options['-c'] ? options['-c'].split(',') : []
+	const initial_values = {}
 	if (options['-v'])
 		options['-v'].split(',').map(o => o.split('=')).forEach(e => initial_values[e[0]] = e[1])
-	let files = zampogna.compile(null, debug, input_code, options["-i"], control_inputs, initial_values, options["-t"]);
+	const files = zampogna.compile(null, debug, input_code, options["-i"], control_inputs, initial_values, options["-t"]);
 
 	if (!fs.existsSync(options['-o']))
 	    fs.mkdirSync(options['-o']);

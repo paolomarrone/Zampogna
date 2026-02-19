@@ -14,6 +14,7 @@
 */
 
 (function() {
+	'use strict'
 	function getIndexer (target_lang, index) {
 		if (['C', 'cpp', 'VST2', 'yaaaeapa', 'd', 'js'].includes(target_lang))
 			return "[" + index + "]"
@@ -49,11 +50,11 @@
 	function convert(doT, templates, target_lang, graph, graph_init, schedule, schedule_init) {
 		
 		const ct = getConstType(target_lang)
-		var MagicStringProto = {
+		const MagicStringProto = {
 			s: null,
 			add: function(...x) {
 				for (let k of x) {
-					if (k == undefined) {
+					if (k === undefined) {
 						throw new Error(k)
 					}
 					this.s.push(k)
@@ -68,7 +69,7 @@
 			}
 		}
 		function MagicString(...init) {
-			var m = Object.create(MagicStringProto);
+			const m = Object.create(MagicStringProto);
 			m.s = []
 			for (let i of init)
 				m.add(i)	
@@ -182,8 +183,8 @@
 			const auxcode = MagicString()
 
 			let is_used_locally = true
-			is_used_locally = output_blocks.every(b => b.output_ports[0].update_rate == update_rate)
-			if (update_rate == 2 && is_used_locally)
+			is_used_locally = output_blocks.every(b => b.output_ports[0].update_rate === update_rate)
+			if (update_rate === 2 && is_used_locally)
 				is_used_locally = output_blocks.every(b => checkSetEquality(b.control_dependencies, block.control_dependencies))
 			if (is_used_locally && block.if_owners.length > 0) {
 				let bb = block.if_owners[block.if_owners.length - 1]
@@ -191,14 +192,14 @@
 				if (output_blocks.some(b => b.operation == "DELAY1_EXPR"))
 					is_used_locally = false;
 			}
-			const id_prefix = is_used_locally || update_rate == 0 ? "" : id_prefix_;
+			const id_prefix = is_used_locally || update_rate === 0 ? "" : id_prefix_;
 
 			if (!block.output_ports[0].toBeCached) {
-				if (update_rate == 2 && output_blocks.length > 0 && !checkSetEquality(output_blocks[0].control_dependencies, block.control_dependencies))
+				if (update_rate === 2 && output_blocks.length > 0 && !checkSetEquality(output_blocks[0].control_dependencies, block.control_dependencies))
 					block.output_ports[0].toBeCached = true;
 			}
 
-			if (block.ifoutputindex != undefined && !isNaN(block.ifoutputindex)) {
+			if (block.ifoutputindex !== undefined && !isNaN(block.ifoutputindex)) {
 				code.add(id_prefix_, block.label())
 				appendAssignment(code, "",  666, null, true, false, null)
 				return
@@ -206,7 +207,7 @@
 
 			switch (block.operation) {
 				case 'VAR':
-					if (input_blocks[0].operation == 'NUMBER')
+					if (input_blocks[0].operation === 'NUMBER')
 						code.add(input_blocks_code[0])
 					else if (block.output_ports[0].toBeCached || output_blocks.length > 1) {
 						code.add(id_prefix, block.label())
@@ -324,7 +325,7 @@
 			const output_blocks = graph_init.getOutputBlocks(block)
 			const input_blocks_code = input_blocks.map(b => b.output_ports[0].code)
 			const update_rate = block.output_ports[0].update_rate
-			const level = update_rate == 2 ? -2 : update_rate
+			const level = update_rate === 2 ? -2 : update_rate
 			const code = block.output_ports[0].code
 
 			const auxcode = MagicString()
@@ -338,7 +339,7 @@
 			// TMP... TODO: fix
 			is_used_locally = false;
 
-			const id_prefix = is_used_locally || update_rate == 0 ? "" : id_prefix_;
+			const id_prefix = is_used_locally || update_rate === 0 ? "" : id_prefix_;
 
 			switch (block.operation) {
 				case 'VAR':
@@ -352,7 +353,7 @@
 						code.add(input_blocks_code[0])
 					return
 				case 'VAR_IN':
-					if (update_rate == 0)
+					if (update_rate === 0)
 						code.add(block.val) // This surely is a number
 					else
 						throw new Error("Unexpected update_rate in init graph " + block + ": " + update_rate)
@@ -435,11 +436,11 @@
 			stmt.if_owners = if_owners
 
 			if (is_used_locally) {
-				if (level != 0)
+				if (level !== 0)
 					stmt.is_used_locally = true
 			}
 			else {
-				if (to_be_declared && level != 0) {
+				if (to_be_declared && level !== 0) {
 					program.declarations1.push(left)
 					program.init.push(MagicString(left, ' = ', getNumber(target_lang, "0")))
 				}
@@ -476,7 +477,7 @@
 
 		function appendIfStatement(block, code, cond_level, if_owners, output_blocks, input_blocks, control_dependencies) {
 
-			if (block.output_ports.length != output_blocks.length)
+			if (block.output_ports.length !== output_blocks.length)
 				throw new Error("Something is wrong")
 
 			const levels = ["constant_rate", "sampling_rate", "controls_rate", "audio_rate"]
@@ -485,7 +486,7 @@
 				let out_i = []
 				for (let i = 0; i < block.output_ports.length; i++) {
 					let ur = block.output_ports[i].update_rate
-					if (ur == lvl || (lvl == cond_level && ur <= lvl)) {
+					if (ur === lvl || (lvl === cond_level && ur <= lvl)) {
 						out_i.push(i)
 					}
 				}
@@ -527,7 +528,7 @@
 		}
 
 		function groupControls() {
-			var Group = function (set) {
+			const Group = function (set) {
 				let self = this
 				this.label = Array.from(set).join('_')
 				this.set = set
@@ -538,21 +539,21 @@
 			let groups = []
 			program.controls_rate.forEach(function (stmt) {
 				let group = groups.find(g => g.equals(stmt.control_dependencies))
-				if (group == undefined) {
+				if (group === undefined) {
 					group = new Group(stmt.control_dependencies)
 					groups.push(group)
 				}
 				group.stmts.push(stmt)
 			})
 
-			groups.sort((A, B) => A.cardinality < B.cardinality ? -1 : A.cardinality == B.cardinality ? 0 : 1 )
+			groups.sort((A, B) => A.cardinality < B.cardinality ? -1 : A.cardinality === B.cardinality ? 0 : 1 )
 
 			program.controls_rate = groups
 		}
 	}
 
 	function checkSetsInclusion(A, B) { // if A is included in B
-		return Array.from(A).every(Av => Array.from(B).some(Bv => Av == Bv))
+		return Array.from(A).every(Av => Array.from(B).some(Bv => Av === Bv))
 	}
 	function checkSetEquality(A, B) {
 		return checkSetsInclusion(A, B) && checkSetsInclusion(B, A)
