@@ -89,6 +89,8 @@
 	const BadPassedsN = BadCodeResults.filter(r => r.r).length;
 	console.log("Good code tests passed: " + GoodPassedsN + " / " + GoodCodes.length);
 	console.log("Bad  code tests passed: " + BadPassedsN + " / " + BadCodes.length);
+	if (GoodPassedsN != GoodCodes.length || BadPassedsN != BadCodes.length)
+		process.exitCode = 1;
 
 	console.log("--- PREPROCESSOR TESTS --- END")
 

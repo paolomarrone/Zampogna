@@ -18,6 +18,7 @@
 	const ts = require("./types");
 	const bs = require("./blocks").BlockTypes;
 	const us = require("./uprates");
+	const util = require("./util");
 
 	function ASTToGraph (root, options, cblock_descs = []) {
 
@@ -1184,7 +1185,7 @@
 
 					if (bb == bdef)
 						return;
-					if (Set.checkEquality(b.control_dependencies, bb.control_dependencies))
+					if (util.setsEqual(b.control_dependencies, bb.control_dependencies))
 						return;
 					if (bs.VarBlock.isPrototypeOf(bb))
 						return;

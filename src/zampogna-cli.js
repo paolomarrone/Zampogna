@@ -18,7 +18,7 @@
 			[-t target_lang]
 			[-o output_folder]
 			[-d debug_bool]
-			input_file";
+			input_file
 	`;
 
 	const options = {
@@ -34,23 +34,24 @@
 
 	const args = process.argv.slice(2)
 
-	var input_code;
+	var input_code = undefined;
 
 	for (let a = 0; a < args.length; a++) {
 		const arg = args[a];
 		if (options.hasOwnProperty(arg)) {
-			if (!options[args[a + 1]]) {
-				options[arg] = args[a + 1];
-				a++;
-			}
-			else
+			const next = args[a + 1];
+			if (!next || options.hasOwnProperty(next))
 				throw new Error("Bad syntax. " + usage);
+			options[arg] = next;
+			a++;
 		}
 		else {
+			if (arg.startsWith("-"))
+				throw new Error("Unknown option: " + arg + ". " + usage);
 			input_code = String(fs.readFileSync(arg));
 		}
 	}
-	if (input_code == "")
+	if (!input_code)
 		throw new Error("No input file. " + usage);
 
 	if (options["-i"] == "")
@@ -68,16 +69,21 @@
 		options['-v'].split(',').map(o => o.split('=')).forEach(e => initial_values[e[0]] = e[1])
 	
 	const searchpaths = [];
-	options["-paths"].split(',').forEach(p => {
+	options["-paths"].split(',').filter(p => p != "").forEach(p => {
 		searchpaths.push(path.join(process.cwd(), p));
 	});
 	const filereader = util.get_filereader(searchpaths);
 
+	const initial_block_inputs_n = options["-in"] == ""
+		? -1
+		: parseInt(options["-in"], 10);
+	if (options["-in"] != "" && Number.isNaN(initial_block_inputs_n))
+		throw new Error("Invalid -in argument. Must be an integer.");
 
 	const z_options = {
 		debug_mode: debug,
 		initial_block_id: options["-i"],
-		initial_block_inputs_n: options["-in"],
+		initial_block_inputs_n: initial_block_inputs_n,
 		control_inputs: control_inputs,
 		initial_values: initial_values,
 		target_language: options["-t"],
@@ -87,7 +93,7 @@
 
 	files.forEach(f => {
 		fs.mkdirSync(path.join(options['-o'], f.path), { recursive: true });
-		fs.writeFile(path.join(options['-o'], f.path, f.name), f.str, err => { if (err) throw err });
+		fs.writeFileSync(path.join(options['-o'], f.path, f.name), f.str);
 	});
 
 }())

@@ -285,7 +285,7 @@
 		};
 		funcs.ControlCoeffsGroup = function (control_dependencies) {
 			this.control_dependencies = control_dependencies;
-			this.equals = (s) => Set.checkEquality(this.control_dependencies, s);
+			this.equals = (s) => ut.setsEqual(this.control_dependencies, s);
 			
 			this.s = new funcs.IfBlock();
 			this.s.condition.add(Array.from(control_dependencies).map(x => funcs.getObjectPrefix() + x + '_CHANGED').join(' | '));
@@ -324,6 +324,7 @@
 
 		const t = options.target_language;
 		const funcs = get_funcs(t);
+		const initial_values = options.initial_values || {};
 
 		const program = {
 
@@ -386,8 +387,8 @@
 			const code = funcs.getObjectPrefix() + id;
 			program.parameters.push(id);
 			p.code = code;
-			program.parameters_initialValues[id] = options.initial_values[p.id]
-				? funcs.getFloat(options.initial_values[p.id])
+			program.parameters_initialValues[id] = initial_values[p.id]
+				? funcs.getFloat(initial_values[p.id])
 				: funcs.getFloat(0.5);
 		});
 		program.parameters.forEach(p => {
@@ -510,7 +511,7 @@
 			if (ur == us.UpdateRateControl) {
 				const g = program.control_coeffs_update.getOrAddGroup(control_dependencies);
 				if (locality == 2) {
-					locality = outblocks.every(bb => Set.checkEquality(control_dependencies, bb.control_dependencies)) ? 2 : 1;
+					locality = outblocks.every(bb => ut.setsEqual(control_dependencies, bb.control_dependencies)) ? 2 : 1;
 				}
 				if (locality == 2) {
 					whereDec = g;
@@ -610,7 +611,7 @@
 				op0.code.add("__max__(");
 				op0.code.add(input_codes[0]);
 				for (let i = 1; i < input_codes.length; i++)
-					op0.code.add( ', ', input_codes[1]);
+					op0.code.add(', ', input_codes[i]);
 				op0.code.add(')');
 				return;
 			}

@@ -587,6 +587,8 @@
 	const BadPassedsN = BadTestResults.filter(r => r.r).length;
 	console.log("Good code tests passed: " + GoodPassedsN + " / " + GoodTests.length);
 	console.log("Bad  code tests passed: " + BadPassedsN + " / " + BadTests.length);
+	if (GoodPassedsN != GoodTests.length || BadPassedsN != BadTests.length)
+		process.exitCode = 1;
 
 	console.log("--- OUTGEN TESTS --- END")
 
