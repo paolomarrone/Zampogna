@@ -25,6 +25,9 @@
   ],
   "author": "Paolo Marrone paolo.marrone@orastron.com (https://ciaramella.dev/)",
   "license": "ISC",
+  "scripts": {
+    "web-gen": "browserify -t brfs src/zampogna.js --s zampogna -o web/zampogna-web.js"
+  },
   "dependencies": {
     "brfs": "^2.0.2",
     "dot": "1.1.3",
