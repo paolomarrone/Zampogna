@@ -874,10 +874,10 @@
 				return;
 			}
 
-			// Regular expressions now
+			// Standard expressions now
 
-				let w0;
-				let w1;
+			let w0;
+			let w1;
 			if (b.i_ports.length == 1) {
 				w0 = new funcs.ParWrapper(input_codes[0], input_blocks[0].parLevel, b.parLevel);
 			}
