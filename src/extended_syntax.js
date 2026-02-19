@@ -29,8 +29,9 @@
 		},
 
 		find: function (id) {
-			if (e = this.findLocal(id))
-				return e
+			const found = this.findLocal(id)
+			if (found)
+				return found
 			if (this.father)
 				return this.father.find(id);
 			return null

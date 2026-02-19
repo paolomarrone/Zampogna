@@ -194,7 +194,7 @@
 			const id_prefix = is_used_locally || update_rate == 0 ? "" : id_prefix_;
 
 			if (!block.output_ports[0].toBeCached) {
-				if (update_rate == 2 && !checkSetEquality(output_blocks[0].control_dependencies, block.control_dependencies))
+				if (update_rate == 2 && output_blocks.length > 0 && !checkSetEquality(output_blocks[0].control_dependencies, block.control_dependencies))
 					block.output_ports[0].toBeCached = true;
 			}
 

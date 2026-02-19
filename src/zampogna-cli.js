@@ -41,14 +41,15 @@
 	for (let a = 0; a < args.length; a++) {
 		let arg = args[a];
 		if (options.hasOwnProperty(arg)) {
-			if (!options[args[a + 1]]) {
-				options[arg] = args[a + 1];
-				a++;
-			}
-			else
+			let value = args[a + 1]
+			if (value == undefined || options.hasOwnProperty(value))
 				throw new Error("Bad syntax. " + usage);
+			options[arg] = value;
+			a++;
 		}
 		else {
+			if (arg.startsWith('-'))
+				throw new Error("Bad syntax. " + usage);
 			input_code = String(fs.readFileSync(arg));
 		}
 	}

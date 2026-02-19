@@ -30,8 +30,9 @@
 		},
 
 		find: function (id) {
-			if (e = this.findLocal(id))
-				return e
+			const found = this.findLocal(id)
+			if (found)
+				return found
 			if (this.father)
 				return this.father.find(id);
 			return null
@@ -1400,7 +1401,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 	function max (x1, ...xn) {
 		let M = x1
-		for (a of xn)
+		for (let a of xn)
 			if (a > M)
 				M = a
 		return M
@@ -2002,7 +2003,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 						o.compute([...stack])
 					return self.res
 				}
-				for (i of init)
+				for (let i of init)
 					self.add(i)
 			}
 		}
@@ -2243,7 +2244,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 			const id_prefix = is_used_locally || update_rate == 0 ? "" : id_prefix_;
 
 			if (!block.output_ports[0].toBeCached) {
-				if (update_rate == 2 && !checkSetEquality(output_blocks[0].control_dependencies, block.control_dependencies))
+				if (update_rate == 2 && output_blocks.length > 0 && !checkSetEquality(output_blocks[0].control_dependencies, block.control_dependencies))
 					block.output_ports[0].toBeCached = true;
 			}
 

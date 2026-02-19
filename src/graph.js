@@ -196,7 +196,7 @@
 
 	function max (x1, ...xn) {
 		let M = x1
-		for (a of xn)
+		for (let a of xn)
 			if (a > M)
 				M = a
 		return M
@@ -798,7 +798,7 @@
 						o.compute([...stack])
 					return self.res
 				}
-				for (i of init)
+				for (let i of init)
 					self.add(i)
 			}
 		}
