@@ -24,9 +24,21 @@
 	const fs = require('fs')
 	const path = require('path')
 
+	const supported_target_languages = ["C", "cpp", "VST2", "yaaaeapa", "MATLAB", "js", "d"];
+	const usage = [
+		"Usage: zampogna-cli.js [options] input_file",
+		"",
+		"Options:",
+		"  -i, --initial-block <name>    Initial block name (required)",
+		"  -c, --controls <ids>          Control inputs, comma-separated",
+		"  -v, --initial-values <pairs>  Initial values, comma-separated key=value pairs",
+		"  -t, --target <lang>           Target language (default: cpp)",
+		"  -o, --output <folder>         Output folder (default: build)",
+		"  -d, --debug <bool>            Debug mode: true/false (default: false)",
+		"",
+		"Supported targets: " + supported_target_languages.join(", ")
+	].join("\n")
 
-	const usage = "Usage: zampogna-cli.js [-i initial_block] [-c control_inputs] [-v initial_values] \
-									[-t target_lang] [-o output_folder] [-d debug_bool] input_file";
 	let options = {
 		"-i": "",
 		"-t": "cpp",
@@ -59,8 +71,7 @@
 		throw new Error("No input file. " + usage);
 	if (options["-i"] === "")
 		throw new Error("Specify the initial_block. " + usage);
-	
-	const supported_target_languages = ["C", "cpp", "VST2", "yaaaeapa", "MATLAB", "js", "d"];
+
 	if (!supported_target_languages.includes(options["-t"]))
 		throw new Error(options["-t"] + " is not a supported target language. Choose among: " + supported_target_languages.join(", "))
 

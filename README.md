@@ -27,7 +27,16 @@ git clone https://github.com/paolomarrone/Zampogna.git
 - via Node.js:
 
 ```
-Usage: zampogna-cli.js [-i initial_block] [-c control_inputs] [-v initial_values] [-t target_lang] [-o output_folder] [-d debug_bool] input_file";
+Usage: zampogna-cli.js [options] input_file
+
+Options:
+  -i, --initial-block <name>    Initial block name (required)
+  -c, --controls <ids>          Control inputs, comma-separated
+  -v, --initial-values <pairs>  Initial values, comma-separated key=value pairs
+  -t, --target <lang>           Target language (default: cpp)
+  -o, --output <folder>         Output folder (default: build)
+  -d, --debug <bool>            Debug mode: true/false (default: false)
+  -h, --help                    Show this help
 ```
 
 - via Web Browser:
