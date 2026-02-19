@@ -17,9 +17,9 @@
 
 	'use strict';
 
-	const ts = require("./types");
+	const TYPES = require("./types");
 	const bs = require("./blocks").BlockTypes;
-	const us = require("./uprates");
+	const RATES = require("./uprates");
 	const util = require("./util");
 
 	function ASTToGraph (root, options, cblock_descs = []) {
@@ -30,14 +30,14 @@
 		bdef.inputs_N = 1; // fs
 		bdef.outputs_N = 0;
 		bdef.init();
-		bdef.i_ports[0].datatype = () => ts.DataTypeFloat32;
-		bdef.i_ports[0].updaterate = () => us.UpdateRateFs;
+		bdef.i_ports[0].datatype = () => TYPES.Float32;
+		bdef.i_ports[0].updaterate = () => RATES.Fs;
 		bdef.i_ports[0].id = "fs";
 
 		(function create_fs (bdef) {
 			const fs = Object.create(bs.VarBlock);
 			fs.id = "fs";
-			fs.datatype = () => ts.DataTypeFloat32;
+			fs.datatype = () => TYPES.Float32;
 			fs.init();
 			const c = Object.create(bs.CompositeBlock.Connection);
 			c.in = bdef.i_ports[0];
@@ -247,8 +247,8 @@
 			v.id = (block.id || block.value || block.operation) + "." + property;
 			v.init();
 			if (property == 'fs') {
-				v.datatype = () => ts.DataTypeFloat32;
-				v.i_ports[0].datatype = () => ts.DataTypeFloat32; // Check this
+				v.datatype = () => TYPES.Float32;
+				v.i_ports[0].datatype = () => TYPES.Float32; // Check this
 			}
 			else {
 				const dto = (block.o_ports[0] || block);
@@ -300,11 +300,11 @@
 			b.value = expr_node.val;
 			b.init();
 			if (expr_node.type == 'INT32')
-				b.datatype = () => ts.DataTypeInt32;
+				b.datatype = () => TYPES.Int32;
 			else if (expr_node.type == 'FLOAT32')
-				b.datatype = () => ts.DataTypeFloat32;
+				b.datatype = () => TYPES.Float32;
 			else if (expr_node.type == 'BOOL')
-				b.datatype = () => ts.DataTypeBool;
+				b.datatype = () => TYPES.Bool;
 			bdef.blocks.push(b);
 			return [[], b.o_ports];
 		}
@@ -453,8 +453,8 @@
 	function find_initial_bdef (bdef, options) {
 		let bds = bdef.bdefs
 			.filter(bd => bd.id == options.initial_block_id)
-			.filter(bd => bd.i_ports.map(p => p.datatype()).every(d => d == ts.DataTypeFloat32))
-			.filter(bd => bd.o_ports.map(p => p.datatype()).every(d => d == ts.DataTypeFloat32));
+			.filter(bd => bd.i_ports.map(p => p.datatype()).every(d => d == TYPES.Float32))
+			.filter(bd => bd.o_ports.map(p => p.datatype()).every(d => d == TYPES.Float32));
 		if (bds.length == 1)
 			return bds[0];
 		bds = bds.filter(bd => bd.inputs_N == options.initial_block_inputs_n);
@@ -472,8 +472,8 @@
 		const pfs = bdef.i_ports[0];
 		bdef.createPorts(bdef.inputs_N + 1, bdef.outputs_N);
 		bdef.i_ports[0] = pfs;
-		bdef.i_ports.forEach(p => p.datatype = () => ts.DataTypeFloat32);
-		bdef.o_ports.forEach(p => p.datatype = () => ts.DataTypeFloat32);
+		bdef.i_ports.forEach(p => p.datatype = () => TYPES.Float32);
+		bdef.o_ports.forEach(p => p.datatype = () => TYPES.Float32);
 		bdef.i_ports.forEach((p, i) => {
 			if (i == 0)
 				return;
@@ -589,7 +589,7 @@
 
 		const b0 = Object.create(bs.ConstantBlock);
 		b0.value = 0;
-		b0.datatype = () => ts.DataTypeFloat32;
+		b0.datatype = () => TYPES.Float32;
 		b0.init();
 		bdef.blocks.push(b0);
 
@@ -649,7 +649,7 @@
 					return b0;
 				
 				const max = Object.create(bs.MaxBlock);
-				max.datatype = () => ts.DataTypeFloat32;
+				max.datatype = () => TYPES.Float32;
 				max.createPorts(b.i_ports.length, 1);
 				max.init();
 				for (let i = 0; i < b.i_ports.length; i++) {
@@ -717,13 +717,13 @@
 			const p = bdef.i_ports.find(p => p.id == c);
 			if (!p)
 				throw new Error("No input with such id. " + bdef.i_ports.join());
-			p.updaterate = () => us.UpdateRateControl;
+			p.updaterate = () => RATES.Control;
 		});
 		bdef.i_ports.forEach(p => {
 			if (!options.control_inputs.includes(p.id))
-				p.updaterate = () => us.UpdateRateAudio;
+				p.updaterate = () => RATES.Audio;
 		});
-		bdef.i_ports[0].updaterate = () => us.UpdateRateFs;
+		bdef.i_ports[0].updaterate = () => RATES.Fs;
 
 		bdef.blocks.filter(b => bs.CallBlock.isPrototypeOf(b) && b.type == 'cdef').forEach(b => {
 			b.o_ports.forEach((p, i) => {
@@ -744,7 +744,7 @@
 					return;
 				b.__visited__ = true;
 				if (bs.MemoryReaderBlock.isPrototypeOf(b) && b.memoryblock == m) {
-					b.o_ports[0].updaterate = () => us.UpdateRateAudio;
+					b.o_ports[0].updaterate = () => RATES.Audio;
 				}
 				bdef.connections.filter(c => c.out.block == b).forEach(c => {
 					f (c.in.block);
@@ -763,7 +763,7 @@
 		// Better to reset
 		bdef.blocks.forEach(b => b.control_dependencies = new Set());
 
-		bdef.i_ports.filter(p => p.updaterate() == us.UpdateRateControl).forEach(p => {
+		bdef.i_ports.filter(p => p.updaterate() == RATES.Control).forEach(p => {
 			const cs = bdef.connections.filter(c => c.in == p);
 			cs.forEach(c => f (c.out.block, p.id));
 			bdef.blocks.forEach(b => delete b.__visited__);
@@ -983,9 +983,9 @@
 			const CBlocks = bdef.blocks.filter(b => bs.ConstantBlock.isPrototypeOf(b));
 
 			const values = [
-				Array.from(new Set(CBlocks.filter(b => b.datatype() == ts.DataTypeFloat32).map(b => b.value))).map(v => [ts.DataTypeFloat32, v]),
-				Array.from(new Set(CBlocks.filter(b => b.datatype() == ts.DataTypeInt32).map(b => b.value))).map(v => [ts.DataTypeInt32, v]),
-				Array.from(new Set(CBlocks.filter(b => b.datatype() == ts.DataTypeBool).map(b => b.value))).map(v => [ts.DataTypeBool, v])
+				Array.from(new Set(CBlocks.filter(b => b.datatype() == TYPES.Float32).map(b => b.value))).map(v => [TYPES.Float32, v]),
+				Array.from(new Set(CBlocks.filter(b => b.datatype() == TYPES.Int32).map(b => b.value))).map(v => [TYPES.Int32, v]),
+				Array.from(new Set(CBlocks.filter(b => b.datatype() == TYPES.Bool).map(b => b.value))).map(v => [TYPES.Bool, v])
 			].flat(1);
 
 			values.forEach(v => {
@@ -1151,7 +1151,7 @@
 				b.i_ports.forEach(p => {
 					const c = bdef.connections.find(c => c.out == p);
 					const iur = c.in.updaterate();
-					if (us.equal(our, iur))
+					if (RATES.equal(our, iur))
 						return;
 					if (bs.VarBlock.isPrototypeOf(c.in.block))
 						return;
@@ -1178,7 +1178,7 @@
 		function lazyfy_subexpressions_controls () {
 			return; // Something is wrong here
 			// Here too
-			bdef.blocks.filter(b => b.o_ports.length != 0 && b.o_ports[0].updaterate() == us.UpdateRateControl).forEach(b => {
+			bdef.blocks.filter(b => b.o_ports.length != 0 && b.o_ports[0].updaterate() == RATES.Control).forEach(b => {
 
 				b.i_ports.forEach(p => {
 					const c = bdef.connections.find(c => c.out == p);
@@ -1273,13 +1273,13 @@
 	function getDataType (s) {
 		switch (s) {
 		case "TYPE_INT32":
-			return ts.DataTypeInt32;
+			return TYPES.Int32;
 		case "TYPE_FLOAT32":
-			return ts.DataTypeFloat32;
+			return TYPES.Float32;
 		case "TYPE_BOOL":
-			return ts.DataTypeBool;
+			return TYPES.Bool;
 		case undefined:
-			return ts.DataTypeFloat32;
+			return TYPES.Float32;
 		default:
 			throw new Error("Unexpected datatype " + s);
 		}

@@ -45,8 +45,8 @@
 		}	
 	};
 	const bs = require("./blocks").BlockTypes;
-	const ts = require("./types");
-	const us = require("./uprates");
+	const TYPES = require("./types");
+	const RATES = require("./uprates");
 	const ut = require("./util");
 
 	
@@ -132,11 +132,11 @@
 		funcs["getInt"] = (n) => n;
 		funcs["getBool"] = (n) => n ? keys.type_true : keys.type_false;
 		funcs["getConstant"] = (n, datatype) => {
-			if (ts.DataTypeFloat32 == datatype)
+			if (TYPES.Float32 == datatype)
 				return funcs.getFloat(n);
-			if (ts.DataTypeInt32 == datatype)
+			if (TYPES.Int32 == datatype)
 				return funcs.getInt(n);
-			if (ts.DataTypeBool == datatype) {
+			if (TYPES.Bool == datatype) {
 				return funcs.getBool(n);
 			}
 			throw new Error("getConstant. Type error");
@@ -145,11 +145,11 @@
 		funcs["getConstKey"] = () => keys.const;
 		funcs["getStaticKey"] = () => keys.static;
 		funcs["getTypeDecl"] = (t) => {
-			if (ts.DataTypeFloat32 == t)
+			if (TYPES.Float32 == t)
 				return keys.type_float;
-			if (ts.DataTypeInt32 ==  t)
+			if (TYPES.Int32 ==  t)
 				return keys.type_int;
-			if (ts.DataTypeBool == t)
+			if (TYPES.Bool == t)
 				return keys.type_bool;
 			throw new Error("getTypeDecl. Type error");
 		};
@@ -384,7 +384,7 @@
 			if (b.ref.coeffs)
 				program.identifiers.add(b.ref.coeffs);
 		});
-		bdef.i_ports.filter(p => p.updaterate() == us.UpdateRateControl).forEach(p => {
+		bdef.i_ports.filter(p => p.updaterate() == RATES.Control).forEach(p => {
 			const id = program.identifiers.add(p.id);
 			const code = funcs.getObjectPrefix() + id;
 			program.parameters.push(id);
@@ -395,12 +395,12 @@
 		});
 		program.parameters.forEach(p => {
 			const id = program.identifiers.add(p + '_z1');
-			const d = new funcs.Declaration(false, false, ts.DataTypeFloat32, false, id, true);
+			const d = new funcs.Declaration(false, false, TYPES.Float32, false, id, true);
 			program.parameter_states.add(d);
 		});
 		program.parameters.forEach(p => {
 			const id = program.identifiers.add(p + '_CHANGED');
-			const d = new funcs.Declaration(false, false, ts.DataTypeBool, false, id, true);
+			const d = new funcs.Declaration(false, false, TYPES.Bool, false, id, true);
 			program.parameter_states.add(d);
 		});	
 		program.parameters.forEach(p => {
@@ -408,18 +408,18 @@
 		});
 		program.parameters.forEach(p => {
 			const id = p;
-			const d = new funcs.Declaration(false, false, ts.DataTypeFloat32, false, id, true);
+			const d = new funcs.Declaration(false, false, TYPES.Float32, false, id, true);
 			program.parameter_states.add(d);
 		});
 		program.name = program.identifiers.add(bdef.id);
 		program.identifiers.add('_' + bdef.id);
-		bdef.i_ports.filter(p => p.updaterate() == us.UpdateRateAudio).forEach(p => {
+		bdef.i_ports.filter(p => p.updaterate() == RATES.Audio).forEach(p => {
 			const id = program.identifiers.add(p.id);
 			const code = new LazyString(id, funcs.getArrayIndexer('i'));
 			program.audio_inputs.push(id);
 			p.code = code;
 		});
-		bdef.i_ports.filter(p => p.updaterate() == us.UpdateRateFs).forEach(p => {
+		bdef.i_ports.filter(p => p.updaterate() == RATES.Fs).forEach(p => {
 			const id = program.identifiers.add(p.id);
 			const code = funcs.getObjectPrefix() + id;
 			p.code = code;
@@ -494,25 +494,25 @@
 			let whereAss = undefined;
 
 			const outblockurs = outblocks.map(bb =>
-				us.max.apply(null, bb.i_ports.concat(bb.o_ports).map(p => p.updaterate()))
+				RATES.max.apply(null, bb.i_ports.concat(bb.o_ports).map(p => p.updaterate()))
 			);
-			const maxour = outblockurs.length > 0 ? us.max.apply(null, outblockurs) : ur;
+			const maxour = outblockurs.length > 0 ? RATES.max.apply(null, outblockurs) : ur;
 
 			locality = maxour.level <= ur.level ? 2 : 1;
 
-			if (ur == us.UpdateRateConstant) {
+			if (ur == RATES.Constant) {
 				locality = 0;
 				whereDec = program.constants;
 				whereAss = program.init;
 			}
-			if (ur == us.UpdateRateFs) {
+			if (ur == RATES.Fs) {
 				if (locality == 2)
 					whereDec = program.fs_update;
 				else
 					whereDec = program.coefficients;
 				whereAss = program.fs_update;
 			}
-			if (ur == us.UpdateRateControl) {
+			if (ur == RATES.Control) {
 				const g = program.control_coeffs_update.getOrAddGroup(control_dependencies);
 				if (locality == 2) {
 					locality = outblocks.every(bb => ut.setsEqual(control_dependencies, bb.control_dependencies)) ? 2 : 1;
@@ -525,7 +525,7 @@
 				}
 				whereAss = g;
 			}
-			if (ur == us.UpdateRateAudio) {
+			if (ur == RATES.Audio) {
 				locality = 2;
 				whereDec = program.audio_update;
 				whereAss = program.audio_update;
@@ -805,11 +805,11 @@
 							i_ports.push(b.i_ports[input[1]]);
 						}
 					}
-					const ur = us.max.apply(null, i_ports.map(p => p.updaterate()));
+					const ur = RATES.max.apply(null, i_ports.map(p => p.updaterate()));
 
 					const locality = 1;
 					const whereDec = program.coefficients;
-					const whereAss = ur == us.UpdateRateAudio ? program.update_coeffs_audio : program.update_coeffs_ctrl;
+					const whereAss = ur == RATES.Audio ? program.update_coeffs_audio : program.update_coeffs_ctrl;
 
 					const rr = get_decls_assignments(locality, f);
 					const decls = rr.decls;
@@ -854,7 +854,7 @@
 					const f = cdef.funcs.process1;
 
 					// Simplification: outputs might be declared in different places
-					const ur = us.max.apply(null, b.i_ports.concat(b.o_ports).map(p => p.updaterate()));
+					const ur = RATES.max.apply(null, b.i_ports.concat(b.o_ports).map(p => p.updaterate()));
 					const r = dispatch(b, ur, b.control_dependencies);
 					const locality = r.locality;
 					const whereDec = r.whereDec;
