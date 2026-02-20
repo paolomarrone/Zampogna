@@ -1,0 +1,31 @@
+float y = delay (float x) {
+	mem[1] float s
+	y = s[0]
+	s[0] = x
+	s.init = x
+}
+
+bool y = delay (bool x) {
+    mem[1] bool s
+    y = s[0]
+    s[0] = x
+    s.init = x
+}
+
+y = decimator(x, bypass) {
+	y = if (bypass < 0.5) {
+		y, bool s = if (delay(s)) {
+			y = x
+			s = false
+		} else {
+			y = delay(t)
+			s = true
+		}
+		t = y
+		s.init = true
+		y.init = 0.0
+	}
+	else {
+		y = x
+	}
+}
