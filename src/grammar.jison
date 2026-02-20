@@ -107,12 +107,12 @@ assignment 			: exprs '=' expr END
                         }}
                     ;
 
-if_then_elses       : IF '(' expr ')' branch elseifs ELSE branch
+if_then_elses       : IF '(' expr ')' branch elseifs opt_ends ELSE opt_ends branch
                         {{
                             $5.condition = $3,
                             $$ = {
                                 name: 'IF_THEN_ELSES',
-                                branches: [$5, $6, $8].flat()
+                                branches: [$5, $6, $10].flat()
                             }
                         }}
                     ;
@@ -127,13 +127,17 @@ branch              : block
                         }}
                     ;
 
-elseifs             : elseifs ELSE IF '(' expr ')' branch
+elseifs             : elseifs opt_ends ELSE opt_ends IF '(' expr ')' branch
                         {{
-                            $7.condition = $5
-                            $$ = $1.concat($7)
+                            $9.condition = $7
+                            $$ = $1.concat($9)
                         }}
                     |
                         {{ $$ = [] }}
+                    ;
+
+opt_ends            : opt_ends END
+                    |
                     ;
 
 block               : '{' statements '}'

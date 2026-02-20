@@ -107,6 +107,19 @@
 				y.fs = ((x * x).fs * 2).init
 				y.fs.fs.fs = 0.5
 			}
+		`, `
+			y = if (0.3 < 0.5) {
+				y = if (true) {
+					y = 3.1
+				}
+				else {
+					x = 2.0
+					y = x
+				}
+			}
+			else {
+				y = 0.1
+			}
 		`
 	];
 
