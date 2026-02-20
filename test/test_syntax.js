@@ -145,6 +145,18 @@
 					y = x
 				}
 			}
+		`, `
+			float y = conditional_delay (float x, bool c) {
+				mem[1] float s
+				s.init = x
+				u = if (c) {
+					u = x
+				} else {
+					u = s[0]
+				}
+				s[0] = u
+				y = s[0]
+			}
 		`
 	];
 
