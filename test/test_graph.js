@@ -53,6 +53,13 @@
 				    s[0] = x
 				    s.init = x
 				}
+
+				bool y = delay (bool x) {
+				    mem[1] bool s
+				    y = s[0]
+				    s[0] = x
+				    s.init = x
+				}
 			`,
 			options: { initial_block_id: "delay", control_inputs: [] }
 		},
@@ -207,6 +214,54 @@
 				}
 			`,
 			options: { initial_block_id: "vol", control_inputs: ["v"] }
+		},
+		{
+				code: `
+					float y = delay (float x) {
+					    mem[1] float s
+					    y = s[0]
+					    s[0] = x
+					    s.init = x
+					}
+
+					bool y = delay (bool x) {
+					    mem[1] bool s
+					    y = s[0]
+					    s[0] = x
+					    s.init = x
+					}
+
+					float y = conditional_delay (float x, bool c) {
+				    mem[1] float s
+				    s.init = x
+				    u = if (c) {
+				        u = x
+				    } else {
+				        u = s[0]
+				    }
+				    s[0] = u
+				    y = s[0]
+				}
+
+				y = decimator(x) {
+					y = if (!(x > 0.5)) {
+						y, bool s = if (delay(s)) {
+							y = x
+							s = false
+						} else {
+							y = delay(t)
+							s = true
+						}
+						t = y
+						s.init = true
+						y.init = 0.0
+					}
+					else {
+						y = x
+					}
+				}
+			`,
+			options: { initial_block_id: "decimator", control_inputs: [] }
 		}
 		/*
 		{ 

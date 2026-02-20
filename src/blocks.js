@@ -203,6 +203,8 @@
 	MemoryWriterBlock.clone = function () {
 		const r = Block.clone.call(this);
 		r.memoryblock = this.memoryblock.clone();
+		if (this.predicate_terms)
+			r.predicate_terms = this.predicate_terms.map(t => ({ port: t.port, negated: t.negated }));
 		return r;
 	};
 
@@ -467,6 +469,24 @@
 			throw new Error("Inconsistent MAX datatypes: " + this.toString());
 	};
 
+	const SelectBlock = Object.create(Block);
+	SelectBlock.operation = "SELECT";
+	SelectBlock.parLevel = 3;
+	SelectBlock.init = function () {
+		Block.init.call(this, 3, 1); // cond, then, else
+		this.o_ports[0].datatype = function () {
+			return this.block.i_ports[1].datatype();
+		};
+		Block.setMaxOutputUpdaterate.call(this);
+	};
+	SelectBlock.validate = function () {
+		Block.validate.call(this);
+		if (this.i_ports[0].datatype() != TYPES.Bool)
+			throw new Error("Select condition must be bool");
+		if (this.i_ports[1].datatype() != this.i_ports[2].datatype())
+			throw new Error("Select input types mismatch");
+	};
+
 	const CallBlock = Object.create(Block);
 	CallBlock.operation = "CALL";
 	CallBlock.id = undefined;
@@ -558,38 +578,159 @@
 	};
 
 	const IfthenelseBlock = Object.create(Block);
-	IfthenelseBlock.operation = "???";
+	IfthenelseBlock.operation = "IF_THEN_ELSE";
 	IfthenelseBlock.nOutputs = undefined;
+	IfthenelseBlock.then_branch = undefined; // CompositeBlock
+	IfthenelseBlock.else_branch = undefined; // CompositeBlock
 	IfthenelseBlock.init = function () {
-		const nInputs = 1 + this.nOutputs * 2; // Condition, outputs of 1st branch, output of 2nd branch
-		Block.init.call(this, nInputs, this.nOutputs);
+		Block.init.call(this, 1, this.nOutputs); // condition only, outputs are selected internally
 	};
 	IfthenelseBlock.setOutputDatatype = function () {
-		for (let i = 0; i < this.nOutputs; i++)
-			this.o_ports[i].datatype = this.i_ports[i + 1].datatype;
+		for (let i = 0; i < this.nOutputs; i++) {
+			const oi = i;
+			this.o_ports[i].datatype = function () {
+				return this.block.then_branch.o_ports[oi].datatype();
+			};
+			this.o_ports[i].updaterate = function () {
+				return RATES.max(this.block.then_branch.o_ports[oi].updaterate(), this.block.else_branch.o_ports[oi].updaterate());
+			};
+		}
 	};
 	IfthenelseBlock.validate = function () {
 		Block.validate.call(this);
 		if (this.nOutputs == undefined || this.nOutputs < 1)
 			throw new Error("Unexpected outputs number");
-		if (this.i_ports[0].datatype != TYPES.Bool)
+		if (!this.then_branch || !this.else_branch)
+			throw new Error("IF_THEN_ELSE branches not set");
+		if (this.i_ports[0].datatype() != TYPES.Bool)
 			throw new Error("Ifthenelse condition must return a boolean");
 		for (let i = 0; i < this.nOutputs; i++)
-			if (this.i_ports[1 + i].datatype != this.i_ports[1 + i + this.nOutputs].datatype)
-				throw new Error("Inconsistent input datatypes");
+			if (this.then_branch.o_ports[i].datatype() != this.else_branch.o_ports[i].datatype())
+				throw new Error("Inconsistent branch output datatypes");
 	};
-	IfthenelseBlock.flatten = function () {
-		// TODO
-		// Idea.
-		// 1. Flattening: Create nOutputs select blocks depending on the same condition. Then flatten branches. ...
-		// 		Maybe we should use decoders and conditional MemoryBlock update too... ?
-		// 2. Normalization: (In case of loops where the branch choice is lost). 
-		// 		2.1. Create graph1 with condition = T (remove all the selects)
-		// 		2.2. Create graph2 with condition = F
-		// 		All the blocks that are in the loop and in both graphes are de facto duplicated
-		// 		All the blocks that are NOT in the loop and in both graphes don't need to be duplicated
-		// 		This "enlarges" the branche blocks so that they can be treated as a black boxes
-		// 		Problem: if the duplicated blocks are used elsewhere, we need another select. TODO: define this better
+	IfthenelseBlock.clone = function () {
+		const r = Block.clone.call(this);
+		r.nOutputs = this.nOutputs;
+		r.then_branch = this.then_branch.clone();
+		r.else_branch = this.else_branch.clone();
+		return r;
+	};
+	IfthenelseBlock.flatten = function (bdef) {
+		const condConn = bdef.connections.find(c => c.out == this.i_ports[0]);
+		if (!condConn)
+			throw new Error("IF_THEN_ELSE missing condition connection");
+
+		function append_predicate_to_writer (mw, port, negated) {
+			// If writer value is already selected by this same condition, adding the
+			// condition again would over-constrain updates.
+			let vc = bdef.connections.find(c => c.out == mw.i_ports[1]);
+			let srcp = vc ? vc.in : undefined;
+			while (srcp && VarBlock.isPrototypeOf(srcp.block)) {
+				const cvin = bdef.connections.find(c => c.out == srcp.block.i_ports[0]);
+				if (!cvin)
+					break;
+				srcp = cvin.in;
+			}
+			if (srcp && SelectBlock.isPrototypeOf(srcp.block)) {
+				const cc = bdef.connections.find(c => c.out == srcp.block.i_ports[0]);
+				if (cc && cc.in == port)
+					return;
+			}
+			if (!mw.predicate_terms)
+				mw.predicate_terms = [];
+			mw.predicate_terms.push({ port: port, negated: negated });
+		}
+
+		const flatten_branch_ref = (ref, negated) => {
+			ref.setToBeCloned();
+			const bb = ref.clone();
+			flatten_all(bb);
+			bdef.blocks = bdef.blocks.concat(bb.blocks);
+			bdef.connections = bdef.connections.concat(bb.connections);
+			bdef.properties = bdef.properties.concat(bb.properties);
+			bdef.cdefs = bdef.cdefs.concat(bb.cdefs);
+			ref.clean();
+			bb.blocks.filter(b => MemoryWriterBlock.isPrototypeOf(b)).forEach(mw => {
+				append_predicate_to_writer(mw, condConn.in, negated);
+			});
+			return bb;
+		};
+
+		// Flatten branches first, then mark internal writes with branch predicate.
+		const bbThen = flatten_branch_ref(this.then_branch, false);
+		const bbElse = flatten_branch_ref(this.else_branch, true);
+
+		for (let i = 0; i < this.nOutputs; i++) {
+			const cThenOut = bdef.connections.filter(c => c.out == bbThen.o_ports[i]);
+			const cElseOut = bdef.connections.filter(c => c.out == bbElse.o_ports[i]);
+			if (cThenOut.length != 1 || cElseOut.length != 1)
+				throw new Error("Invalid IF_THEN_ELSE branch output wiring");
+
+			const sel = Object.create(SelectBlock);
+			sel.init();
+
+			const c0 = Object.create(CompositeBlock.Connection);
+			const c1 = Object.create(CompositeBlock.Connection);
+			const c2 = Object.create(CompositeBlock.Connection);
+			c0.in = condConn.in;
+			c0.out = sel.i_ports[0];
+			c1.in = cThenOut[0].in;
+			c1.out = sel.i_ports[1];
+			c2.in = cElseOut[0].in;
+			c2.out = sel.i_ports[2];
+			bdef.connections.push(c0);
+			bdef.connections.push(c1);
+			bdef.connections.push(c2);
+			bdef.blocks.push(sel);
+
+			bdef.connections.filter(c => c.in == this.o_ports[i]).forEach(c => {
+				c.in = sel.o_ports[0];
+			});
+
+			bdef.connections.splice(bdef.connections.indexOf(cThenOut[0]), 1);
+			bdef.connections.splice(bdef.connections.indexOf(cElseOut[0]), 1);
+		}
+
+		bdef.connections.splice(bdef.connections.indexOf(condConn), 1);
+		bdef.blocks.splice(bdef.blocks.indexOf(this), 1);
+		remove_redundant_predicates();
+
+		function flatten_all (cb) {
+			while (true) {
+				const ib = cb.blocks.find(b => IfthenelseBlock.isPrototypeOf(b));
+				if (ib) {
+					ib.flatten(cb);
+					continue;
+				}
+				const hasCall = cb.blocks.some(b => CallBlock.isPrototypeOf(b) && b.type == 'bdef');
+				if (hasCall) {
+					cb.flatten();
+					continue;
+				}
+				break;
+			}
+		}
+
+		function remove_redundant_predicates () {
+			bdef.blocks.filter(b => MemoryWriterBlock.isPrototypeOf(b) && b.predicate_terms).forEach(mw => {
+				const vc = bdef.connections.find(c => c.out == mw.i_ports[1]);
+				let srcp = vc ? vc.in : undefined;
+				while (srcp && VarBlock.isPrototypeOf(srcp.block)) {
+					const cvin = bdef.connections.find(c => c.out == srcp.block.i_ports[0]);
+					if (!cvin)
+						break;
+					srcp = cvin.in;
+				}
+				if (!srcp || !SelectBlock.isPrototypeOf(srcp.block))
+					return;
+				const cc = bdef.connections.find(c => c.out == srcp.block.i_ports[0]);
+				if (!cc)
+					return;
+				mw.predicate_terms = mw.predicate_terms.filter(t => t.port != cc.in);
+				if (mw.predicate_terms.length == 0)
+					delete mw.predicate_terms;
+			});
+		}
 	};
 
 	const Connection = {};
@@ -729,6 +870,14 @@
 					throw new Error("Found invalid number of connectrions toward output");
 				this.connections.splice(this.connections.indexOf(csint[0]), 1);
 				csext.forEach(c => c.in = csint[0].in);
+				this.blocks.forEach(bb_ => {
+					if (!bb_.predicate_terms)
+						return;
+					bb_.predicate_terms.forEach(t => {
+						if (t.port == p)
+							t.port = csint[0].in;
+					});
+				});
 			});
 
 			this.blocks.splice(this.blocks.indexOf(b), 1);
@@ -793,7 +942,7 @@
 		ArithmeticalBlock, SumBlock, SubtractionBlock, MulBlock, DivisionBlock, UminusBlock,
 		ModuloBlock,
 		CastBlock, CastF32Block, CastI32Block, CastBoolBlock,
-		MaxBlock,
+		MaxBlock, SelectBlock,
 		CallBlock,
 		CBlock,
 		IfthenelseBlock,

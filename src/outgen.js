@@ -316,6 +316,29 @@
 				return prependTabs(r, tabLevel);
 			};
 		};
+		funcs.IfElseBlock = function () {
+			this.condition = new LazyString();
+			if (target_language == "MATLAB") {
+				this.start = new LazyString('if ', this.condition, '\n');
+				this.mid = new LazyString('\nelse\n');
+				this.end = new LazyString('\nend\n');
+			}
+			else {
+				this.start = new LazyString('if ( ', this.condition, ' ) { \n');
+				this.mid = new LazyString('\n} else { \n');
+				this.end = new LazyString('\n} \n');
+			}
+			this.then_body = new funcs.Statements();
+			this.else_body = new funcs.Statements();
+			this.toString = function (tabLevel = 0) {
+				const r = this.start.toString() +
+					this.then_body.toString(1) +
+					this.mid.toString() +
+					this.else_body.toString(1) +
+					this.end.toString();
+				return prependTabs(r, tabLevel);
+			};
+		};
 		funcs.ControlCoeffsGroup = function (control_dependencies) {
 			this.control_dependencies = control_dependencies;
 			this.equals = (s) => ut.setsEqual(this.control_dependencies, s);
@@ -478,9 +501,7 @@
 		});
 		
 
-		schedule.forEach(b => {
-			convert_block(b);
-		});
+		schedule.forEach(b => ensure_block_converted(b));
 
 		bdef.o_ports.forEach(p => {
 			const c = bdef.connections.find(c => c.out == p);
@@ -595,7 +616,33 @@
 		}
 
 
+		function ensure_block_converted (b) {
+			if (b == bdef)
+				return;
+			if (b.__converted__)
+				return;
+			if (b.__converting__)
+				return;
+			b.__converting__ = true;
+			b.i_ports.forEach(p => {
+				const c = bdef.connections.find(cc => cc.out == p);
+				if (c)
+					ensure_block_converted(c.in.block);
+			});
+			if (b.predicate_terms) {
+				b.predicate_terms.forEach(t => {
+					if (t && t.port && t.port.block)
+						ensure_block_converted(t.port.block);
+				});
+			}
+			convert_block(b);
+			b.__converted__ = true;
+			delete b.__converting__;
+		}
+
 		function convert_block (b) {
+			if (b.__converted__)
+				return;
 			
 			const input_block_out_ports = b.i_ports.map(p => bdef.connections.find(c => c.out == p).in);
 			const input_blocks = input_block_out_ports.map(p => p.block);
@@ -660,7 +707,26 @@
 				c.add(b.memoryblock.code);
 				c.add(funcs.getMemoryArrayIndexer(input_codes[0]));
 				const a = new funcs.Assignment(c, input_codes[1], null);
-				program.memory_updates.add(a); // TODO: Might not be always the case
+				if (b.predicate_terms && b.predicate_terms.length > 0) {
+					const i0 = new funcs.IfBlock();
+					if (b.predicate_terms[0].negated)
+						i0.condition.add("!");
+					i0.condition.add(b.predicate_terms[0].port.code);
+					let cur = i0;
+					for (let i = 1; i < b.predicate_terms.length; i++) {
+						const ii = new funcs.IfBlock();
+						if (b.predicate_terms[i].negated)
+							ii.condition.add("!");
+						ii.condition.add(b.predicate_terms[i].port.code);
+						cur.body.add(ii);
+						cur = ii;
+					}
+					cur.body.add(a);
+					program.memory_updates.add(i0);
+				}
+				else {
+					program.memory_updates.add(a); // TODO: Might not be always the case
+				}
 				return;
 			}
 			if (bs.ConstantBlock.isPrototypeOf(b)) {
@@ -723,7 +789,7 @@
 						}
 						if (input[0] == 'o') {
 							const type = b.o_ports[input[1]].datatype();
-							const id = program.identifiers.add('_x_');
+							const id = program.identifiers.add('x__');
 							const pid = prefix + id;
 							const decl = new funcs.Declaration(false, false, type, false, id, true);
 							const ref = '&' + pid;
@@ -743,7 +809,7 @@
 						const output = f.f_outputs[0];
 						if (true) { //(decls.length > 0) {
 							const type = b.o_ports[output[1]].datatype();
-							const id = program.identifiers.add('_x_');
+							const id = program.identifiers.add('x__');
 							const pid = prefix + id;
 							const decl = new funcs.Declaration(false, false, type, false, id, true);
 							decls.push(decl);
@@ -936,12 +1002,18 @@
 
 			let w0;
 			let w1;
+			let w2;
 			if (b.i_ports.length == 1) {
 				w0 = new funcs.ParWrapper(input_codes[0], input_blocks[0].parLevel, b.parLevel);
 			}
 			if (b.i_ports.length == 2) {
 				w0 = new funcs.ParWrapper(input_codes[0], input_blocks[0].parLevel, b.parLevel);
 				w1 = new funcs.ParWrapper(input_codes[1], input_blocks[1].parLevel, b.parLevel);
+			}
+			if (b.i_ports.length == 3) {
+				w0 = new funcs.ParWrapper(input_codes[0], input_blocks[0].parLevel, b.parLevel);
+				w1 = new funcs.ParWrapper(input_codes[1], input_blocks[1].parLevel, b.parLevel);
+				w2 = new funcs.ParWrapper(input_codes[2], input_blocks[2].parLevel, b.parLevel);
 			}
 
 			if (bs.LogicalAndBlock.isPrototypeOf(b)) {
@@ -1027,6 +1099,38 @@
 					op0.code.add('logical(', w0, ')');
 				else
 					op0.code.add('(char)', w0);
+			}
+			else if (bs.SelectBlock.isPrototypeOf(b)) {
+				const ur = b.o_ports[0].updaterate();
+				const r = dispatch(b, ur, b.control_dependencies);
+				const locality = r.locality;
+				const whereDec = r.whereDec;
+				const whereAss = r.whereAss;
+				const type = input_block_out_ports[1].datatype();
+				const id = program.identifiers.add('x__');
+
+				let lhs;
+				if (locality == 0) {
+					lhs = id;
+					op0.code.add(lhs);
+					whereDec.add(new funcs.Declaration(false, false, type, false, id, true));
+				}
+				else if (locality == 1) {
+					lhs = funcs.getObjectPrefix() + id;
+					op0.code.add(lhs);
+					whereDec.add(new funcs.Declaration(false, false, type, false, id, true));
+				}
+				else {
+					lhs = id;
+					op0.code.add(lhs);
+					whereAss.add(new funcs.Declaration(false, false, type, false, id, true));
+				}
+
+				const ib = new funcs.IfElseBlock();
+				ib.condition.add(w0);
+				ib.then_body.add(new funcs.Assignment(lhs, w1, null));
+				ib.else_body.add(new funcs.Assignment(lhs, w2, null));
+				whereAss.add(ib);
 			}
 			
 			else {

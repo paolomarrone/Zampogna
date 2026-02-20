@@ -21,6 +21,7 @@
 	const bs = require("./blocks").BlockTypes;
 	const RATES = require("./uprates");
 	const util = require("./util");
+	let ifthenelse_branch_counter = 0;
 
 	function ASTToGraph (root, options, cblock_descs = []) {
 
@@ -174,8 +175,18 @@
 			case 'ANONYMOUS_BLOCK': {
 				throw new Error("Not imeplemented yet");
 			}
-			case 'IF_THEN_ELSE': {
-				throw new Error("Not imeplemented yet");
+			case 'IF_THEN_ELSES': {
+				const expr_ports = convert_if_then_elses(s.expr, s.outputs, bdef);
+				s.outputs.forEach((o, oi) => {
+					if (o.name != 'VARIABLE')
+						throw new Error("Unexpected non-variable output in IF_THEN_ELSES assignment");
+					const v = findVarById(o.id, bdef).r;
+					const c = Object.create(bs.CompositeBlock.Connection);
+					c.in = expr_ports[1][oi];
+					c.out = v.i_ports[0];
+					bdef.connections.push(c);
+				});
+				break;
 			}
 			case 'EXPR': {
 				const expr_ports = convert_expr(s.expr, bdef);
@@ -226,6 +237,56 @@
 			}
 			}
 		});
+	}
+
+	function convert_if_then_elses (if_node, outputs, bdef) {
+		if (!if_node.branches || if_node.branches.length < 2)
+			throw new Error("IF_THEN_ELSES requires at least if and else branches");
+		if (if_node.branches.length != 2)
+			throw new Error("ELSE IF not implemented in graph conversion yet");
+
+		const outputsTemplate = outputs.map(o => ({
+			name: 'VARIABLE',
+			id: o.id,
+			declaredType: o.declaredType
+		}));
+
+		const cond_expr_ports = convert_expr(if_node.branches[0].condition, bdef);
+		const then_branch_bdef = convert_if_branch_bdef(if_node.branches[0], outputsTemplate, bdef);
+		const else_branch_bdef = convert_if_branch_bdef(if_node.branches[1], outputsTemplate, bdef);
+		bdef.bdefs.push(then_branch_bdef);
+		bdef.bdefs.push(else_branch_bdef);
+
+		const ib = Object.create(bs.IfthenelseBlock);
+		ib.nOutputs = outputs.length;
+		ib.then_branch = then_branch_bdef;
+		ib.else_branch = else_branch_bdef;
+		ib.init();
+		ib.setOutputDatatype();
+		bdef.blocks.push(ib);
+
+		const cc = Object.create(bs.CompositeBlock.Connection);
+		cc.in = cond_expr_ports[1][0];
+		cc.out = ib.i_ports[0];
+		bdef.connections.push(cc);
+
+		return [[], ib.o_ports];
+	}
+
+	function convert_if_branch_bdef (branch, outputsTemplate, bdef) {
+		const bdef_node = {
+			name: 'BLOCK_DEFINITION',
+			id: "if_branch__" + (ifthenelse_branch_counter++),
+			inputs: [],
+			outputs: outputsTemplate.map(o => ({
+				name: o.name,
+				id: o.id,
+				declaredType: o.declaredType
+			})),
+			statements: branch.block.statements
+		};
+
+		return convert_block_definition(bdef_node, bdef);
 	}
 
 	function convert_property_left (property_node, bdef) {
@@ -502,7 +563,19 @@
 		}
 		bdef.blocks.push(b);
 
-		bdef.flatten();
+		while (true) {
+			const ib = bdef.blocks.find(bb => bs.IfthenelseBlock.isPrototypeOf(bb));
+			if (ib) {
+				ib.flatten(bdef);
+				continue;
+			}
+			const hasBdefCalls = bdef.blocks.some(bb => bs.CallBlock.isPrototypeOf(bb) && bb.type == 'bdef');
+			if (hasBdefCalls) {
+				bdef.flatten();
+				continue;
+			}
+			break;
+		}
 
 		bdef.id = i_bdef.id;
 
@@ -1158,7 +1231,7 @@
 					if (bs.ConstantBlock.isPrototypeOf(c.in.block))
 						return;
 					const v = Object.create(bs.VarBlock);
-					v.id = "_x_" + _x_counter++;
+					v.id = "x__" + _x_counter++;
 					const d = c.in.datatype();
 					v.datatype = () => d;
 					v.init();
@@ -1193,7 +1266,7 @@
 						return;
 
 					const v = Object.create(bs.VarBlock);
-					v.id = "_x_" + _x_counter++;
+					v.id = "x__" + _x_counter++;
 					const d = c.in.datatype();
 					v.datatype = () => d;
 					v.init();
