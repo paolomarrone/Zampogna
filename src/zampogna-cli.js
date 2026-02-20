@@ -61,7 +61,7 @@
 	if (options["-i"] === "")
 		throw new Error("Please, specify the initial_block_id. " + usage);
 	
-	const supported_target_languages = ["C", "bw"];
+	const supported_target_languages = ["C", "bw", "MATLAB"];
 
 	if (!supported_target_languages.includes(options["-t"]))
 		throw new Error(options["-t"] + " is not a supported target language. Choose among: " + supported_target_languages.join(", "));

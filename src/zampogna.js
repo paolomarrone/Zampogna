@@ -33,7 +33,7 @@
 		initial_block_inputs_n: number
 		control_inputs: array of strings
 		initial_values: array of { id: string, value: string } objects
-		target_language: simpleC/bw
+		target_language: C/bw/MATLAB
 		optimizations: object of properties
 			{
 				remove_dead_graph: true,

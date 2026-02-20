@@ -30,7 +30,7 @@
 	const fs = require("fs");
 	const path = require("path");
 	const templates = {
-		//"matlab": 			String(fs.readFileSync(path.join(__dirname, "templates", "matlab_template.txt"))),
+		"matlab": String(fs.readFileSync(path.join(__dirname, "templates", "matlab.m"))),
 		"simple_c": String(fs.readFileSync(path.join(__dirname, "templates", "simple_c.h"))),
 		"bw": {
 			"src": {
@@ -112,6 +112,8 @@
 			keys.type_int = '';
 			keys.type_float = '';
 			keys.type_bool = '';
+			keys.type_true = 'true';
+			keys.type_false = 'false';
 			keys.float_f_postfix = false;
 			break;
 		case "js":
@@ -123,6 +125,11 @@
 
 		const funcs = {};
 		funcs["getArrayIndexer"] = (i) => new LazyString(keys.array_indexer_l, i, keys.array_indexer_r);
+		funcs["getMemoryArrayIndexer"] = (i) => {
+			if (target_language == "MATLAB")
+				return new LazyString(keys.array_indexer_l, "(", i, ") + 1", keys.array_indexer_r);
+			return funcs.getArrayIndexer(i);
+		};
 		funcs["getFloat"] = keys.float_f_postfix
 			? (n) =>  {
 				n = n + "";
@@ -207,16 +214,24 @@
 		};
 		funcs.MemoryDeclaration = function (type, id, size) {
 			this.s = new LazyString();
-			this.s.add(funcs.getTypeDecl(type), ' ', id, '[', size, '];');
+			if (target_language == "MATLAB")
+				this.s.add(id, ' = zeros(1, ', size, ');');
+			else
+				this.s.add(funcs.getTypeDecl(type), ' ', id, '[', size, '];');
 			this.toString = function () {
 				return this.s.toString();
 			};
 		};
 		funcs.MemoryInit = function (id, size, value) {
 			this.s = new LazyString();
-			this.s.add("for (int i = 0; i < ", size, "; i++) { \n");
-			this.s.add('\t', id, keys.array_indexer_l, 'i', keys.array_indexer_r, ' = ', value, ';\n');
-			this.s.add('}');
+			if (target_language == "MATLAB") {
+				this.s.add(id, '(:) = ', value, ';');
+			}
+			else {
+				this.s.add("for (int i = 0; i < ", size, "; i++) { \n");
+				this.s.add('\t', id, keys.array_indexer_l, 'i', keys.array_indexer_r, ' = ', value, ';\n');
+				this.s.add('}');
+			}
 
 			this.toString = function () {
 				return this.s.toString();
@@ -224,6 +239,16 @@
 		};
 		funcs.Declaration = function (isStatic, isConst, type, isPointer, id, lonely) {
 			this.s = new LazyString();
+			if (target_language == "MATLAB") {
+				if (lonely)
+					this.s.add(id, ' = 0;');
+				else
+					this.s.add(id);
+				this.toString = function () {
+					return this.s.toString();
+				};
+				return;
+			}
 			if (isStatic)
 				this.s.add(funcs.getStaticKey(), ' ');
 			if (isConst)
@@ -276,9 +301,15 @@
 		};
 		funcs.IfBlock = function () {
 			this.condition = new LazyString();
-			this.start = new LazyString('if ( ', this.condition, ' ) { \n');
+			if (target_language == "MATLAB")
+				this.start = new LazyString('if ', this.condition, '\n');
+			else
+				this.start = new LazyString('if ( ', this.condition, ' ) { \n');
 			this.body = new funcs.Statements();
-			this.end = new LazyString('\n} \n');
+			if (target_language == "MATLAB")
+				this.end = new LazyString('\nend\n');
+			else
+				this.end = new LazyString('\n} \n');
 
 			this.toString = function (tabLevel = 0) {
 				const r = this.start.toString() + this.body.toString(1) + this.end.toString();
@@ -289,11 +320,19 @@
 			this.control_dependencies = control_dependencies;
 			this.equals = (s) => ut.setsEqual(this.control_dependencies, s);
 			
-			this.s = new funcs.IfBlock();
-			this.s.condition.add(Array.from(control_dependencies).map(x => funcs.getObjectPrefix() + x + '_CHANGED').join(' | '));
+			if (target_language == "MATLAB") {
+				this.s = new funcs.Statements();
+			}
+			else {
+				this.s = new funcs.IfBlock();
+				this.s.condition.add(Array.from(control_dependencies).map(x => funcs.getObjectPrefix() + x + '_CHANGED').join(' | '));
+			}
 
 			this.add = function (...x) {
-				this.s.body.add.apply(this.s.body, x);
+				if (target_language == "MATLAB")
+					this.s.add.apply(this.s, x);
+				else
+					this.s.body.add.apply(this.s.body, x);
 			};
 			this.toString = function (tabLevel = 0) {
 				return this.s.toString(tabLevel);
@@ -394,22 +433,29 @@
 				: funcs.getFloat(0.5);
 		});
 		program.parameters.forEach(p => {
-			const id = program.identifiers.add(p + '_z1');
-			const d = new funcs.Declaration(false, false, TYPES.Float32, false, id, true);
-			program.parameter_states.add(d);
+			if (t != "MATLAB") {
+				const id = program.identifiers.add(p + '_z1');
+				const d = new funcs.Declaration(false, false, TYPES.Float32, false, id, true);
+				program.parameter_states.add(d);
+			}
 		});
 		program.parameters.forEach(p => {
-			const id = program.identifiers.add(p + '_CHANGED');
-			const d = new funcs.Declaration(false, false, TYPES.Bool, false, id, true);
-			program.parameter_states.add(d);
+			if (t != "MATLAB") {
+				const id = program.identifiers.add(p + '_CHANGED');
+				const d = new funcs.Declaration(false, false, TYPES.Bool, false, id, true);
+				program.parameter_states.add(d);
+			}
 		});	
 		program.parameters.forEach(p => {
-			program.identifiers.add('p_' + p);
+			if (t != "MATLAB")
+				program.identifiers.add('p_' + p);
 		});
 		program.parameters.forEach(p => {
-			const id = p;
-			const d = new funcs.Declaration(false, false, TYPES.Float32, false, id, true);
-			program.parameter_states.add(d);
+			if (t != "MATLAB") {
+				const id = p;
+				const d = new funcs.Declaration(false, false, TYPES.Float32, false, id, true);
+				program.parameter_states.add(d);
+			}
 		});
 		program.name = program.identifiers.add(bdef.id);
 		program.identifiers.add('_' + bdef.id);
@@ -480,6 +526,16 @@
 					path: path.join(bdef.id, 'vst3'),
 					name: 'Makefile',
 					str: doT.template(templates.bw.vst3.Makefile)(program) 
+				},
+			];
+		}
+
+		if (t == 'MATLAB') {
+			return [
+				{
+					path: '.',
+					name: bdef.id + ".m",
+					str: doT.template(templates["matlab"])(program)
 				},
 			];
 		}
@@ -596,13 +652,13 @@
 			if (bs.MemoryReaderBlock.isPrototypeOf(b)) {
 				const c = op0.code;
 				c.add(b.memoryblock.code);
-				c.add(funcs.getArrayIndexer(input_codes[0]));
+				c.add(funcs.getMemoryArrayIndexer(input_codes[0]));
 				return;
 			}
 			if (bs.MemoryWriterBlock.isPrototypeOf(b)) {
 				const c = new LazyString();
 				c.add(b.memoryblock.code);
-				c.add(funcs.getArrayIndexer(input_codes[0]));
+				c.add(funcs.getMemoryArrayIndexer(input_codes[0]));
 				const a = new funcs.Assignment(c, input_codes[1], null);
 				program.memory_updates.add(a); // TODO: Might not be always the case
 				return;
@@ -620,6 +676,8 @@
 				return;
 			}
 			if (bs.CallBlock.isPrototypeOf(b) && b.type == "cdef") {
+				if (t == "MATLAB")
+					throw new Error("MATLAB target does not support include/cdef blocks");
 				const cdef = b.ref;
 
 				// Include
@@ -947,16 +1005,28 @@
 				op0.code.add('-', w0);
 			}
 			else if (bs.ModuloBlock.isPrototypeOf(b)) {
-				op0.code.add(w0, ' % ', w1);
+				if (t == "MATLAB")
+					op0.code.add('mod(', w0, ', ', w1, ')');
+				else
+					op0.code.add(w0, ' % ', w1);
 			}
 			else if (bs.CastF32Block.isPrototypeOf(b)) {
-				op0.code.add('(float)', w0);
+				if (t == "MATLAB")
+					op0.code.add('single(', w0, ')');
+				else
+					op0.code.add('(float)', w0);
 			}
 			else if (bs.CastI32Block.isPrototypeOf(b)) {
-				op0.code.add('(int)', w0);
+				if (t == "MATLAB")
+					op0.code.add('int32(', w0, ')');
+				else
+					op0.code.add('(int)', w0);
 			}
 			else if (bs.CastBoolBlock.isPrototypeOf(b)) {
-				op0.code.add('(char)', w0);
+				if (t == "MATLAB")
+					op0.code.add('logical(', w0, ')');
+				else
+					op0.code.add('(char)', w0);
 			}
 			
 			else {

@@ -436,6 +436,17 @@
 		},
 		{
 			code: `
+				y = matlab_target (x, v) {
+					int n = int(v * 127.0)
+					int d = (n + 3) % 11
+					u = float(d) * 0.1
+					y = x * u
+				}
+			`,
+			options: { initial_block_id: "matlab_target", target_language: "MATLAB", control_inputs: ['v'], optimizations: default_optimizations }
+		},
+		{
+			code: `
 
 				include bw_phase_gen
 				include bw_osc_saw
