@@ -311,9 +311,11 @@
 		{
 			const bdefs = scope.findGlobally(expr.id);
 			let found = false;
+			let foundWithSameId = false;
 			for (const b of bdefs) {
 				if (b.name != "BLOCK_DEFINITION")
 					err("Calling something that is not callable");
+				foundWithSameId = true;
 				if (b.inputs.length != expr.args.length)
 					continue;
 				expr_outputsN = b.outputs.length;
@@ -323,6 +325,8 @@
 			}
 			if (found)
 				break;
+			if (foundWithSameId)
+				err("No matching block definition for call");
 
 			// Might be a C block call
 			expr.outputs_N = outputsN;
