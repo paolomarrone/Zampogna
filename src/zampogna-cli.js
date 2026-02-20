@@ -35,6 +35,7 @@
 	};
 
 	const args = process.argv.slice(2);
+	const callerCwd = process.cwd();
 
 	let input_code;
 
@@ -50,7 +51,8 @@
 		else {
 			if (arg.startsWith("-"))
 				throw new Error("Unknown option: " + arg + ". " + usage);
-			input_code = String(fs.readFileSync(arg));
+			const inputPath = path.resolve(callerCwd, arg);
+			input_code = String(fs.readFileSync(inputPath));
 		}
 	}
 	if (!input_code)
@@ -78,7 +80,7 @@
 	
 	const searchpaths = [];
 	options["-paths"].split(",").filter(p => p !== "").forEach(p => {
-		searchpaths.push(path.join(process.cwd(), p));
+		searchpaths.push(path.resolve(callerCwd, p));
 	});
 	const filereader = util.get_filereader(searchpaths);
 
