@@ -120,6 +120,31 @@
 			else {
 				y = 0.1
 			}
+		`, `
+			float y = delay (float x) {
+				mem[1] float s
+				y = s[0]
+				s[0] = x
+				s.init = x
+			}
+
+			y = decimator(x, bool bypass) {
+				y = if (!bypass) {
+					y, int s = if (delay(s)) {
+						y = x
+						s = false
+					} else {
+						y = delay(t)
+						s = true
+					}
+					t = y
+					s.init = true
+					y.init = 0.0
+				}
+				else {
+					y = x
+				}
+			}
 		`
 	];
 
@@ -248,6 +273,16 @@
 
 			y = asd (x) {
 				y = x
+			}
+		`, `
+			y = if (true) {
+				y = 1.0
+			}
+		`, `
+			y = if (true) {
+				y = 1.0
+			} else if (false) {
+				y = 2.0
 			}
 		`
 	];
