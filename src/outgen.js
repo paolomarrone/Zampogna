@@ -54,7 +54,10 @@
 		let tabs = '';
 		for (let i = 0; i < tabLevel; i++)
 			tabs += '\t';
-		return s.toString().trim().split('\n').map(x => tabs + x).join('\n');
+		const trimmed = s.toString().trim();
+		if (trimmed.length == 0)
+			return '';
+		return trimmed.split('\n').map(x => tabs + x).join('\n');
 	};
 
 	function LazyString (...init) {
@@ -126,8 +129,12 @@
 		const funcs = {};
 		funcs["getArrayIndexer"] = (i) => new LazyString(keys.array_indexer_l, i, keys.array_indexer_r);
 		funcs["getMemoryArrayIndexer"] = (i) => {
-			if (target_language == "MATLAB")
-				return new LazyString(keys.array_indexer_l, "(", i, ") + 1", keys.array_indexer_r);
+			if (target_language == "MATLAB") {
+				const idx = i.toString().trim();
+				const unwrapped = idx.replace(/^\((.*)\)$/, '$1').trim();
+				const base = /^[0-9]+$/.test(unwrapped) ? unwrapped : idx;
+				return new LazyString(keys.array_indexer_l, base, " + 1", keys.array_indexer_r);
+			}
 			return funcs.getArrayIndexer(i);
 		};
 		funcs["getFloat"] = keys.float_f_postfix
@@ -509,7 +516,7 @@
 		});
 
 
-		doT.templateSettings.strip = false
+		doT.templateSettings.strip = false;
 	
 		if (t == 'C') {
 			return [
@@ -552,11 +559,16 @@
 		}
 
 		if (t == 'MATLAB') {
+			const cleanMatlab = (s) => {
+				let out = s.replace(/[ \t]+\n/g, '\n');
+				out = out.replace(/\n{3,}/g, '\n\n');
+				return out.trimEnd() + '\n';
+			};
 			return [
 				{
 					path: '.',
 					name: bdef.id + ".m",
-					str: doT.template(templates["matlab"])(program)
+					str: cleanMatlab(doT.template(templates["matlab"])(program))
 				},
 			];
 		}
@@ -1123,7 +1135,8 @@
 				else {
 					lhs = id;
 					op0.code.add(lhs);
-					whereAss.add(new funcs.Declaration(false, false, type, false, id, true));
+					if (t != "MATLAB")
+						whereAss.add(new funcs.Declaration(false, false, type, false, id, true));
 				}
 
 				const ib = new funcs.IfElseBlock();
