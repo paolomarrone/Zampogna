@@ -19,12 +19,22 @@
 
 	console.log("--- SCHEDULER TESTS --- START");
 
-	const parser = require("../src/grammar");
-	const syntax = require("../src/syntax");
-	const graph  = require("../src/graph");
-	const schdlr = require("../src/scheduler");
-	const util   = require("../src/util");
+	const z = require("../src/zampogna");
+	const util = require("../src/util");
 	const fs     = require("fs");
+	const path   = require("path");
+	const no_optimizations = {
+		remove_dead_graph: false,
+		negative_negative: false,
+		negative_consts: false,
+		unify_consts: false,
+		remove_useless_vars: false,
+		merge_max_blocks: false,
+		simplifly_max_blocks1: false,
+		simplifly_max_blocks2: false,
+		lazyfy_subexpressions_rates: false,
+		lazyfy_subexpressions_controls: false,
+	};
 
 	const GoodTests = [
 		{
@@ -174,6 +184,10 @@
 	const outputDir = './output';
 	if (!fs.existsSync(outputDir))
 		fs.mkdirSync(outputDir);
+	const filereader = util.get_filereader([
+		path.join(__dirname, "crm"),
+		path.join(__dirname, "c"),
+	]);
 
 	for (let i = 0; i < process.argv.length; i++) {
 		const val = process.argv[i];
@@ -186,15 +200,13 @@
 	}
 
 	function runGoodTest(t) {
-			const AST = parser.parse(GoodTests[t].code);
-			syntax.validateAST(AST);
-			const g = graph.ASTToGraph(AST, GoodTests[t].options);
-			var gvizs = util.graphToGraphviz(g);
-			fs.writeFileSync(outputDir + "/T" + t + ".dot", gvizs);
-			graph.flatten(g, GoodTests[t].options);
-			var gvizs = util.graphToGraphviz(g);
-			fs.writeFileSync(outputDir + "/T" + t + "Flattened.dot", gvizs);
-			const s = schdlr.schedule(g, GoodTests[t].options);
+			const opts = Object.assign({}, GoodTests[t].options, {
+				debug_mode: true,
+				debug_output_dir: outputDir + "/T" + t + "_debug",
+				debug_last_step: "schedule",
+				optimizations: no_optimizations,
+			});
+			z.compile(GoodTests[t].code, filereader, opts);
 	}
 
 	for (let t in GoodTests) {
@@ -214,15 +226,13 @@
 		let res = false;
 		let err = "";
 		try {
-			const AST = parser.parse(BadTests[t].code);
-			syntax.validateAST(AST);
-			const g = graph.ASTToGraph(AST, BadTests[t].options);
-			var gvizs = util.graphToGraphviz(g);
-			fs.writeFileSync(outputDir + "/F" + t + ".dot", gvizs);
-			graph.flatten(g, BadTests[t].options);
-			var gvizs = util.graphToGraphviz(g);
-			fs.writeFileSync(outputDir + "/F" + t + "Flattened.dot", gvizs);
-			const s = schdlr.schedule(g, BadTests[t].options);
+			const opts = Object.assign({}, BadTests[t].options, {
+				debug_mode: true,
+				debug_output_dir: outputDir + "/F" + t + "_debug",
+				debug_last_step: "schedule",
+				optimizations: no_optimizations,
+			});
+			z.compile(BadTests[t].code, filereader, opts);
 		} catch (e) {
 			console.log("B", e.message);
 			res = true;

@@ -20,7 +20,7 @@
 	console.log("--- PREPROCESSOR TESTS --- START");
 
 	const path = require("path");
-	const preprocessor = require("../src/preprocessor");
+	const z = require("../src/zampogna");
 	const searchpaths = [ path.join(__dirname, "crm") ];
 	const filereader = require("../src/util").get_filereader(searchpaths);
 
@@ -46,8 +46,9 @@
 		let res = true;
 		let err = "";
 		try {
-			const r = preprocessor.preprocess(GoodCodes[c], filereader);
-			console.log(r[0])
+			z.compile(GoodCodes[c], filereader, {
+				debug_last_step: "preprocess"
+			});
 		} catch (e) {
 			//console.log("A", e);
 			res = false;
@@ -60,7 +61,9 @@
 		let res = false;
 		let err = "";
 		try {
-			preprocessor.preprocess(BadCodes[c], filereader);
+			z.compile(BadCodes[c], filereader, {
+				debug_last_step: "preprocess"
+			});
 		} catch (e) {
 			console.log("B", e.message);
 			res = true;

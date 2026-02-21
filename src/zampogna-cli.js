@@ -20,18 +20,20 @@
 			[-t target_lang]
 			[-o output_folder]
 			[-d debug_bool]
+			[-dl debug_last_step]
 			input_file
 	`;
 
 	const options = {
-		"-d": "false",
 		"-i": "",
 		"-in": "",
 		"-c": "",
 		"-v": "",
 		"-t": "C",
 		"-o": "build",
-		"-paths": ""
+		"-paths": "",
+		"-d": "false",
+		"-dl": "all"
 	};
 
 	const args = process.argv.slice(2);
@@ -91,12 +93,14 @@
 		throw new Error("Invalid -in argument. Must be an integer.");
 
 	const z_options = {
-		debug_mode: debug,
 		initial_block_id: options["-i"],
 		initial_block_inputs_n: initial_block_inputs_n,
 		control_inputs: control_inputs,
 		initial_values: initial_values,
 		target_language: options["-t"],
+		debug_mode: debug,
+		debug_output_dir: debug ? path.join(options["-o"], "_debug") : "",
+		debug_last_step: options["-dl"],
 	};
 
 	const files = z.compile(input_code, filereader, z_options);

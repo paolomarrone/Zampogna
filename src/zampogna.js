@@ -23,12 +23,13 @@
 	const graph  = require("../src/graph");
 	const schdlr = require("../src/scheduler");
 	const outgen = require("../src/outgen");
-	const util   = require("../src/util");
+	const dbg    = require("../src/debug");
+	const path   = require("path");
 
 	
+	const steps = ["preprocess", "parse", "syntax", "ast_to_graph", "flatten", "optimize", "schedule", "outgen", "all"];
+
 	const options_descr = `
-		
-		debug_mode: true/false
 		initial_block_id: unspaced string
 		initial_block_inputs_n: number
 		control_inputs: array of strings
@@ -47,7 +48,10 @@
 				lazyfy_subexpressions_rates: true,
 				lazyfy_subexpressions_controls: true,
 			}
-
+		debug_mode: true/false
+		debug_output_dir: optional path where debug artifacts are written
+		debug_emit_outputs: true/false (write generated target files into debug artifacts)
+		debug_last_step: ${steps.join('/')}
 	`;
 
 	function compile (code, filereader, options_ = {}) {
@@ -71,27 +75,98 @@
 				lazyfy_subexpressions_rates: true,
 				lazyfy_subexpressions_controls: true,
 			},
+			debug_output_dir: "",
+			debug_emit_outputs: true,
+			debug_last_step: "all",
 		};
 
 		for (let p in options_) {
 			options[p] = options_[p];
 		}
+		if (!steps.includes(options.debug_last_step))
+			throw new Error("Invalid debug_last_step: " + s);
+
+		function shouldStop (step) {
+			if (options.debug_last_step == "all")
+				return false;
+			return options.debug_last_step == step;
+		}
 
 
+		const debug = dbg.createDebugReporter(options);
+		debug.log("compile start");
+		if (debug.outdir)
+			debug.log("writing debug artifacts to: " + debug.outdir);
+
+		/***** PREPROCESS *****/
 		const r = prepro.preprocess(code, filereader);
 		code = r[0];
 		const jsons = r[1];
+		debug.log("preprocess complete");
+		debug.writeFile("00_preprocessed.crm", code);
+		debug.writeJSON("00_includes.json", jsons);
+		if (shouldStop("preprocess"))
+			return [];
 
+		/***** PARSE *****/
 		const AST = parser.parse(code);
+		debug.log("parse complete");
+		debug.writeJSON("01_ast.json", AST);
+		if (shouldStop("parse"))
+			return [];
+
+		/***** SYNTAX VALIDATION *****/
 		syntax.validateAST(AST);
+		debug.log("syntax validation complete");
+		if (shouldStop("syntax"))
+			return [];
 
+		/***** AST -> GRAPH *****/
 		const g = graph.ASTToGraph(AST, options, jsons);
+		debug.log("graph build complete");
+		debug.writeFile("02_graph_initial.dot", dbg.graphToGraphviz(g));
+		if (shouldStop("ast_to_graph"))
+			return [];
+
+		/***** GRAPH FLATTEN *****/
 		graph.flatten(g, options);
+		debug.log("graph flatten complete");
+		debug.writeFile("03_graph_flattened.dot", dbg.graphToGraphviz(g));
+		if (shouldStop("flatten"))
+			return [];
+
+		/***** GRAPH OPTIMIZE *****/
 		graph.optimize(g, options);
+		debug.log("graph optimize complete");
+		debug.writeFile("04_graph_optimized.dot", dbg.graphToGraphviz(g));
+		if (shouldStop("optimize"))
+			return [];
 
+		/***** SCHEDULE *****/
 		const s = schdlr.schedule(g, options);
+		debug.log("schedule complete");
+		debug.writeFile("05_schedule.txt",
+			s.map((b, i) => {
+				const id = b.id || b.operation || b.type || "block";
+				const ref = b.ref && b.ref.id ? b.ref.id : "";
+				const ur = b.o_ports && b.o_ports.length > 0
+					? b.o_ports[0].updaterate().toString()
+					: (b.i_ports && b.i_ports.length > 0 ? b.i_ports[0].updaterate().toString() : "N/A");
+				return (i + "").padStart(4, "0") + " | " + id + (ref ? (" (" + ref + ")") : "") + " | " + ur;
+			}).join("\n") + "\n");
+		if (shouldStop("schedule"))
+			return [];
 
+		/***** OUTGEN *****/
 		const o = outgen.convert(g, s, options);
+		debug.log("outgen complete");
+		debug.writeJSON("06_outputs_manifest.json", o.map(f => ({ path: f.path, name: f.name, bytes: f.str.length })));
+		if (debug.emitOutputs) {
+			o.forEach(f => {
+				debug.writeFile(path.join("06_outputs", f.path, f.name), f.str);
+			});
+		}
+		debug.log("compile done");
 
 		return o;
 	}

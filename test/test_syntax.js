@@ -19,8 +19,13 @@
 
 	console.log("--- SYNTAX TESTS --- START");
 
-	const parser = require("../src/grammar");
-	const syntax = require("../src/syntax");
+	const z = require("../src/zampogna");
+	const util = require("../src/util");
+	const path = require("path");
+	const filereader = util.get_filereader([
+		path.join(__dirname, "crm"),
+		path.join(__dirname, "c"),
+	]);
 
 	const GoodCodes = [
 		`
@@ -306,7 +311,9 @@
 		let res = true;
 		let err = "";
 		try {
-			syntax.validateAST(parser.parse(GoodCodes[c]));
+			z.compile(GoodCodes[c], filereader, {
+				debug_last_step: "syntax"
+			});
 		} catch (e) {
 			//console.log("A", e);
 			res = false;
@@ -319,7 +326,9 @@
 		let res = false;
 		let err = "";
 		try {
-			syntax.validateAST(parser.parse(BadCodes[c]));
+			z.compile(BadCodes[c], filereader, {
+				debug_last_step: "syntax"
+			});
 		} catch (e) {
 			console.log("B", e.message);
 			res = true;

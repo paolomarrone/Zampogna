@@ -19,11 +19,10 @@
 
 	console.log("--- GRAPH TESTS --- START");
 
-	const parser = require("../src/grammar");
-	const syntax = require("../src/syntax");
-	const graph  = require("../src/graph");
-	const util   = require("../src/util");
+	const z = require("../src/zampogna");
+	const util = require("../src/util");
 	const fs     = require("fs");
+	const path   = require("path");
 
 	const GoodTests = [
 		{
@@ -312,6 +311,10 @@
 	const outputDir = './output';
 	if (!fs.existsSync(outputDir))
 		fs.mkdirSync(outputDir);
+	const filereader = util.get_filereader([
+		path.join(__dirname, "crm"),
+		path.join(__dirname, "c"),
+	]);
 
 
 	for (let i = 0; i < process.argv.length; i++) {
@@ -325,14 +328,12 @@
 	}
 
 	function runGoodTest(t) {
-		const AST = parser.parse(GoodTests[t].code);
-		syntax.validateAST(AST);
-		const g = graph.ASTToGraph(AST, GoodTests[t].options);
-		var gvizs = util.graphToGraphviz(g);
-		fs.writeFileSync(outputDir + "/T" + t + ".dot", gvizs);
-		graph.flatten(g, GoodTests[t].options);
-		var gvizs = util.graphToGraphviz(g);
-		fs.writeFileSync(outputDir + "/T" + t + "Flattened.dot", gvizs);
+		const opts = Object.assign({}, GoodTests[t].options, {
+			debug_mode: true,
+			debug_output_dir: outputDir + "/T" + t + "_debug",
+			debug_last_step: "flatten",
+		});
+		z.compile(GoodTests[t].code, filereader, opts);
 	}
 
 
@@ -356,14 +357,12 @@
 		let res = false;
 		let err = "";
 		try {
-			const AST = parser.parse(BadTests[t].code);
-			syntax.validateAST(AST);
-			const g = graph.ASTToGraph(AST, BadTests[t].options);
-			var gvizs = util.graphToGraphviz(g);
-			fs.writeFileSync(outputDir + "/F" + t + ".dot", gvizs);
-			graph.flatten(g, BadTests[t].options);
-			var gvizs = util.graphToGraphviz(g);
-			fs.writeFileSync(outputDir + "/F" + t + "Flattened.dot", gvizs);
+			const opts = Object.assign({}, BadTests[t].options, {
+				debug_mode: true,
+				debug_output_dir: outputDir + "/F" + t + "_debug",
+				debug_last_step: "flatten",
+			});
+			z.compile(BadTests[t].code, filereader, opts);
 		} catch (e) {
 			console.log("B", e.message);
 			res = true;
