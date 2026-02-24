@@ -917,6 +917,7 @@
 			});
 		}
 
+		// Remove blocks/connections that do not contribute to top-level outputs.
 		// Very similar to the scheduling...
 		function remove_dead_graph () {
 			
@@ -966,6 +967,7 @@
 			}
 		}
 
+		// Simplify double negation: y = -(-x) -> y = x
 		function negative_negative () {
 
 			bdef.connections.forEach(c => {
@@ -1006,6 +1008,7 @@
 			});
 		}
 
+		// Fold unary minus on constants: y = -(5) -> y = -5
 		function negative_consts () {
 			
 			bdef.connections.forEach(c => {
@@ -1048,6 +1051,7 @@
 			});
 		}
 
+		// Reuse a single constant block for equal constants with same datatype.
 		function unify_consts () {
 
 			const rem_blocks = [];
@@ -1077,6 +1081,7 @@
 			safely_remove_blocks(rem_blocks);
 		}
 
+		// Bypass vars with a single consumer: a = x; y = a -> y = x
 		function remove_useless_vars () {
 
 			const VBlocks = bdef.blocks.filter(b => bs.VarBlock.isPrototypeOf(b));
@@ -1102,6 +1107,7 @@
 			});
 		}
 
+		// Merge duplicate vars fed by the same source: a = x; b = x -> reuse one var
 		function merge_vars () {
 			const rem_blocks = [];
 			const rem_conns = [];
@@ -1159,6 +1165,7 @@
 			safely_remove_connections(rem_conns);
 		}
 
+		// Flatten nested max blocks: max(max(a,b),c) -> max(a,b,c)
 		function merge_max_blocks () {
 
 			const rem_blocks = [];
@@ -1197,6 +1204,7 @@
 			safely_remove_connections(rem_conns);
 		}
 
+		// Remove zero inputs from max blocks when other inputs exist.
 		function simplifly_max_blocks1 () {
 
 			const rem_conns = [];
@@ -1241,6 +1249,7 @@
 			safely_remove_connections(rem_conns);
 		}
 
+		// Bypass degenerate max blocks with one input: max(x) -> x
 		function simplifly_max_blocks2 () {
 
 			const rem_blocks = [];
@@ -1267,6 +1276,7 @@
 			safely_remove_connections(rem_conns);
 		}
 
+		// Insert vars to cache values when producer/consumer update rates differ.
 		// Assuming blocks with only 1 output
 		function lazyfy_subexpressions_rates () {
 
@@ -1301,6 +1311,7 @@
 			});
 		}
 
+		// Placeholder (currently disabled): cache control expressions across control-dependency boundaries.
 		function lazyfy_subexpressions_controls () {
 			return; // Something is wrong here
 			// Here too
