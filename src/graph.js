@@ -1103,7 +1103,60 @@
 		}
 
 		function merge_vars () {
-			// TODO: y1 = 5; y2 = 5. Merge y1 and y2
+			const rem_blocks = [];
+			const rem_conns = [];
+			const VBlocks = bdef.blocks.filter(b => bs.VarBlock.isPrototypeOf(b));
+
+			function has_properties (b) {
+				return bdef.properties.some(p => p.of == b || p.block == b);
+			}
+
+			function same_control_dependencies (a, b) {
+				return util.setsEqual(a.control_dependencies || new Set(), b.control_dependencies || new Set());
+			}
+
+			const groups = [];
+			VBlocks.forEach(v => {
+				if (has_properties(v))
+					return;
+				const lc = bdef.connections.find(c => c.out == v.i_ports[0]);
+				if (!lc)
+					return;
+				const g = groups.find(x =>
+					x.src == lc.in &&
+					x.datatype == v.datatype() &&
+					same_control_dependencies(x.rep, v)
+				);
+				if (g) {
+					g.vars.push(v);
+				}
+				else {
+					groups.push({
+						src: lc.in,
+						datatype: v.datatype(),
+						rep: v,
+						vars: [v]
+					});
+				}
+			});
+
+			groups.forEach(g => {
+				const rep = g.rep;
+				for (let i = 1; i < g.vars.length; i++) {
+					const v = g.vars[i];
+					const lc = bdef.connections.find(c => c.out == v.i_ports[0]);
+					const rcs = bdef.connections.filter(c => c.in == v.o_ports[0]);
+					rcs.forEach(c => {
+						c.in = rep.o_ports[0];
+					});
+					if (lc)
+						rem_conns.push(lc);
+					rem_blocks.push(v);
+				}
+			});
+
+			safely_remove_blocks(rem_blocks);
+			safely_remove_connections(rem_conns);
 		}
 
 		function merge_max_blocks () {
