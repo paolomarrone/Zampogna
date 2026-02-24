@@ -722,14 +722,18 @@
 				if (b.predicate_terms && b.predicate_terms.length > 0) {
 					const i0 = new funcs.IfBlock();
 					if (b.predicate_terms[0].negated)
-						i0.condition.add("!");
+						i0.condition.add("!(");
 					i0.condition.add(b.predicate_terms[0].port.code);
+					if (b.predicate_terms[0].negated)
+						i0.condition.add(")");
 					let cur = i0;
 					for (let i = 1; i < b.predicate_terms.length; i++) {
 						const ii = new funcs.IfBlock();
 						if (b.predicate_terms[i].negated)
-							ii.condition.add("!");
+							ii.condition.add("!(");
 						ii.condition.add(b.predicate_terms[i].port.code);
+						if (b.predicate_terms[i].negated)
+							ii.condition.add(")");
 						cur.body.add(ii);
 						cur = ii;
 					}
@@ -1035,7 +1039,7 @@
 				op0.code.add(w0, ' || ', w1);
 			}
 			else if (bs.LogicalNotBlock.isPrototypeOf(b)) {
-				op0.code.add('!', w0);
+				op0.code.add('!(', w0, ')');
 			}
 			else if (bs.BitwiseOrBlock.isPrototypeOf(b)) {
 				op0.code.add(w0, ' | ', w1);
