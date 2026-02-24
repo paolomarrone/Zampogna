@@ -1,0 +1,29 @@
+float y = delay (float x) {
+	mem[1] float s
+	y = s[0]
+	s[0] = x
+	s.init = x
+}
+
+y = lp1(x, s) {
+	B0 = 0.2
+	A1 = 0.3
+	y = B0 * x - A1 * s
+}
+
+
+y = lp1_bypass(x, bypass) {
+	y = if (bypass > 0.5) {
+		y = x
+	}
+	else {
+		s = if (delay(bypass) > 0.5) {
+			s = delay(x)
+		}
+		else {
+			s = delay(y)
+		}
+		s.init = 0.0
+		y = lp1(x, s)
+	}
+}
