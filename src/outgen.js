@@ -703,7 +703,8 @@
 				program.memory_declarations.add(d);
 
 				const i = new funcs.MemoryInit(b.code, input_codes[0], input_codes[1]);
-				program.init.add(i);
+				if (t != "MATLAB")
+					program.init.add(i);
 				program.reset.add(i);
 
 				return;
