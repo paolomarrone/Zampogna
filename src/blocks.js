@@ -813,7 +813,15 @@
 		this.connections.forEach(c => {
 			const cc = c;
 			c.out.updaterate = function () {
-				return cc.in.updaterate();
+				if (this.__computing_updaterate__)
+					return RATES.Audio; // Conservative fallback for feedback cycles (e.g. delay/state loops)
+				this.__computing_updaterate__ = true;
+				try {
+					return cc.in.updaterate();
+				}
+				finally {
+					this.__computing_updaterate__ = false;
+				}
 			};
 		});
 		this.bdefs.forEach(bd => bd.propagateUpdateRates());
