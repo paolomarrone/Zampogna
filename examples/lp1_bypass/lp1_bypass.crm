@@ -5,9 +5,14 @@ float y = delay (float x) {
 	s.init = x
 }
 
+pi = 3.141592653589793
+pi2 = pi * 2.0
+
+# Backward Euler method
 y = lp1(x, s) {
-	B0 = 0.2
-	A1 = 0.3
+	fc = 1000.0
+	B0 = (pi2 * fc) / (fs + pi2 * fc)
+	A1 = -fs / (fs + pi2 * fc)
 	y = B0 * x - A1 * s
 }
 
