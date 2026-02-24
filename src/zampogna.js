@@ -42,6 +42,7 @@
 				negative_consts: true,
 				unify_consts: true,
 				remove_useless_vars: true,
+				merge_vars: true,
 				merge_max_blocks: true,
 				simplifly_max_blocks1: true,
 				simplifly_max_blocks2: true,
@@ -51,6 +52,7 @@
 		debug_mode: true/false
 		debug_output_dir: optional path where debug artifacts are written
 		debug_emit_outputs: true/false (write generated target files into debug artifacts)
+		debug_return_intermediates: true/false (return AST/graph/schedule/files instead of files only)
 		debug_last_step: ${steps.join('/')}
 	`;
 
@@ -69,6 +71,7 @@
 				negative_consts: true,
 				unify_consts: true,
 				remove_useless_vars: true,
+				merge_vars: true,
 				merge_max_blocks: true,
 				simplifly_max_blocks1: true,
 				simplifly_max_blocks2: true,
@@ -77,6 +80,7 @@
 			},
 			debug_output_dir: "",
 			debug_emit_outputs: true,
+			debug_return_intermediates: false,
 			debug_last_step: "all",
 		};
 
@@ -91,6 +95,16 @@
 				return false;
 			return options.debug_last_step == step;
 		}
+		const ret = {
+			stage: "start",
+			files: [],
+		};
+		function maybeReturnAt(stage) {
+			ret.stage = stage;
+			if (options.debug_return_intermediates)
+				return ret;
+			return [];
+		}
 
 
 		const debug = dbg.createDebugReporter(options);
@@ -102,48 +116,53 @@
 		const r = prepro.preprocess(code, filereader);
 		code = r[0];
 		const jsons = r[1];
+		ret.preprocessed_code = code;
+		ret.jsons = jsons;
 		debug.log("preprocess complete");
 		debug.writeFile("00_preprocessed.crm", code);
 		debug.writeJSON("00_includes.json", jsons);
 		if (shouldStop("preprocess"))
-			return [];
+			return maybeReturnAt("preprocess");
 
 		/***** PARSE *****/
 		const AST = parser.parse(code);
+		ret.AST = AST;
 		debug.log("parse complete");
 		debug.writeJSON("01_ast.json", AST);
 		if (shouldStop("parse"))
-			return [];
+			return maybeReturnAt("parse");
 
 		/***** SYNTAX VALIDATION *****/
 		syntax.validateAST(AST);
 		debug.log("syntax validation complete");
 		if (shouldStop("syntax"))
-			return [];
+			return maybeReturnAt("syntax");
 
 		/***** AST -> GRAPH *****/
 		const g = graph.ASTToGraph(AST, options, jsons);
+		ret.graph = g;
 		debug.log("graph build complete");
 		debug.writeFile("02_graph_initial.dot", dbg.graphToGraphviz(g));
 		if (shouldStop("ast_to_graph"))
-			return [];
+			return maybeReturnAt("ast_to_graph");
 
 		/***** GRAPH FLATTEN *****/
 		graph.flatten(g, options);
 		debug.log("graph flatten complete");
 		debug.writeFile("03_graph_flattened.dot", dbg.graphToGraphviz(g));
 		if (shouldStop("flatten"))
-			return [];
+			return maybeReturnAt("flatten");
 
 		/***** GRAPH OPTIMIZE *****/
 		graph.optimize(g, options);
 		debug.log("graph optimize complete");
 		debug.writeFile("04_graph_optimized.dot", dbg.graphToGraphviz(g));
 		if (shouldStop("optimize"))
-			return [];
+			return maybeReturnAt("optimize");
 
 		/***** SCHEDULE *****/
 		const s = schdlr.schedule(g, options);
+		ret.schedule = s;
 		debug.log("schedule complete");
 		debug.writeFile("05_schedule.txt",
 			s.map((b, i) => {
@@ -155,10 +174,11 @@
 				return (i + "").padStart(4, "0") + " | " + id + (ref ? (" (" + ref + ")") : "") + " | " + ur;
 			}).join("\n") + "\n");
 		if (shouldStop("schedule"))
-			return [];
+			return maybeReturnAt("schedule");
 
 		/***** OUTGEN *****/
 		const o = outgen.convert(g, s, options);
+		ret.files = o;
 		debug.log("outgen complete");
 		debug.writeJSON("06_outputs_manifest.json", o.map(f => ({ path: f.path, name: f.name, bytes: f.str.length })));
 		if (debug.emitOutputs) {
@@ -168,6 +188,10 @@
 		}
 		debug.log("compile done");
 
+		if (options.debug_return_intermediates) {
+			ret.stage = "outgen";
+			return ret;
+		}
 		return o;
 	}
 
