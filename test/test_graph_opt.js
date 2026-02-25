@@ -22,6 +22,7 @@
 		negative_consts: false,
 		unify_consts: false,
 		remove_useless_vars: false,
+		merge_equal_pure_blocks: false,
 		merge_vars: false,
 		merge_max_blocks: false,
 		simplifly_max_blocks1: false,
@@ -99,6 +100,18 @@
 			check: (g) => !g.blocks.some(b => bs.VarBlock.isPrototypeOf(b) && b.id == "a")
 		},
 		{
+			name: "merge_equal_pure_blocks merges duplicated arithmetic blocks",
+			code: `
+				y = asd (x, v) {
+					a = x * v
+					b = x * v
+					y = a + b
+				}
+			`,
+			optimizations: onlyOpt("merge_equal_pure_blocks"),
+			check: (g) => g.blocks.filter(b => bs.MulBlock.isPrototypeOf(b)).length == 1
+		},
+		{
 			name: "merge duplicate vars with same source",
 			code: `
 				y = asd (x) {
@@ -111,7 +124,7 @@
 			check: (g) => countVarsByIds(g, ["a", "b"]) == 1
 		},
 		{
-			name: "do not merge vars used by properties",
+			name: "merge_vars may merge property-owner vars (rewires property.of)",
 			code: `
 				y = asd (x) {
 					a = x
@@ -121,7 +134,26 @@
 				}
 			`,
 			optimizations: onlyOpt("merge_vars"),
-			check: (g) => countVarsByIds(g, ["a", "b"]) == 2
+			check: (g) => countVarsByIds(g, ["a", "b"]) == 1
+		},
+		{
+			name: "merge_vars does not merge property carrier vars",
+			code: `
+				y = asd (x) {
+					a = x
+					b = x
+					a.init = 0.0
+					y = a.init + b.init
+				}
+			`,
+			optimizations: onlyOpt("merge_vars"),
+			check: (g) => {
+				const propVars = g.blocks.filter(b =>
+					bs.VarBlock.isPrototypeOf(b) &&
+					g.properties.some(p => p.block == b)
+				);
+				return propVars.length >= 2;
+			}
 		},
 		{
 			name: "merge_max_blocks flattens nested max",

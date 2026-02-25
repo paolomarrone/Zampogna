@@ -676,7 +676,8 @@
 					op0.code.add(id);
 					const d = new funcs.Declaration(false, false, b.datatype(), false, id, true);
 					const a = new funcs.Assignment(id, input_codes[0], null);
-					whereDec.add(d);
+					if (t != "MATLAB")
+						whereDec.add(d);
 					whereAss.add(a);
 				}
 				else if (locality == 1) {
@@ -684,7 +685,8 @@
 					op0.code.add(refid);
 					const d = new funcs.Declaration(false, false, b.datatype(), false, id, true);
 					const a = new funcs.Assignment(refid, input_codes[0], null);
-					whereDec.add(d);
+					if (t != "MATLAB")
+						whereDec.add(d);
 					whereAss.add(a);
 				}
 				else if (locality == 2) {

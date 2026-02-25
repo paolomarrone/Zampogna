@@ -881,6 +881,12 @@
 		if (options.optimizations["merge_vars"])
 			merge_vars();
 
+		if (options.optimizations["merge_equal_pure_blocks"])
+			merge_equal_pure_blocks();
+
+		if (options.optimizations["merge_vars"])
+			merge_vars();
+
 		if (options.optimizations["merge_max_blocks"])
 			merge_max_blocks();
 
@@ -898,6 +904,9 @@
 
 		if (options.optimizations["lazyfy_subexpressions_controls"])
 			lazyfy_subexpressions_controls();
+
+		if (options.optimizations["merge_vars"])
+			merge_vars();
 
 		// Needed cuz we eventually created new blocks... Anything better?
 		propagateControlDependencies (bdef);
@@ -1107,14 +1116,114 @@
 			});
 		}
 
+		// Merge duplicated pure combinational blocks: a=x*v; b=x*v -> reuse one mul block
+		function merge_equal_pure_blocks () {
+			const rem_blocks = [];
+			const rem_conns = [];
+
+			function same_control_dependencies (a, b) {
+				return util.setsEqual(a.control_dependencies || new Set(), b.control_dependencies || new Set());
+			}
+
+			function is_mergeable_pure_block (b) {
+				if (!b || b == bdef)
+					return false;
+				if (b.o_ports.length != 1)
+					return false;
+				if (bs.VarBlock.isPrototypeOf(b))
+					return false;
+				if (bs.ConstantBlock.isPrototypeOf(b))
+					return false;
+				if (bs.MemoryBlock.isPrototypeOf(b))
+					return false;
+				if (bs.MemoryReaderBlock.isPrototypeOf(b))
+					return false;
+				if (bs.MemoryWriterBlock.isPrototypeOf(b))
+					return false;
+				if (bs.CallBlock.isPrototypeOf(b))
+					return false;
+				if (bs.CBlock.isPrototypeOf && bs.CBlock.isPrototypeOf(b))
+					return false;
+				if (bs.CompositeBlock.isPrototypeOf(b))
+					return false;
+				return true;
+			}
+
+			function in_conn_by_port (p) {
+				return bdef.connections.find(c => c.out == p);
+			}
+
+			function same_inputs (a, b) {
+				if (a.i_ports.length != b.i_ports.length)
+					return false;
+				for (let i = 0; i < a.i_ports.length; i++) {
+					const ca = in_conn_by_port(a.i_ports[i]);
+					const cb = in_conn_by_port(b.i_ports[i]);
+					if (!ca || !cb)
+						return false;
+					if (ca.in != cb.in)
+						return false;
+				}
+				return true;
+			}
+
+			function same_kind (a, b) {
+				if (Object.getPrototypeOf(a) != Object.getPrototypeOf(b))
+					return false;
+				if (a.operation != b.operation)
+					return false;
+				if (a.i_ports.length != b.i_ports.length)
+					return false;
+				if (a.datatype && b.datatype && a.datatype() != b.datatype())
+					return false;
+				return true;
+			}
+
+			const groups = [];
+			bdef.blocks.forEach(b => {
+				if (!is_mergeable_pure_block(b))
+					return;
+				const g = groups.find(x =>
+					same_kind(x.rep, b) &&
+					same_control_dependencies(x.rep, b) &&
+					same_inputs(x.rep, b)
+				);
+				if (g)
+					g.blocks.push(b);
+				else
+					groups.push({ rep: b, blocks: [b] });
+			});
+
+			groups.forEach(g => {
+				const rep = g.rep;
+				for (let i = 1; i < g.blocks.length; i++) {
+					const b = g.blocks[i];
+					const rcs = bdef.connections.filter(c => c.in == b.o_ports[0]);
+					const lcs = bdef.connections.filter(c => c.out.block == b);
+					bdef.properties.forEach(p => {
+						if (p.of == b)
+							p.of = rep;
+					});
+					rcs.forEach(c => {
+						c.in = rep.o_ports[0];
+					});
+					lcs.forEach(c => rem_conns.push(c));
+					rem_blocks.push(b);
+				}
+			});
+
+			safely_remove_blocks(rem_blocks);
+			safely_remove_connections(rem_conns);
+		}
+
 		// Merge duplicate vars fed by the same source: a = x; b = x -> reuse one var
 		function merge_vars () {
 			const rem_blocks = [];
 			const rem_conns = [];
 			const VBlocks = bdef.blocks.filter(b => bs.VarBlock.isPrototypeOf(b));
 
-			function has_properties (b) {
-				return bdef.properties.some(p => p.of == b || p.block == b);
+			function is_property_block_var (b) {
+				return bdef.properties.some(p => p.block == b);
 			}
 
 			function same_control_dependencies (a, b) {
@@ -1123,7 +1232,7 @@
 
 			const groups = [];
 			VBlocks.forEach(v => {
-				if (has_properties(v))
+				if (is_property_block_var(v))
 					return;
 				const lc = bdef.connections.find(c => c.out == v.i_ports[0]);
 				if (!lc)
@@ -1152,6 +1261,10 @@
 					const v = g.vars[i];
 					const lc = bdef.connections.find(c => c.out == v.i_ports[0]);
 					const rcs = bdef.connections.filter(c => c.in == v.o_ports[0]);
+					bdef.properties.forEach(p => {
+						if (p.of == v)
+							p.of = rep;
+					});
 					rcs.forEach(c => {
 						c.in = rep.o_ports[0];
 					});
