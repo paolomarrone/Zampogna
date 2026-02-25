@@ -1152,6 +1152,16 @@
 
 		// Bypass vars with a single consumer: a = x; y = a -> y = x
 		function remove_useless_vars () {
+			function maybe_set_preferred_id (port, id) {
+				if (!port || typeof id != "string" || id.length == 0)
+					return;
+				// Prefer human names over compiler-generated temporaries.
+				const is_generated = id.startsWith("x__") || id.endsWith(".init") || id.endsWith(".fs");
+				if (is_generated && port.preferred_id)
+					return;
+				if (!port.preferred_id || !is_generated)
+					port.preferred_id = id;
+			}
 
 			const VBlocks = bdef.blocks.filter(b => bs.VarBlock.isPrototypeOf(b));
 
@@ -1166,6 +1176,8 @@
 					return;
 				if (rcs.some(c => c.out.block == bdef))
 					return;
+
+				maybe_set_preferred_id(lc.in, b.id);
 
 				rcs[0].in = lc.in;
 				rem_blocks.push(b)
@@ -1467,7 +1479,7 @@
 					if (bs.ConstantBlock.isPrototypeOf(c.in.block))
 						return;
 					const v = Object.create(bs.VarBlock);
-					v.id = "x__" + _x_counter++;
+					v.id = c.in.preferred_id || ("x__" + _x_counter++);
 					const d = c.in.datatype();
 					v.datatype = () => d;
 					v.init();
@@ -1478,6 +1490,8 @@
 					cc.in = v.o_ports[0];
 					cc.out = c.out;
 					c.out = v.i_ports[0];
+					if (c.in.preferred_id)
+						v.o_ports[0].preferred_id = c.in.preferred_id;
 					bdef.blocks.push(v);
 					bdef.connections.push(cc);
 				});

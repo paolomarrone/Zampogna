@@ -89,15 +89,15 @@
 			check: (g) => g.blocks.filter(b => bs.ConstantBlock.isPrototypeOf(b) && b.datatype() == TYPES.Float32 && b.value == 1.0).length == 1
 		},
 		{
-			name: "remove_useless_vars removes pass-through var",
+			name: "remove_useless_vars removes compiler temp pass-through var",
 			code: `
 				y = asd (x) {
-					a = x
-					y = a
+					x__tmp = x
+					y = x__tmp
 				}
 			`,
 			optimizations: onlyOpt("remove_useless_vars"),
-			check: (g) => !g.blocks.some(b => bs.VarBlock.isPrototypeOf(b) && b.id == "a")
+			check: (g) => !g.blocks.some(b => bs.VarBlock.isPrototypeOf(b) && b.id == "x__tmp")
 		},
 		{
 			name: "merge_equal_pure_blocks merges duplicated arithmetic blocks",
