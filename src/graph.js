@@ -868,6 +868,30 @@
 		// Detecting memory loops and setting updaterate to Audio for now
 		const mems = bdef.blocks.filter(b => bs.MemoryReaderBlock.isPrototypeOf(b)).map(b => b.memoryblock);
 		mems.forEach(m => {
+			m.updaterate = function () {
+				if (this.__computing_updaterate__)
+					return RATES.Audio; // Conservative fallback for memory feedback loops
+				this.__computing_updaterate__ = true;
+				try {
+					const urs = [];
+					if (this.i_ports[1])
+						urs.push(this.i_ports[1].updaterate());
+					bdef.blocks
+						.filter(bb => bs.MemoryWriterBlock.isPrototypeOf(bb) && bb.memoryblock == this)
+						.forEach(w => {
+							if (w.i_ports[1])
+								urs.push(w.i_ports[1].updaterate());
+						});
+					if (urs.length == 0)
+						return RATES.Constant;
+					return RATES.max.apply(null, urs);
+				}
+				finally {
+					this.__computing_updaterate__ = false;
+				}
+			};
+		});
+		mems.forEach(m => {
 			const ws = bdef.blocks.filter(b => bs.MemoryWriterBlock.isPrototypeOf(b) && b.memoryblock == m);
 			ws.forEach(w => f(w));
 

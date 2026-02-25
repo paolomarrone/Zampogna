@@ -169,7 +169,7 @@
 			return this.block.memoryblock.datatype();
 		};
 		this.o_ports[0].updaterate = function () {
-			return this.block.i_ports[0].updaterate(); // Default. Set audio if loop
+			return this.block.memoryblock.updaterate();
 		};
 	};
 	MemoryReaderBlock.validate = function () {
