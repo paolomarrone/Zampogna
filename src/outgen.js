@@ -128,12 +128,45 @@
 
 		const funcs = {};
 		funcs["getArrayIndexer"] = (i) => new LazyString(keys.array_indexer_l, i, keys.array_indexer_r);
+		function stripOuterParens(s) {
+			s = s.trim();
+			while (s[0] == '(' && s[s.length - 1] == ')') {
+				let depth = 0;
+				let ok = true;
+				for (let i = 0; i < s.length; i++) {
+					if (s[i] == '(') depth++;
+					else if (s[i] == ')') depth--;
+					if (depth == 0 && i < s.length - 1) {
+						ok = false;
+						break;
+					}
+				}
+				if (!ok)
+					break;
+				s = s.slice(1, -1).trim();
+			}
+			return s;
+		}
+		function simplifyMatlabIndexExpr (expr) {
+			let s = stripOuterParens(expr);
+			let m;
+			if ((m = s.match(/^\(?\s*(.+?)\s*\)?\s*\+\s*0(?:\.0+)?\s*$/)))
+				return stripOuterParens(m[1]);
+			if ((m = s.match(/^0(?:\.0+)?\s*\+\s*\(?\s*(.+?)\s*\)?\s*$/)))
+				return stripOuterParens(m[1]);
+			if ((m = s.match(/^\(?\s*(.+?)\s*\)?\s*-\s*0(?:\.0+)?\s*$/)))
+				return stripOuterParens(m[1]);
+			return s;
+		}
 		funcs["getMemoryArrayIndexer"] = (i) => {
 			if (target_language == "MATLAB") {
-				const idx = i.toString().trim();
-				const unwrapped = idx.replace(/^\((.*)\)$/, '$1').trim();
-				const base = /^[0-9]+$/.test(unwrapped) ? unwrapped : idx;
-				return new LazyString(keys.array_indexer_l, base, " + 1", keys.array_indexer_r);
+				const idx = simplifyMatlabIndexExpr(i.toString());
+				const intm = idx.match(/^[+-]?[0-9]+$/);
+				if (intm) {
+					const n = parseInt(intm[0], 10) + 1;
+					return new LazyString(keys.array_indexer_l, n + "", keys.array_indexer_r);
+				}
+				return new LazyString(keys.array_indexer_l, idx, " + 1", keys.array_indexer_r);
 			}
 			return funcs.getArrayIndexer(i);
 		};
