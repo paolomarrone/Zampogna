@@ -539,6 +539,13 @@
 			program.audio_outputs.push(id);
 			p.code = code;
 		});
+		// Propagate output ids backwards so upstream temporaries (e.g. SELECT results)
+		// can reuse semantic names instead of generic x__ names.
+		bdef.o_ports.forEach(p => {
+			const c = bdef.connections.find(c => c.out == p);
+			if (c && p.id && !c.in.preferred_id)
+				c.in.preferred_id = p.id;
+		});
 		
 
 		schedule.forEach(b => ensure_block_converted(b));
@@ -1159,7 +1166,20 @@
 				const whereDec = r.whereDec;
 				const whereAss = r.whereAss;
 				const type = input_block_out_ports[1].datatype();
-				const id = program.identifiers.add('x__');
+				let preferred = (typeof op0.preferred_id == "string" && op0.preferred_id.length > 0)
+					? op0.preferred_id
+					: undefined;
+				if (!preferred) {
+					const outs = bdef.connections.filter(c => c.in == op0).map(c => c.out.block);
+					if (outs.length == 1 && bs.VarBlock.isPrototypeOf(outs[0])) {
+						const vid = outs[0].id;
+						if (typeof vid == "string" && !vid.startsWith("x__") && !vid.endsWith(".init") && !vid.endsWith(".fs"))
+							preferred = vid;
+					}
+				}
+				if (!preferred)
+					preferred = 'x__';
+				const id = program.identifiers.add(preferred);
 
 				let lhs;
 				if (locality == 0) {
