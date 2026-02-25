@@ -765,6 +765,8 @@
 					return b;
 				if (bs.MemoryReaderBlock.isPrototypeOf(b))
 					return convert_property(b.memoryblock, 'init', bdef);
+				if (has_explicit_init_assignment(b))
+					return convert_property(b, 'init', bdef);
 
 				b.setToBeCloned();
 				const bb = b.clone();
@@ -772,8 +774,13 @@
 				const args = [];
 				b.i_ports.forEach((pp, i) => {
 					const c = bdef.connections.find(c => c.out == pp);
-					const vv = convert_property(c.in.block, "init", bdef);
-					toBeNormalized.push(vv);
+					let vv;
+					if (can_alias_init_to_value(c.in.block))
+						vv = c.in.block;
+					else {
+						vv = convert_property(c.in.block, "init", bdef);
+						toBeNormalized.push(vv);
+					}
 					const cc = Object.create(bs.CompositeBlock.Connection);
 					cc.in = vv.o_ports[0];
 					cc.out = bb.i_ports[i];
@@ -781,6 +788,59 @@
 				});
 				bdef.blocks.push(bb);
 				return bb;
+			}
+
+			function has_explicit_init_assignment (b) {
+				const p = bdef.properties.find(p => p.of == b && p.type == "init");
+				if (!p)
+					return false;
+				return !!bdef.connections.find(c => c.out == p.block.i_ports[0]);
+			}
+
+			function can_alias_init_to_value (b, visiting = new Set()) {
+				if (!b || visiting.has(b))
+					return false;
+				if (has_explicit_init_assignment(b))
+					return false;
+				if (bs.ConstantBlock.isPrototypeOf(b))
+					return true;
+				if (b == bdef || b == fs)
+					return false;
+				if (bs.MemoryBlock.isPrototypeOf(b))
+					return false;
+				if (bs.MemoryReaderBlock.isPrototypeOf(b))
+					return false;
+				if (bs.MemoryWriterBlock.isPrototypeOf(b))
+					return false;
+				if (bs.CallBlock.isPrototypeOf(b))
+					return false;
+				if (bs.CBlock.isPrototypeOf(b))
+					return false;
+				if (bs.CompositeBlock.isPrototypeOf(b))
+					return false;
+				if (bs.IfthenelseBlock && bs.IfthenelseBlock.isPrototypeOf && bs.IfthenelseBlock.isPrototypeOf(b))
+					return false;
+
+				visiting.add(b);
+				try {
+					if (bs.VarBlock.isPrototypeOf(b)) {
+						const c = bdef.connections.find(c => c.out == b.i_ports[0]);
+						if (!c)
+							return false;
+						return can_alias_init_to_value(c.in.block, visiting);
+					}
+					if (!b.i_ports || b.i_ports.length == 0 || !b.o_ports || b.o_ports.length != 1)
+						return false;
+					for (let i = 0; i < b.i_ports.length; i++) {
+						const c = bdef.connections.find(c => c.out == b.i_ports[i]);
+						if (!c || !can_alias_init_to_value(c.in.block, visiting))
+							return false;
+					}
+					return true;
+				}
+				finally {
+					visiting.delete(b);
+				}
 			}
 		}
 	}
