@@ -59,15 +59,15 @@
 						y = 0.0
 					} else {
 						y = delay(y) + 1.0
+						y.init = 0.0
 					}
-					y.init = 0.0
 				}
 			`,
 			initial_block_id: "counter",
 			matlabScript: [
-				"x = [0 0 0 1 1 0 0 1 1 0 0 1 1];",
+				"x =  [0 0 0 1 1 0 0 1 1 0 0 1 1];",
+				"Ey = [0 0 0 1 2 0 0 3 4 0 0 5 6];",
 				"[y] = counter(x, 48000)",
-				"Ey = [0 0 0 1 2 0 0 1 2 0 0 1 2];",
 				"assert(isequal(y, Ey));",
 			]
 		},
@@ -81,20 +81,51 @@
 					s.init = x
 				}
 				y = counter(x) {
+					t = y
 					y = if (x < 0.5) {
 						y = 0.0
 					} else {
-						t = delay(t) + 1.0
+						y = delay(t) + 1.0
 						t.init = 0.0
-						y = t
 					}
 				}
 			`,
 			initial_block_id: "counter",
 			matlabScript: [
-				"x = [0 0 0 1 1 0 0 1 1 0 0 1 1];",
+				"x  = [0 0 0 1 1 0 0 1 1 0 0 1 1];",
+				"Ey = [0 0 0 1 2 0 0 1 2 0 0 1 2];",
 				"[y] = counter(x, 48000)",
-				"Ey = [0 0 0 1 2 0 0 3 4 0 0 5 6];",
+				"assert(isequal(y, Ey));",
+			]
+		},
+		{
+			name: "counters example behavior (Octave/MATLAB) - hard scope",
+			code: `
+				float y = delay (float x) {
+					mem[1] float s
+					y = s[0]
+					s[0] = x
+					s.init = x
+				}
+				y = counter(x) {
+					y = if (x < 0.5) {
+						y = 0.0
+					} else {
+						y = if (x < 1.5) {
+							y = -10.0
+						} else {
+							y = delay(y) + 1.0
+							y.init = 0.0
+						}
+					}
+					y.init = 0.0
+				}
+			`,
+			initial_block_id: "counter",
+			matlabScript: [
+				"x  = [0 0 0   1 2 2 2 0 0 2 2 2 2];",
+				"Ey = [0 0 0 -10 1 2 3 0 0 4 5 6 7];",
+				"[y] = counter(x, 48000)",
 				"assert(isequal(y, Ey));",
 			]
 		},
