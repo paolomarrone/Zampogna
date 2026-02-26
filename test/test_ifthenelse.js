@@ -146,7 +146,36 @@
 			"addpath('" + generatedDir.replace(/\\/g, "/") + "');"
 		].concat(matlabScriptLines || []).join("\n") + "\n";
 		fs.writeFileSync(scriptPath, script);
-		cp.execFileSync("octave", [scriptPath], { stdio: "pipe" });
+		try {
+			const out = cp.execFileSync("octave", [scriptPath], {
+				stdio: "pipe",
+				encoding: "utf8",
+			});
+			if (out && out.trim().length > 0) {
+				console.log("--- Octave stdout ---");
+				console.log(out.trimEnd());
+				console.log("--- /Octave stdout ---");
+			}
+		}
+		catch (e) {
+			if (e && e.stdout) {
+				const s = String(e.stdout);
+				if (s.trim().length > 0) {
+					console.log("--- Octave stdout ---");
+					console.log(s.trimEnd());
+					console.log("--- /Octave stdout ---");
+				}
+			}
+			if (e && e.stderr) {
+				const s = String(e.stderr);
+				if (s.trim().length > 0) {
+					console.log("--- Octave stderr ---");
+					console.log(s.trimEnd());
+					console.log("--- /Octave stderr ---");
+				}
+			}
+			throw e;
+		}
 	}
 
 	const results = [];
