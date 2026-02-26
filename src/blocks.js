@@ -665,6 +665,10 @@
 			const cElseOut = bdef.connections.filter(c => c.out == bbElse.o_ports[i]);
 			if (cThenOut.length != 1 || cElseOut.length != 1)
 				throw new Error("Invalid IF_THEN_ELSE branch output wiring");
+			if (cThenOut[0].in && cThenOut[0].in.block)
+				cThenOut[0].in.block.__if_branch_output_alias__ = true;
+			if (cElseOut[0].in && cElseOut[0].in.block)
+				cElseOut[0].in.block.__if_branch_output_alias__ = true;
 
 			const sel = Object.create(SelectBlock);
 			sel.init();
