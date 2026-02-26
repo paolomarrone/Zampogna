@@ -1,0 +1,25 @@
+float y = delay (float x) {
+	mem[1] float s
+	y = s[0]
+	s[0] = x
+	s.init = x
+}
+
+
+A, T, F = counters(x) {
+	A = delay(A) + 1.0
+	T, F = if (x < 0.3) {
+		ca = delay(ca) + 1.0
+		ca.init = 0.0
+		T = ca
+		F = delay(F)
+	} else {
+		cb = delay(cb) + 1.0
+		cb.init = 0.0
+		T = delay(T)
+		F = cb
+	}
+	A.init = 0.0
+	T.init = 0.0
+	F.init = 0.0
+}
