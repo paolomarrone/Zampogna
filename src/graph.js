@@ -751,6 +751,8 @@
 			normalize(p.of);
 
 			const b = get_init(p.of);
+			if (b == p.block)
+				return; // Avoid creating recursive self-edge on property carrier var
 			const c = Object.create(bs.CompositeBlock.Connection);
 			c.in = b.o_ports[0];
 			c.out = p.block.i_ports[0];
@@ -765,6 +767,11 @@
 					return b;
 				if (bs.MemoryReaderBlock.isPrototypeOf(b))
 					return convert_property(b.memoryblock, 'init', bdef);
+				if (bs.VarBlock.isPrototypeOf(b) && b.__if_branch_output_alias__) {
+					const be = find_same_id_var_with_explicit_init(b);
+					if (be)
+						return convert_property(be, 'init', bdef);
+				}
 				if (has_explicit_init_assignment(b))
 					return convert_property(b, 'init', bdef);
 
@@ -795,6 +802,19 @@
 				if (!p)
 					return false;
 				return !!bdef.connections.find(c => c.out == p.block.i_ports[0]);
+			}
+
+			function find_same_id_var_with_explicit_init (b) {
+				if (!bs.VarBlock.isPrototypeOf(b))
+					return undefined;
+				if (!b.id)
+					return undefined;
+				return bdef.blocks.find(bb =>
+					bb != b &&
+					bs.VarBlock.isPrototypeOf(bb) &&
+					bb.id == b.id &&
+					has_explicit_init_assignment(bb)
+				);
 			}
 
 			function can_alias_init_to_value (b, visiting = new Set()) {
@@ -1199,6 +1219,8 @@
 				if (rcs.length != 1)
 					return;
 				if (rcs.some(c => c.out.block == bdef))
+					return;
+				if (bdef.properties.some(p => p.block == b))
 					return;
 
 				maybe_set_preferred_id(lc.in, b.id);
