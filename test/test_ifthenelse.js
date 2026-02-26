@@ -74,24 +74,27 @@
 				}
 			`,
 			initial_block_id: "counters",
-			octaveCheck: function (generatedDir) {
-				const scriptPath = path.join(generatedDir, "run_check.m");
-				const script = [
-					"addpath('" + generatedDir.replace(/\\/g, "/") + "');",
-					"x = [0.1 0.1 0.2 0.5 0.5 0.5 0.5 0.5 0.5 0.1 0.1 1 2];",
-					"[A, T, F] = counters(x, 48000);",
-					"EA = [1 2 3 4 5 6 7 8 9 10 11 12 13];",
-					"ET = [1 2 3 0 0 0 0 0 0 4 5 0 0];",
-					"EF = [0 0 0 1 2 3 4 5 6 0 0 7 8];",
-					"assert(isequal(A, EA));",
-					"assert(isequal(T, ET));",
-					"assert(isequal(F, EF));"
-				].join("\n") + "\n";
-				fs.writeFileSync(scriptPath, script);
-				cp.execFileSync("octave", [scriptPath], { stdio: "pipe" });
-			}
+			matlabScript: [
+				"x = [0.1 0.1 0.2 0.5 0.5 0.5 0.5 0.5 0.5 0.1 0.1 1 2];",
+				"[A, T, F] = counters(x, 48000);",
+				"EA = [1 2 3 4 5 6 7 8 9 10 11 12 13];",
+				"ET = [1 2 3 0 0 0 0 0 0  4  5  0  0];",
+				"EF = [0 0 0 1 2 3 4 5 6  0  0  7  8];",
+				"assert(isequal(A, EA));",
+				"assert(isequal(T, ET));",
+				"assert(isequal(F, EF));"
+			]
 		}
 	];
+
+	function runOctaveCheck (generatedDir, matlabScriptLines) {
+		const scriptPath = path.join(generatedDir, "run_check.m");
+		const script = [
+			"addpath('" + generatedDir.replace(/\\/g, "/") + "');"
+		].concat(matlabScriptLines || []).join("\n") + "\n";
+		fs.writeFileSync(scriptPath, script);
+		cp.execFileSync("octave", [scriptPath], { stdio: "pipe" });
+	}
 
 	const results = [];
 	const octaveAvailable = hasOctave();
@@ -129,9 +132,9 @@
 				fs.writeFileSync(path.join(outsub, f.name), f.str);
 			});
 
-			if (octaveAvailable && t.octaveCheck) {
+			if (octaveAvailable && t.matlabScript) {
 				try {
-					t.octaveCheck(matlabDir);
+					runOctaveCheck(matlabDir, t.matlabScript);
 				}
 				catch (e) {
 					if (isSandboxOctaveEperm(e)) {
