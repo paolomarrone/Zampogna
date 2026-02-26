@@ -641,7 +641,15 @@
 			mw.predicate_terms.push({ port: port, negated: negated });
 		}
 
-		const flatten_branch_ref = (ref, negated) => {
+		const reroute_branch_output_alias_writers = (_bb, _aliasToSelectedPort) => {};
+
+		const predicate_branch_writers = (bb, negated) => {
+			bb.blocks.filter(b => MemoryWriterBlock.isPrototypeOf(b)).forEach(mw => {
+				append_predicate_to_writer(mw, condConn.in, negated);
+			});
+		};
+
+		const flatten_branch_ref = (ref) => {
 			ref.setToBeCloned();
 			const bb = ref.clone();
 			flatten_all(bb);
@@ -650,16 +658,14 @@
 			bdef.properties = bdef.properties.concat(bb.properties);
 			bdef.cdefs = bdef.cdefs.concat(bb.cdefs);
 			ref.clean();
-			bb.blocks.filter(b => MemoryWriterBlock.isPrototypeOf(b)).forEach(mw => {
-				append_predicate_to_writer(mw, condConn.in, negated);
-			});
 			return bb;
 		};
 
 		// Flatten branches first, then mark internal writes with branch predicate.
-		const bbThen = flatten_branch_ref(this.then_branch, false);
-		const bbElse = flatten_branch_ref(this.else_branch, true);
+		const bbThen = flatten_branch_ref(this.then_branch);
+		const bbElse = flatten_branch_ref(this.else_branch);
 
+		const aliasToSelectedPort = new Map();
 		for (let i = 0; i < this.nOutputs; i++) {
 			const cThenOut = bdef.connections.filter(c => c.out == bbThen.o_ports[i]);
 			const cElseOut = bdef.connections.filter(c => c.out == bbElse.o_ports[i]);
@@ -686,6 +692,10 @@
 			bdef.connections.push(c1);
 			bdef.connections.push(c2);
 			bdef.blocks.push(sel);
+			if (cThenOut[0].in && cThenOut[0].in.block)
+				aliasToSelectedPort.set(cThenOut[0].in.block, sel.o_ports[0]);
+			if (cElseOut[0].in && cElseOut[0].in.block)
+				aliasToSelectedPort.set(cElseOut[0].in.block, sel.o_ports[0]);
 
 			bdef.connections.filter(c => c.in == this.o_ports[i]).forEach(c => {
 				c.in = sel.o_ports[0];
@@ -694,6 +704,11 @@
 			bdef.connections.splice(bdef.connections.indexOf(cThenOut[0]), 1);
 			bdef.connections.splice(bdef.connections.indexOf(cElseOut[0]), 1);
 		}
+
+		reroute_branch_output_alias_writers(bbThen, aliasToSelectedPort);
+		reroute_branch_output_alias_writers(bbElse, aliasToSelectedPort);
+		predicate_branch_writers(bbThen, false);
+		predicate_branch_writers(bbElse, true);
 
 		bdef.connections.splice(bdef.connections.indexOf(condConn), 1);
 		bdef.blocks.splice(bdef.blocks.indexOf(this), 1);
