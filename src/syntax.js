@@ -159,14 +159,15 @@
 
 				function check_property_left (p) {
 					if (p.expr.name == 'VARIABLE') {
-						let elements = scope.findLocally(p.expr.id);
-						if (elements.length != 1)
+						let elements = scope.findGlobally(p.expr.id);
+						if (elements.length == 0)
 							err("Property of undefined");
-						if (!['VARIABLE', 'MEMORY_DECLARATION'].includes(elements[0].name))
+						const e = elements[0]; // nearest scope first
+						if (!['VARIABLE', 'MEMORY_DECLARATION'].includes(e.name))
 							err("You can assign properties only to VARIABLEs and MEMORY_DECLARATIONs");
-						if (elements[0].is_input)
+						if (e.is_input)
 							err("Cannot set properties of inputs");
-						elements[0][p.property_id] = p;
+						e[p.property_id] = p;
 					}
 					else if (p.expr.name == 'PROPERTY') {
 						check_property_left(p.expr);
