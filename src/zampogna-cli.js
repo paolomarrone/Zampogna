@@ -20,6 +20,7 @@
 	// Node env
 
 	const zampogna = require('./zampogna')
+	const package_info = require('../package.json')
 
 	const fs = require('fs')
 	const path = require('path')
@@ -31,11 +32,12 @@
 		"Options:",
 		"  -i, --initial-block <name>    Initial block name (required)",
 		"  -c, --controls <ids>          Control inputs, comma-separated",
-		"  -v, --initial-values <pairs>  Initial values, comma-separated key=value pairs",
+		"  -V, --initial-values <pairs>  Initial values, comma-separated key=value pairs",
 		"  -t, --target <lang>           Target language (default: cpp)",
 		"  -o, --output <folder>         Output folder (default: build)",
 		"  -d, --debug <bool>            Debug mode: true/false (default: false)",
 		"  -h, --help                    Show this help",
+		"  -v, --version                 Show version",
 		"",
 		"Supported targets: " + supported_target_languages.join(", ")
 	].join("\n")
@@ -46,17 +48,18 @@
 		"-o": "build", 
 		"-d": "false",
 		"-c": "",
-		"-v": ""
+		"-V": ""
 	}
 	const long_options = {
 		"--initial-block": "-i",
 		"--controls": "-c",
-		"--initial-values": "-v",
+		"--initial-values": "-V",
 		"--target": "-t",
 		"--output": "-o",
 		"--debug": "-d"
 	}
 	const help_options = new Set(["-h", "--help"])
+	const version_options = new Set(["--version"])
 	let input_code = ""
 
 	const args = process.argv.slice(2)
@@ -65,9 +68,23 @@
 		console.log(usage)
 		process.exit(0)
 	}
+	if (args.some(arg => version_options.has(arg))) {
+		console.log(package_info.version)
+		process.exit(0)
+	}
 
 	for (let a = 0; a < args.length; a++) {
 		const arg = args[a]
+		if (arg === "-v") {
+			const value = args[a + 1]
+			if (value !== undefined && !value.startsWith('-')) {
+				options["-V"] = value
+				a++
+				continue
+			}
+			console.log(package_info.version)
+			process.exit(0)
+		}
 		const option = long_options[arg] || arg
 		if (options.hasOwnProperty(option)) {
 			const value = args[a + 1]
@@ -95,8 +112,8 @@
 	const debug = options["-d"].toLowerCase() === "true"
 	const control_inputs = options['-c'] ? options['-c'].split(',') : []
 	const initial_values = {}
-	if (options['-v'])
-		options['-v'].split(',').map(o => o.split('=')).forEach(e => initial_values[e[0]] = e[1])
+	if (options['-V'])
+		options['-V'].split(',').map(o => o.split('=')).forEach(e => initial_values[e[0]] = e[1])
 	const files = zampogna.compile(null, debug, input_code, options["-i"], control_inputs, initial_values, options["-t"])
 
 	if (!fs.existsSync(options['-o']))

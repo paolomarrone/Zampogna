@@ -40,11 +40,12 @@ Usage: zampogna [options] input_file
 Options:
   -i, --initial-block <name>    Initial block name (required)
   -c, --controls <ids>          Control inputs, comma-separated
-  -v, --initial-values <pairs>  Initial values, comma-separated key=value pairs
+  -V, --initial-values <pairs>  Initial values, comma-separated key=value pairs
   -t, --target <lang>           Target language (default: cpp)
   -o, --output <folder>         Output folder (default: build)
   -d, --debug <bool>            Debug mode: true/false (default: false)
   -h, --help                    Show this help
+  -v, --version                 Show version
 ```
 
 Supported targets: `C`, `cpp`, `VST2`, `yaaaeapa`, `MATLAB`, `js`, `d`.
