@@ -47,17 +47,27 @@
 		"-c": "",
 		"-v": ""
 	}
+	const long_options = {
+		"--initial-block": "-i",
+		"--controls": "-c",
+		"--initial-values": "-v",
+		"--target": "-t",
+		"--output": "-o",
+		"--debug": "-d"
+	}
 	let input_code = "";
 
 	const args = process.argv.slice(2)
 
 	for (let a = 0; a < args.length; a++) {
 		const arg = args[a];
-		if (options.hasOwnProperty(arg)) {
+		const option = long_options[arg] || arg
+		if (options.hasOwnProperty(option)) {
 			const value = args[a + 1]
-			if (value === undefined || options.hasOwnProperty(value))
+			const next_option = long_options[value] || value
+			if (value === undefined || options.hasOwnProperty(next_option))
 				throw new Error("Bad syntax. " + usage);
-			options[arg] = value;
+			options[option] = value;
 			a++;
 		}
 		else {
