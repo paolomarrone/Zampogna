@@ -1,33 +1,41 @@
-# Ciaramella
+# Zampogna
 
-A programming language for Audio DSP
+Zampogna is a compiler for the Ciaramella audio DSP language.
 
+Ciaramella is designed around a small declarative, synchronous data-flow model for audio processing. Zampogna parses Ciaramella source files and generates code for multiple targets.
+
+Key traits:
 - Declarative
 - Synchronous Data flow
 - Minimalistic
 - Modular
 
-Refer to https://ciaramella.dev for getting started with the syntax. Refer to https://zenodo.org/record/6573430 for a more technical reading.
+References:
+- Getting started and syntax: https://ciaramella.dev
+- Technical paper: https://zenodo.org/record/6573430
 
+## Installation
 
-
-# Installation
+Install from npm:
 
 ```bash
-npm install zampogna
+npm install -g zampogna
 ```
-or
+
+Or work from source:
 
 ```bash
 git clone https://github.com/paolomarrone/Zampogna.git
+cd Zampogna
+npm install
 ```
 
-# Usage
+## CLI Usage
 
-- via Node.js:
+If installed globally, use:
 
-```
-Usage: zampogna-cli.js [options] input_file
+```text
+Usage: zampogna [options] input_file
 
 Options:
   -i, --initial-block <name>    Initial block name (required)
@@ -39,17 +47,39 @@ Options:
   -h, --help                    Show this help
 ```
 
-- via Web Browser:
-https://ciaramella.dev/webide.html
+Supported targets: `C`, `cpp`, `VST2`, `yaaaeapa`, `MATLAB`, `js`, `d`.
 
+Example:
+
+```bash
+zampogna -i test -t cpp examples/ifelseNormalize/ifelse.crm
+```
+
+If you are running from a local clone instead of a global install:
+
+```bash
+node src/zampogna-cli.js -i test examples/ifelseNormalize/ifelse.crm
+```
+
+Generated files are written under `build/<target>/` by default.
+
+## Browser Usage
+
+The web IDE is available at:
+
+https://ciaramella.dev/webide.html
 
 ## Examples
 
-You can run the examples under examples/. For example
+Sample projects are available under `examples/`.
+
+For example:
+
 ```bash
 cd examples/lp_wdf
 ./build.sh
 ```
 
-# Credits
-Ciaramella and Zampogna are being developed by [Orastron](http://orastron.com "Orastron") in collaboration with the University of Udine.
+## Credits
+
+Ciaramella and Zampogna are developed by [Orastron](http://orastron.com) in collaboration with the University of Udine.

@@ -62,7 +62,7 @@
 
 		function schedule_block(block) {
 			if (stack.some(b => block === b))
-				throw new Error("Found loop in tnit scheduling at block: " + block + ". Stack: \n" + stack.join('\n'))
+				throw new Error("Found loop in init scheduling at block: " + block + ". Stack: \n" + stack.join('\n'))
 
 			if (block.visited)
 				return
