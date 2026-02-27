@@ -82,11 +82,11 @@
 				}
 				y = counter(x) {
 					t = y
+					t.init = 0.0
 					y = if (x < 0.5) {
 						y = 0.0
 					} else {
 						y = delay(t) + 1.0
-						t.init = 0.0
 					}
 				}
 			`,
