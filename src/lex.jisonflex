@@ -37,8 +37,8 @@ id                          [_a-zA-Z][_a-zA-Z0-9]*
 "}"                         return 'RBRACE';
 {float}						return 'NUMBER';
 "fs"						return 'SAMPLERATE';
-"if"						return 'IF'
-"else"						return "ELSE"
+"if"						return 'IF';
+"else"						return "ELSE";
 {id}                        return 'ID';
 "+"                         return 'PLUS';
 "-"                         return 'MINUS';

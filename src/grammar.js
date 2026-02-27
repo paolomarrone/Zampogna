@@ -851,9 +851,9 @@ case 14:return 53;
 break;
 case 15:return 50;
 break;
-case 16:return 21
+case 16:return 21;
 break;
-case 17:return "ELSE"
+case 17:return "ELSE";
 break;
 case 18:return 52;
 break;

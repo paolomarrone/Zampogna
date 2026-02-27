@@ -1,7 +1,7 @@
 {{~it.constant_rate:c}}const {{=c}};
 {{~}}
 
-var Plugin = {
+const Plugin = {
 	init: function () {
 		this.fs = 0;
 		this.firstRun = 1;
@@ -32,7 +32,7 @@ var Plugin = {
 			this.{{=c}}_CHANGED = true;{{~}}
 		}
 		else {{{~it.control_inputs:c}}
-			this.{{=c}}_CHANGED = this.{{=c}} != this.{{=c}}_z1;{{~}}
+			this.{{=c}}_CHANGED = this.{{=c}} !== this.{{=c}}_z1;{{~}}
 		}
 
 		{{~it.controls_rate:c}}
@@ -75,22 +75,22 @@ class PluginProcessor extends AudioWorkletProcessor {
 		this.instance.reset();
 
 		this.port.onmessage = (e) => {
-			if (e.data.type == "changeInstance") {
+			if (e.data.type === "changeInstance") {
 				eval(e.data.value)
 				this.instance = Object.create(Plugin);
 				this.instance.init();
 				this.instance.setSampleRate(sampleRate);
 				this.instance.reset();
 			}
-			else if (e.data.type == "paramChange") {
+			else if (e.data.type === "paramChange") {
 				this.instance[e.data.id] = e.data.value
 			}
 		}
 	}
 	process (inputs, outputs, parameters) {
 
-		var input = inputs[0];
-		var output = outputs[0];
+		const input = inputs[0];
+		const output = outputs[0];
 		let nSamples = Math.min(input.length >= 1 ? input[0].length : 0, output[0].length)
 		
 

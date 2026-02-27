@@ -62,7 +62,7 @@
 
 			self.blocks.forEach(b => delete b.__son__)
 
-			return c;
+			return c
 		}
 		this.cloneSubGraph = function (blocks) {
 			let c = new Graph(self.id + "_sub")
@@ -93,7 +93,7 @@
 
 			//blocks.forEach(b => delete b.__son__)
 
-			return c;
+			return c
 		}
 		this.merge = function (g) {
 			self.blocks = self.blocks.concat(g.blocks)
@@ -116,11 +116,11 @@
 			s += this.blocks.map(b => '\t\t' + b.toString()).join('\n') + "\n\t],"
 			s += ' connections: [\n'
 			s += this.connections.map(c => '\t\t' + c.toString()).join('\n') + "\n\t]\n}"
-			return s;
+			return s
 		}
 	}
 
-	let blocksCounter = 0;
+	let blocksCounter = 0
 
 	function Block (nInputs = 0, nOutputs = 0, operation = "", id = "", postfix = "", val = NaN, if_owners = []) {
 		let self = this
@@ -158,7 +158,7 @@
 			}
 		}
 		this.clone = function () {
-			let c = new Block(self.input_ports.length, self.output_ports.length, self.operation, self.id, self.postfix, self.val, self.if_owners);
+			let c = new Block(self.input_ports.length, self.output_ports.length, self.operation, self.id, self.postfix, self.val, self.if_owners)
 			c.ifoutputindex = self.ifoutputindex
 			c.block_init = self.block_init
 			return c
@@ -269,7 +269,7 @@
 
 			function expandCompositeBlock (block, expansion_stack, named_blocks, named_vars, if_owners) {
 				expansions_count++
-				if (block.id.val !== "" && expansion_stack[block.id.val])
+				if (block.id.val !== '' && expansion_stack[block.id.val])
 					throw new Error("Recursive block expansion. Stack: " + Object.keys(expansion_stack) + "," + block.id.val)
 				expansion_stack[block.id.val] = true
 
@@ -305,7 +305,7 @@
 				})
 
 				block.body.filter(stmt => ['ASSIGNMENT', 'ANONYM_BLOCK_DEF', 'IF_THEN_ELSE'].includes(stmt.name)).forEach(function (stmt) {
-					let ports;
+					let ports
 					if (stmt.name === 'ASSIGNMENT')
 						ports = convertExpr(stmt.expr, {...expansion_stack}, {...named_blocks}, {...named_vars}, if_owners)
 					else if (stmt.name === 'ANONYM_BLOCK_DEF')
@@ -331,7 +331,7 @@
 			}
 
 			function convertExpr(expr_node, expansion_stack, named_blocks, named_vars, if_owners) {
-				let block_expr;
+				let block_expr
 
 				let input_ports = []
 				let output_ports = []

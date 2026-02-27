@@ -34,7 +34,7 @@
 			if (found)
 				return found
 			if (this.father)
-				return this.father.find(id);
+				return this.father.find(id)
 			return null
 		},
 
@@ -42,7 +42,7 @@
 			if (id === '_')
 				return
 			if (this.findLocal(id))
-				err("ID assigned twice: " + id);
+				err("ID assigned twice: " + id)
 			this.elements[id] = item
 		},
 
@@ -76,20 +76,20 @@
 		scope_program.father = scope_reserved
 		scopes.push(scope_program)
 
-		AST_root.stmts.filter(stmt => stmt.name == 'BLOCK_DEF').forEach(
+		AST_root.stmts.filter(stmt => stmt.name === 'BLOCK_DEF').forEach(
 			block => analyze_block_signature(scope_program, block))
 
-		AST_root.stmts.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(ass => ass.outputs.forEach(function (output) {
+		AST_root.stmts.filter(stmt => stmt.name === 'ASSIGNMENT').forEach(ass => ass.outputs.forEach(function (output) {
 				if (output.init)
 					err("Cannot use '@' in consts definitions")
 				analyze_left_assignment(scope_program, output)
 				scope_program.elements[output.val].kind = 'const'
 		}))
 
-		AST_root.stmts.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(
+		AST_root.stmts.filter(stmt => stmt.name === 'ASSIGNMENT').forEach(
 			ass => analyze_right_assignment(scope_program, ass.expr, ass.outputs.length))
 
-		AST_root.stmts.filter(stmt => stmt.name == 'BLOCK_DEF').forEach(
+		AST_root.stmts.filter(stmt => stmt.name === 'BLOCK_DEF').forEach(
 			block => analyze_block_body(scope_program, block))
 
 		for (let i in scope_program.elements) {
@@ -98,7 +98,7 @@
 				warn(item.kind + " " + i + " not used")
 		}
 
-		return scopes;
+		return scopes
 	}
 
 	function analyze_block_signature(parent_scope, block) {
@@ -140,24 +140,24 @@
 
 		// Create scopes
 
-		block.body.filter(stmt => stmt.name == 'BLOCK_DEF').forEach(function (block) {
+		block.body.filter(stmt => stmt.name === 'BLOCK_DEF').forEach(function (block) {
 			analyze_block_signature(scope_block, block)
 		})
 
-		block.body.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(function (ass) {
+		block.body.filter(stmt => stmt.name === 'ASSIGNMENT').forEach(function (ass) {
 			ass.outputs.filter(o => !o.init).forEach(function (o) {
 				analyze_left_assignment(scope_block, o)
 			})
 		})
 
-		block.body.filter(stmt => stmt.name == 'ANONYM_BLOCK_DEF').forEach(function (block) {
+		block.body.filter(stmt => stmt.name === 'ANONYM_BLOCK_DEF').forEach(function (block) {
 			block.outputs.filter(o => !o.init).forEach(function (o) {
 				analyze_left_assignment(scope_block, o)
 			})
-			analyze_anonym_block_signature(block);
+			analyze_anonym_block_signature(block)
 		})
 
-		block.body.filter(stmt => stmt.name == 'IF_THEN_ELSE').forEach(function (ifthenelse) {
+		block.body.filter(stmt => stmt.name === 'IF_THEN_ELSE').forEach(function (ifthenelse) {
 			ifthenelse.outputs.filter(o => !o.init).forEach(function (o) {
 				analyze_left_assignment(scope_block, o)
 			})
@@ -167,25 +167,25 @@
 
 		// Validate expr
 
-		block.body.filter(stmt => stmt.name == 'BLOCK_DEF').forEach(function (block) {
+		block.body.filter(stmt => stmt.name === 'BLOCK_DEF').forEach(function (block) {
 			analyze_block_body(scope_block, block)
 		})
 
-		block.body.filter(stmt => stmt.name == 'ANONYM_BLOCK_DEF').forEach(function (block) {
-			analyze_block_body(scope_block, block);
+		block.body.filter(stmt => stmt.name === 'ANONYM_BLOCK_DEF').forEach(function (block) {
+			analyze_block_body(scope_block, block)
 		})
 
-		block.body.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(function (ass) {
+		block.body.filter(stmt => stmt.name === 'ASSIGNMENT').forEach(function (ass) {
 			ass.outputs.filter(o => o.init).forEach(function (o) {
 				analyze_left_assignment_init(scope_block, o)
 			})
 		})
 
-		block.body.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(function (ass) {
+		block.body.filter(stmt => stmt.name === 'ASSIGNMENT').forEach(function (ass) {
 			analyze_right_assignment(scope_block, ass.expr, ass.outputs.length)
 		})
 
-		block.body.filter(stmt => stmt.name == 'IF_THEN_ELSE').forEach(function (ifthenelse) {
+		block.body.filter(stmt => stmt.name === 'IF_THEN_ELSE').forEach(function (ifthenelse) {
 			analyze_right_assignment(scope_block, ifthenelse.condition, 1)
 			analyze_block_body(scope_block, ifthenelse.if)
 			analyze_block_body(scope_block, ifthenelse.else)
@@ -202,7 +202,7 @@
 
 	function analyze_left_assignment(scope, id_node) {
 		if (scope_reserved.find(id_node.val))
-			err(id_node.val + " is a reserved keyword");
+			err(id_node.val + " is a reserved keyword")
 
 		const item = scope.findLocal(id_node.val)
 		if (item) {
@@ -247,7 +247,7 @@
 				err("ID not found: " + expr_node.val + ". Scope: \n" + scope)
 
 			if (item.kind === 'var' || item.kind === 'const' || item.kind === 'port_in' || item.kind === 'port_out')
-				item.used = true;
+				item.used = true
 			else
 				err("Unexpected identifier in expression: " + expr_node.val)
 		}
@@ -259,10 +259,10 @@
 				expr_node.kind = 'FUNC_CALL'
 			}
 			else {
-				if (item.outputsN != outputsN)
+				if (item.outputsN !== outputsN)
 					err(expr_node.id.val + " requires " + item.outputsN + " outputs while " + outputsN + " were provided")
 
-				if (item.inputsN != expr_node.args.length)
+				if (item.inputsN !== expr_node.args.length)
 					err(expr_node.id.val + " requires " + item.inputsN + " inputs while "  + expr_node.args.length + " were provided")
 
 				if (expr_node.id.val === 'delay1')

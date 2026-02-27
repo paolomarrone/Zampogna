@@ -181,7 +181,7 @@
 			if (found)
 				return found
 			if (this.father)
-				return this.father.find(id);
+				return this.father.find(id)
 			return null
 		},
 
@@ -189,7 +189,7 @@
 			if (id === '_')
 				return
 			if (this.findLocal(id))
-				err("ID assigned twice: " + id);
+				err("ID assigned twice: " + id)
 			this.elements[id] = item
 		},
 
@@ -223,20 +223,20 @@
 		scope_program.father = scope_reserved
 		scopes.push(scope_program)
 
-		AST_root.stmts.filter(stmt => stmt.name == 'BLOCK_DEF').forEach(
+		AST_root.stmts.filter(stmt => stmt.name === 'BLOCK_DEF').forEach(
 			block => analyze_block_signature(scope_program, block))
 
-		AST_root.stmts.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(ass => ass.outputs.forEach(function (output) {
+		AST_root.stmts.filter(stmt => stmt.name === 'ASSIGNMENT').forEach(ass => ass.outputs.forEach(function (output) {
 				if (output.init)
 					err("Cannot use '@' in consts definitions")
 				analyze_left_assignment(scope_program, output)
 				scope_program.elements[output.val].kind = 'const'
 		}))
 
-		AST_root.stmts.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(
+		AST_root.stmts.filter(stmt => stmt.name === 'ASSIGNMENT').forEach(
 			ass => analyze_right_assignment(scope_program, ass.expr, ass.outputs.length))
 
-		AST_root.stmts.filter(stmt => stmt.name == 'BLOCK_DEF').forEach(
+		AST_root.stmts.filter(stmt => stmt.name === 'BLOCK_DEF').forEach(
 			block => analyze_block_body(scope_program, block))
 
 		for (let i in scope_program.elements) {
@@ -245,7 +245,7 @@
 				warn(item.kind + " " + i + " not used")
 		}
 
-		return scopes;
+		return scopes
 	}
 
 	function analyze_block_signature(parent_scope, block) {
@@ -287,24 +287,24 @@
 
 		// Create scopes
 
-		block.body.filter(stmt => stmt.name == 'BLOCK_DEF').forEach(function (block) {
+		block.body.filter(stmt => stmt.name === 'BLOCK_DEF').forEach(function (block) {
 			analyze_block_signature(scope_block, block)
 		})
 
-		block.body.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(function (ass) {
+		block.body.filter(stmt => stmt.name === 'ASSIGNMENT').forEach(function (ass) {
 			ass.outputs.filter(o => !o.init).forEach(function (o) {
 				analyze_left_assignment(scope_block, o)
 			})
 		})
 
-		block.body.filter(stmt => stmt.name == 'ANONYM_BLOCK_DEF').forEach(function (block) {
+		block.body.filter(stmt => stmt.name === 'ANONYM_BLOCK_DEF').forEach(function (block) {
 			block.outputs.filter(o => !o.init).forEach(function (o) {
 				analyze_left_assignment(scope_block, o)
 			})
-			analyze_anonym_block_signature(block);
+			analyze_anonym_block_signature(block)
 		})
 
-		block.body.filter(stmt => stmt.name == 'IF_THEN_ELSE').forEach(function (ifthenelse) {
+		block.body.filter(stmt => stmt.name === 'IF_THEN_ELSE').forEach(function (ifthenelse) {
 			ifthenelse.outputs.filter(o => !o.init).forEach(function (o) {
 				analyze_left_assignment(scope_block, o)
 			})
@@ -314,25 +314,25 @@
 
 		// Validate expr
 
-		block.body.filter(stmt => stmt.name == 'BLOCK_DEF').forEach(function (block) {
+		block.body.filter(stmt => stmt.name === 'BLOCK_DEF').forEach(function (block) {
 			analyze_block_body(scope_block, block)
 		})
 
-		block.body.filter(stmt => stmt.name == 'ANONYM_BLOCK_DEF').forEach(function (block) {
-			analyze_block_body(scope_block, block);
+		block.body.filter(stmt => stmt.name === 'ANONYM_BLOCK_DEF').forEach(function (block) {
+			analyze_block_body(scope_block, block)
 		})
 
-		block.body.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(function (ass) {
+		block.body.filter(stmt => stmt.name === 'ASSIGNMENT').forEach(function (ass) {
 			ass.outputs.filter(o => o.init).forEach(function (o) {
 				analyze_left_assignment_init(scope_block, o)
 			})
 		})
 
-		block.body.filter(stmt => stmt.name == 'ASSIGNMENT').forEach(function (ass) {
+		block.body.filter(stmt => stmt.name === 'ASSIGNMENT').forEach(function (ass) {
 			analyze_right_assignment(scope_block, ass.expr, ass.outputs.length)
 		})
 
-		block.body.filter(stmt => stmt.name == 'IF_THEN_ELSE').forEach(function (ifthenelse) {
+		block.body.filter(stmt => stmt.name === 'IF_THEN_ELSE').forEach(function (ifthenelse) {
 			analyze_right_assignment(scope_block, ifthenelse.condition, 1)
 			analyze_block_body(scope_block, ifthenelse.if)
 			analyze_block_body(scope_block, ifthenelse.else)
@@ -349,7 +349,7 @@
 
 	function analyze_left_assignment(scope, id_node) {
 		if (scope_reserved.find(id_node.val))
-			err(id_node.val + " is a reserved keyword");
+			err(id_node.val + " is a reserved keyword")
 
 		const item = scope.findLocal(id_node.val)
 		if (item) {
@@ -394,7 +394,7 @@
 				err("ID not found: " + expr_node.val + ". Scope: \n" + scope)
 
 			if (item.kind === 'var' || item.kind === 'const' || item.kind === 'port_in' || item.kind === 'port_out')
-				item.used = true;
+				item.used = true
 			else
 				err("Unexpected identifier in expression: " + expr_node.val)
 		}
@@ -406,10 +406,10 @@
 				expr_node.kind = 'FUNC_CALL'
 			}
 			else {
-				if (item.outputsN != outputsN)
+				if (item.outputsN !== outputsN)
 					err(expr_node.id.val + " requires " + item.outputsN + " outputs while " + outputsN + " were provided")
 
-				if (item.inputsN != expr_node.args.length)
+				if (item.inputsN !== expr_node.args.length)
 					err(expr_node.id.val + " requires " + item.inputsN + " inputs while "  + expr_node.args.length + " were provided")
 
 				if (expr_node.id.val === 'delay1')
@@ -1289,9 +1289,9 @@ case 14:return 53;
 break;
 case 15:return 50;
 break;
-case 16:return 21
+case 16:return 21;
 break;
-case 17:return "ELSE"
+case 17:return "ELSE";
 break;
 case 18:return 52;
 break;
@@ -1415,7 +1415,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 			self.blocks.forEach(b => delete b.__son__)
 
-			return c;
+			return c
 		}
 		this.cloneSubGraph = function (blocks) {
 			let c = new Graph(self.id + "_sub")
@@ -1446,7 +1446,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 			//blocks.forEach(b => delete b.__son__)
 
-			return c;
+			return c
 		}
 		this.merge = function (g) {
 			self.blocks = self.blocks.concat(g.blocks)
@@ -1469,11 +1469,11 @@ if (typeof module !== 'undefined' && require.main === module) {
 			s += this.blocks.map(b => '\t\t' + b.toString()).join('\n') + "\n\t],"
 			s += ' connections: [\n'
 			s += this.connections.map(c => '\t\t' + c.toString()).join('\n') + "\n\t]\n}"
-			return s;
+			return s
 		}
 	}
 
-	let blocksCounter = 0;
+	let blocksCounter = 0
 
 	function Block (nInputs = 0, nOutputs = 0, operation = "", id = "", postfix = "", val = NaN, if_owners = []) {
 		let self = this
@@ -1511,7 +1511,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 			}
 		}
 		this.clone = function () {
-			let c = new Block(self.input_ports.length, self.output_ports.length, self.operation, self.id, self.postfix, self.val, self.if_owners);
+			let c = new Block(self.input_ports.length, self.output_ports.length, self.operation, self.id, self.postfix, self.val, self.if_owners)
 			c.ifoutputindex = self.ifoutputindex
 			c.block_init = self.block_init
 			return c
@@ -1622,7 +1622,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 			function expandCompositeBlock (block, expansion_stack, named_blocks, named_vars, if_owners) {
 				expansions_count++
-				if (block.id.val !== "" && expansion_stack[block.id.val])
+				if (block.id.val !== '' && expansion_stack[block.id.val])
 					throw new Error("Recursive block expansion. Stack: " + Object.keys(expansion_stack) + "," + block.id.val)
 				expansion_stack[block.id.val] = true
 
@@ -1658,7 +1658,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 				})
 
 				block.body.filter(stmt => ['ASSIGNMENT', 'ANONYM_BLOCK_DEF', 'IF_THEN_ELSE'].includes(stmt.name)).forEach(function (stmt) {
-					let ports;
+					let ports
 					if (stmt.name === 'ASSIGNMENT')
 						ports = convertExpr(stmt.expr, {...expansion_stack}, {...named_blocks}, {...named_vars}, if_owners)
 					else if (stmt.name === 'ANONYM_BLOCK_DEF')
@@ -1684,7 +1684,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 			}
 
 			function convertExpr(expr_node, expansion_stack, named_blocks, named_vars, if_owners) {
-				let block_expr;
+				let block_expr
 
 				let input_ports = []
 				let output_ports = []
@@ -2218,16 +2218,16 @@ if (typeof module !== 'undefined' && require.main === module) {
 	function getIndexer (target_lang, index) {
 		if (['C', 'cpp', 'VST2', 'yaaaeapa', 'd', 'js'].includes(target_lang))
 			return "[" + index + "]"
-		else if (target_lang == 'MATLAB')
+		else if (target_lang === 'MATLAB')
 			return "(" + index + ")"
 	}
 
 	function getNumber(target_lang, n) {
 		if (['C', 'cpp', 'VST2', 'yaaaeapa', 'd'].includes(target_lang))
-			return n + ((n.includes('.') || n.toLowerCase().includes('e')) ? 'f' : '.0f');
+			return n + ((n.includes('.') || n.toLowerCase().includes('e')) ? 'f' : '.0f')
 		else if (['MATLAB', 'js'].includes(target_lang))
-			return n;
-		return n;
+			return n
+		return n
 	}
 
 	function getIdPrefix(target_lang) {
@@ -2269,17 +2269,17 @@ if (typeof module !== 'undefined' && require.main === module) {
 			}
 		}
 		function MagicString(...init) {
-			const m = Object.create(MagicStringProto);
+			const m = Object.create(MagicStringProto)
 			m.s = []
 			for (let i of init)
 				m.add(i)	
-			return m;
+			return m
 		}
 
-		let program = {
+		const program = {
 			class_name: 	graph.id,
-			control_inputs: graph.input_ports.filter(p => p.update_rate == 2).map(p => p.block.label()),
-			audio_inputs: 	graph.input_ports.filter(p => p.update_rate == 3).map(p => p.block.label()),
+			control_inputs: graph.input_ports.filter(p => p.update_rate === 2).map(p => p.block.label()),
+			audio_inputs: 	graph.input_ports.filter(p => p.update_rate === 3).map(p => p.block.label()),
 			outputs: 		[],
 
 			declarations1: 	[],
@@ -2309,38 +2309,38 @@ if (typeof module !== 'undefined' && require.main === module) {
 		graph.output_ports.forEach(op => op.block.operation = "VAR_OUT")
 		graph_init.input_ports.forEach(ip => ip.block.operation = 'VAR_IN')
 
-		const id_prefix_ = getIdPrefix(target_lang);
+		const id_prefix_ = getIdPrefix(target_lang)
 
 		schedule.forEach(block => convertBlock(block))
 		schedule_init.forEach(block => convertBlockInit(block))
 
 		for (let outi = 0; outi < graph.output_ports.length; outi++) {
-			program.outputs[outi] = graph.output_ports[outi].block.label() + '_out_';
+			program.outputs[outi] = graph.output_ports[outi].block.label() + '_out_'
 			appendAssignment(program.outputs[outi] + getIndexer(target_lang, 'i'), graph.output_ports[outi].code, 5, null)
 		}
 
 		groupControls()
 
-		graph.input_ports.filter(p => p.update_rate == 2).map(p => p.block).forEach(function (block) {
-			program.declarations2.push(MagicString(block.output_ports[0].code));
-			program.init.push(MagicString(block.output_ports[0].code, " = ", getNumber(target_lang, block.block_init.output_ports[0].code.toString())));
+		graph.input_ports.filter(p => p.update_rate === 2).map(p => p.block).forEach(function (block) {
+			program.declarations2.push(MagicString(block.output_ports[0].code))
+			program.init.push(MagicString(block.output_ports[0].code, " = ", getNumber(target_lang, block.block_init.output_ports[0].code.toString())))
 		})
 
 		doT.templateSettings.strip = false
 	
-		if (target_lang == 'C') {
+		if (target_lang === 'C') {
 			return [
 				{ name: graph.id + ".h", str: doT.template(templates["C_h"])(program) },
 				{ name: graph.id + ".c", str: doT.template(templates["C_c"])(program) },
 			]
 		}
-		else if (target_lang == 'cpp') {
+		else if (target_lang === 'cpp') {
 			return [
 				{ name: graph.id + ".h", str: doT.template(templates["cpp_h"])(program) },
 				{ name: graph.id + ".cpp", str: doT.template(templates["cpp_cpp"])(program) }
 			]
 		}
-		else if (target_lang == 'VST2') {
+		else if (target_lang === 'VST2') {
 			return [
 				{ name: graph.id + ".h", str: doT.template(templates["cpp_h"])(program) },
 				{ name: graph.id + ".cpp", str: doT.template(templates["cpp_cpp"])(program) },
@@ -2348,25 +2348,25 @@ if (typeof module !== 'undefined' && require.main === module) {
 				{ name: graph.id + "_vst2_wrapper.cpp", str: doT.template(templates["vst2_wrapper_cpp"])(program) }
 			]
 		}
-		else if (target_lang == 'yaaaeapa') {
+		else if (target_lang === 'yaaaeapa') {
 			return [
 				{ name: graph.id + ".h", str: doT.template(templates["C_h"])(program) },
 				{ name: graph.id + ".c", str: doT.template(templates["C_c"])(program) },
 				{ name: graph.id + "_yaaaeapa_wrapper.c", str: doT.template(templates["yaaaeapa_wrapper_c"])(program) }
 			]
 		}
-		else if (target_lang == 'MATLAB') {
+		else if (target_lang === 'MATLAB') {
 			return [
 				{ name: graph.id + '.m', str: doT.template(templates["matlab"])(program) }
 			]
 		}
-		else if (target_lang == "js") {
+		else if (target_lang === "js") {
 			return [
 				{ name: "main.html", str: doT.template(templates["js_html"])(program) },
 				{ name: "processor.js", str: doT.template(templates["js_processor"])(program) }
 			]
 		}
-		else if (target_lang == "d") {
+		else if (target_lang === "d") {
 			return [
 				{ name: "d_processor.d", str: doT.template(templates["d_processor"])(program) }
 			]
@@ -2388,11 +2388,11 @@ if (typeof module !== 'undefined' && require.main === module) {
 				is_used_locally = output_blocks.every(b => checkSetEquality(b.control_dependencies, block.control_dependencies))
 			if (is_used_locally && block.if_owners.length > 0) {
 				let bb = block.if_owners[block.if_owners.length - 1]
-				is_used_locally = output_blocks.every(b => b.if_owners.some(i => i.ifblock == bb.ifblock && i.branch == bb.branch))
-				if (output_blocks.some(b => b.operation == "DELAY1_EXPR"))
-					is_used_locally = false;
+				is_used_locally = output_blocks.every(b => b.if_owners.some(i => i.ifblock === bb.ifblock && i.branch === bb.branch))
+				if (output_blocks.some(b => b.operation === "DELAY1_EXPR"))
+					is_used_locally = false
 			}
-			const id_prefix = is_used_locally || update_rate === 0 ? "" : id_prefix_;
+			const id_prefix = is_used_locally || update_rate === 0 ? "" : id_prefix_
 
 			if (!block.output_ports[0].toBeCached) {
 				if (update_rate === 2 && output_blocks.length > 0 && !checkSetEquality(output_blocks[0].control_dependencies, block.control_dependencies))
@@ -2417,10 +2417,10 @@ if (typeof module !== 'undefined' && require.main === module) {
 						code.add(input_blocks_code[0])
 					return
 				case 'VAR_IN':
-					if (update_rate == 3) {
+					if (update_rate === 3) {
 						code.add(block.label(), getIndexer(target_lang, 'i'))
 					}
-					else if (update_rate == 2)
+					else if (update_rate === 2)
 						code.add(id_prefix_, block.label())
 					return
 				case 'VAR_OUT':
@@ -2434,7 +2434,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 					appendAssignment(code, input_blocks[0].block_init.output_ports[0].code, -1, null, true, false, block.if_owners)
 					return
 				case 'NUMBER':
-					code.add(getNumber(target_lang, block.val.toString()));
+					code.add(getNumber(target_lang, block.val.toString()))
 					return
 				case 'SAMPLERATE':
 					code.add(id_prefix_, 'fs')
@@ -2447,7 +2447,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 						code.add('_branch1_') // 5
 						code.add("\n}\n")
 					}
-					else if (target_lang == 'MATLAB') {
+					else if (target_lang === 'MATLAB') {
 						code.add("if (", input_blocks_code[0], ')\n')
 						code.add('_branch0_') // 3
 						code.add("\nelse\n")
@@ -2475,7 +2475,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 					auxcode.add(block.id, '(')
 					for (let ii = 0; ii < input_blocks_code.length; ii++) {
 						auxcode.add(input_blocks_code[ii])
-						if (ii != input_blocks_code.length - 1)
+						if (ii !== input_blocks_code.length - 1)
 							auxcode.add(', ')
 					}
 					auxcode.add(')')
@@ -2537,13 +2537,13 @@ if (typeof module !== 'undefined' && require.main === module) {
 				is_used_locally = output_blocks.every(b => checkSetEquality(b.control_dependencies, block.control_dependencies))
 			*/
 			// TMP... TODO: fix
-			is_used_locally = false;
+			is_used_locally = false
 
-			const id_prefix = is_used_locally || update_rate === 0 ? "" : id_prefix_;
+			const id_prefix = is_used_locally || update_rate === 0 ? "" : id_prefix_
 
 			switch (block.operation) {
 				case 'VAR':
-					if (input_blocks[0].operation == 'NUMBER')
+					if (input_blocks[0].operation === 'NUMBER')
 						code.add(input_blocks_code[0])
 					else if (block.output_ports[0].toBeCached || output_blocks.length > 1) {
 						code.add(id_prefix, block.label())
@@ -2562,7 +2562,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 					code.add(input_blocks_code[0])
 					return
 				case 'NUMBER':
-					code.add(getNumber(target_lang, block.val.toString()));
+					code.add(getNumber(target_lang, block.val.toString()))
 					return
 				case 'SAMPLERATE':
 					code.add(id_prefix, 'fs')
@@ -2586,11 +2586,11 @@ if (typeof module !== 'undefined' && require.main === module) {
 					auxcode.add(block.id, '(')
 					for (let ii = 0; ii < input_blocks_code.length; ii++) {
 						auxcode.add(input_blocks_code[ii])
-						if (ii != input_blocks_code.length - 1)
+						if (ii !== input_blocks_code.length - 1)
 							auxcode.add(', ')
 					}
 					auxcode.add(')')
-					break;
+					break
 				case 'OR_EXPR':
 					auxcode.add('(', input_blocks_code[0], ' || ', input_blocks_code[1], ')')
 					break
@@ -2690,12 +2690,12 @@ if (typeof module !== 'undefined' && require.main === module) {
 						out_i.push(i)
 					}
 				}
-				if (out_i.length == 0)
+				if (out_i.length === 0)
 					continue
 
-				let stmts = program[levels[lvl]].filter(s => s.if_owners[s.if_owners.length - 1] && s.if_owners[s.if_owners.length - 1].ifblock == block)
-				let b0 = stmts.filter(s => s.if_owners[s.if_owners.length - 1].branch == 0)
-				let b1 = stmts.filter(s => s.if_owners[s.if_owners.length - 1].branch == 1)
+				let stmts = program[levels[lvl]].filter(s => s.if_owners[s.if_owners.length - 1] && s.if_owners[s.if_owners.length - 1].ifblock === block)
+				let b0 = stmts.filter(s => s.if_owners[s.if_owners.length - 1].branch === 0)
+				let b1 = stmts.filter(s => s.if_owners[s.if_owners.length - 1].branch === 1)
 
 				for (let i of out_i) {
 					b0.push(MagicString(
@@ -2746,7 +2746,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 				group.stmts.push(stmt)
 			})
 
-			groups.sort((A, B) => A.cardinality < B.cardinality ? -1 : A.cardinality === B.cardinality ? 0 : 1 )
+			groups.sort((a, b) => a.cardinality - b.cardinality)
 
 			program.controls_rate = groups
 		}
@@ -2760,7 +2760,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 	}
 
 
-	exports["convert"] = convert;
+	exports["convert"] = convert
 }())
 
 },{}],6:[function(require,module,exports){
@@ -2828,7 +2828,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 		function schedule_block(block) {
 			if (stack.some(b => block === b))
-				throw new Error("Found loop in tnit scheduling at block: " + block + ". Stack: \n" + stack.join('\n'))
+				throw new Error("Found loop in init scheduling at block: " + block + ". Stack: \n" + stack.join('\n'))
 
 			if (block.visited)
 				return
@@ -2891,8 +2891,8 @@ if (typeof module !== 'undefined' && require.main === module) {
 					"vst2_wrapper_h": 	String(Buffer("I2lmbmRlZiBfRUZGRUNUX0gKI2RlZmluZSBfRUZGRUNUX0gKCiNpbmNsdWRlICJhdWRpb2VmZmVjdHguaCIKI2luY2x1ZGUgInt7PWl0LmNsYXNzX25hbWV9fS5oIgoKY2xhc3MgRWZmZWN0IDogcHVibGljIEF1ZGlvRWZmZWN0WAp7CnB1YmxpYzoKCUVmZmVjdChhdWRpb01hc3RlckNhbGxiYWNrIGF1ZGlvTWFzdGVyKTsKCX5FZmZlY3QoKTsKCgl2aXJ0dWFsIHZvaWQgc2V0U2FtcGxlUmF0ZShmbG9hdCBzYW1wbGVSYXRlKTsKCXZpcnR1YWwgdm9pZCBwcm9jZXNzKGZsb2F0ICoqaW5wdXRzLCBmbG9hdCAqKm91dHB1dHMsIFZzdEludDMyIHNhbXBsZUZyYW1lcyk7Cgl2aXJ0dWFsIHZvaWQgcHJvY2Vzc1JlcGxhY2luZyhmbG9hdCAqKmlucHV0cywgZmxvYXQgKipvdXRwdXRzLCBWc3RJbnQzMiBzYW1wbGVGcmFtZXMpOwoJdmlydHVhbCB2b2lkIHNldFByb2dyYW1OYW1lKGNoYXIgKm5hbWUpOwoJdmlydHVhbCB2b2lkIGdldFByb2dyYW1OYW1lKGNoYXIgKm5hbWUpOwoJdmlydHVhbCBib29sIGdldFByb2dyYW1OYW1lSW5kZXhlZChWc3RJbnQzMiBjYXRlZ29yeSwgVnN0SW50MzIgaW5kZXgsIGNoYXIqIG5hbWUpOwoJdmlydHVhbCB2b2lkIHNldFBhcmFtZXRlcihWc3RJbnQzMiBpbmRleCwgZmxvYXQgdmFsdWUpOwoJdmlydHVhbCBmbG9hdCBnZXRQYXJhbWV0ZXIoVnN0SW50MzIgaW5kZXgpOwoJdmlydHVhbCB2b2lkIGdldFBhcmFtZXRlckxhYmVsKFZzdEludDMyIGluZGV4LCBjaGFyICpsYWJlbCk7Cgl2aXJ0dWFsIHZvaWQgZ2V0UGFyYW1ldGVyRGlzcGxheShWc3RJbnQzMiBpbmRleCwgY2hhciAqdGV4dCk7Cgl2aXJ0dWFsIHZvaWQgZ2V0UGFyYW1ldGVyTmFtZShWc3RJbnQzMiBpbmRleCwgY2hhciAqdGV4dCk7CgoJdmlydHVhbCBib29sIGdldEVmZmVjdE5hbWUoY2hhciAqbmFtZSk7Cgl2aXJ0dWFsIGJvb2wgZ2V0VmVuZG9yU3RyaW5nKGNoYXIgKnRleHQpOwoJdmlydHVhbCBib29sIGdldFByb2R1Y3RTdHJpbmcoY2hhciAqdGV4dCk7Cgl2aXJ0dWFsIFZzdEludDMyIGdldFZlbmRvclZlcnNpb24oKSB7IHJldHVybiAxMDAwOyB9Cgpwcml2YXRlOgoJY2hhciBwcm9ncmFtTmFtZVszMl07CgoJe3s9aXQuY2xhc3NfbmFtZX19IGluc3RhbmNlOwp9OwoKI2VuZGlmCg==","base64")),
 					"vst2_wrapper_cpp": String(Buffer("I2luY2x1ZGUgInt7PWl0LmNsYXNzX25hbWV9fV92c3QyX3dyYXBwZXIuaCIKCiNpbmNsdWRlIDxjc3RkbGliPgojaW5jbHVkZSA8Y3N0ZGlvPgojaW5jbHVkZSA8Y21hdGg+CiNpbmNsdWRlIDxhbGdvcml0aG0+CgpBdWRpb0VmZmVjdCAqY3JlYXRlRWZmZWN0SW5zdGFuY2UoYXVkaW9NYXN0ZXJDYWxsYmFjayBhdWRpb01hc3RlcikgeyByZXR1cm4gbmV3IEVmZmVjdChhdWRpb01hc3Rlcik7IH0KCkVmZmVjdDo6RWZmZWN0KGF1ZGlvTWFzdGVyQ2FsbGJhY2sgYXVkaW9NYXN0ZXIpIDogQXVkaW9FZmZlY3RYKGF1ZGlvTWFzdGVyLCAxLCB7ez1pdC5jb250cm9sX2lucHV0cy5sZW5ndGh9fSkgewoJc2V0TnVtSW5wdXRzKHt7PWl0LmF1ZGlvX2lucHV0cy5sZW5ndGh9fSk7CglzZXROdW1PdXRwdXRzKHt7PWl0Lm91dHB1dHMubGVuZ3RofX0pOwoJc2V0VW5pcXVlSUQoJ2Z4ZngnKTsKCURFQ0xBUkVfVlNUX0RFUFJFQ0FURUQoY2FuTW9ubykgKCk7CgljYW5Qcm9jZXNzUmVwbGFjaW5nKCk7CglzdHJjcHkocHJvZ3JhbU5hbWUsICJFZmZlY3QiKTsKCglpbnN0YW5jZSA9IHt7PWl0LmNsYXNzX25hbWV9fSgpOwp9CgpFZmZlY3Q6On5FZmZlY3QoKSB7fQoKYm9vbCBFZmZlY3Q6OmdldFByb2R1Y3RTdHJpbmcoY2hhciogdGV4dCkgeyBzdHJjcHkodGV4dCwgIkVmZmVjdCIpOyByZXR1cm4gdHJ1ZTsgfQpib29sIEVmZmVjdDo6Z2V0VmVuZG9yU3RyaW5nKGNoYXIqIHRleHQpIHsgc3RyY3B5KHRleHQsICJDaWFyYW1lbGxhIik7IHJldHVybiB0cnVlOyB9CmJvb2wgRWZmZWN0OjpnZXRFZmZlY3ROYW1lKGNoYXIqIG5hbWUpIHsgc3RyY3B5KG5hbWUsICJFZmZlY3QiKTsgcmV0dXJuIHRydWU7IH0KCnZvaWQgRWZmZWN0OjpzZXRQcm9ncmFtTmFtZShjaGFyICpuYW1lKSB7IHN0cmNweShwcm9ncmFtTmFtZSwgbmFtZSk7IH0Kdm9pZCBFZmZlY3Q6OmdldFByb2dyYW1OYW1lKGNoYXIgKm5hbWUpIHsgc3RyY3B5KG5hbWUsIHByb2dyYW1OYW1lKTsgfQoKYm9vbCBFZmZlY3Q6OmdldFByb2dyYW1OYW1lSW5kZXhlZChWc3RJbnQzMiBjYXRlZ29yeSwgVnN0SW50MzIgaW5kZXgsIGNoYXIqIG5hbWUpIHsKCWlmIChpbmRleCA9PSAwKSB7CgkJc3RyY3B5KG5hbWUsIHByb2dyYW1OYW1lKTsKCQlyZXR1cm4gdHJ1ZTsKCX0KCXJldHVybiBmYWxzZTsKfQoKdm9pZCBFZmZlY3Q6OnNldFBhcmFtZXRlcihWc3RJbnQzMiBpbmRleCwgZmxvYXQgdmFsdWUpIHsKCXN3aXRjaCAoaW5kZXgpIHsKCXt7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQoJY2FzZSB7ez1pdC5jb250cm9sX2lucHV0cy5pbmRleE9mKGMpfX06CgkJaW5zdGFuY2Uuc2V0e3s9Y319KHZhbHVlKTsKCQlicmVhazt7e359fQoJfQp9CgpmbG9hdCBFZmZlY3Q6OmdldFBhcmFtZXRlcihWc3RJbnQzMiBpbmRleCkgewoJZmxvYXQgdiA9IDAuZjsKCXN3aXRjaCAoaW5kZXgpIHsKCXt7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQoJY2FzZSB7ez1pdC5jb250cm9sX2lucHV0cy5pbmRleE9mKGMpfX06CgkJdiA9IGluc3RhbmNlLmdldHt7PWN9fSgpOwoJCWJyZWFrO3t7fn19Cgl9CglyZXR1cm4gdjsKfQoKdm9pZCBFZmZlY3Q6OmdldFBhcmFtZXRlck5hbWUoVnN0SW50MzIgaW5kZXgsIGNoYXIgKnRleHQpIHsKCWNvbnN0IGNoYXIgKm5hbWVzW10gPSB7IHt7PWl0LmNvbnRyb2xfaW5wdXRzLm1hcChjID0+ICdcIicgK2MrJ1wiJyl9fX07CglzdHJjcHkodGV4dCwgbmFtZXNbaW5kZXhdKTsKfQoKdm9pZCBFZmZlY3Q6OmdldFBhcmFtZXRlckRpc3BsYXkoVnN0SW50MzIgaW5kZXgsIGNoYXIgKnRleHQpIHsKCXRleHRbMF0gPSAnXDAnOwp9Cgp2b2lkIEVmZmVjdDo6Z2V0UGFyYW1ldGVyTGFiZWwoVnN0SW50MzIgaW5kZXgsIGNoYXIgKnRleHQpICB7Cgl0ZXh0WzBdID0gJ1wwJzsKfQoKdm9pZCBFZmZlY3Q6OnNldFNhbXBsZVJhdGUoZmxvYXQgc2FtcGxlUmF0ZSkgewoJaW5zdGFuY2Uuc2V0U2FtcGxlUmF0ZShzYW1wbGVSYXRlKTsKCWluc3RhbmNlLnJlc2V0KCk7Cn0KCnZvaWQgRWZmZWN0Ojpwcm9jZXNzKGZsb2F0ICoqaW5wdXRzLCBmbG9hdCAqKm91dHB1dHMsIFZzdEludDMyIHNhbXBsZUZyYW1lcykgewoJaW5zdGFuY2UucHJvY2Vzcyh7ez1pdC5hdWRpb19pbnB1dHMubWFwKGkgPT4gJ2lucHV0c1snK2l0LmF1ZGlvX2lucHV0cy5pbmRleE9mKGkpKyddJyl9fSwge3s9aXQub3V0cHV0cy5tYXAoaSA9PiAnb3V0cHV0c1snK2l0Lm91dHB1dHMuaW5kZXhPZihpKSsnXScpfX0sIHNhbXBsZUZyYW1lcyk7Cn0KCnZvaWQgRWZmZWN0Ojpwcm9jZXNzUmVwbGFjaW5nKGZsb2F0ICoqaW5wdXRzLCBmbG9hdCAqKm91dHB1dHMsIFZzdEludDMyIHNhbXBsZUZyYW1lcykgewoJaW5zdGFuY2UucHJvY2Vzcyh7ez1pdC5hdWRpb19pbnB1dHMubWFwKGkgPT4gJ2lucHV0c1snK2l0LmF1ZGlvX2lucHV0cy5pbmRleE9mKGkpKyddJyl9fSwge3s9aXQub3V0cHV0cy5tYXAoaSA9PiAnb3V0cHV0c1snK2l0Lm91dHB1dHMuaW5kZXhPZihpKSsnXScpfX0sIHNhbXBsZUZyYW1lcyk7Cn0K","base64")),
 					"yaaaeapa_wrapper_c": String(Buffer("I2luY2x1ZGUgInt7PWl0LmNsYXNzX25hbWV9fS5oIgoKLy8gSW1wbGVtZW50aW5nIHRoZSB5YWFhZWFwYSBpbnRlcmZhY2UKCnt7PWl0LmNsYXNzX25hbWV9fSBpbnN0YW5jZTsKCnZvaWQgeWFhYWVhcGFfaW5pdCh2b2lkKSB7Cgl7ez1pdC5jbGFzc19uYW1lfX1faW5pdCgmaW5zdGFuY2UpOwp9CnZvaWQgeWFhYWVhcGFfZmluaSh2b2lkKSB7Cn0Kdm9pZCB5YWFhZWFwYV9zZXRfc2FtcGxlX3JhdGUoZmxvYXQgc2FtcGxlX3JhdGUpIHsKCXt7PWl0LmNsYXNzX25hbWV9fV9zZXRfc2FtcGxlX3JhdGUoJmluc3RhbmNlLCBzYW1wbGVfcmF0ZSk7Cn0Kdm9pZCB5YWFhZWFwYV9yZXNldCh2b2lkKSB7Cgl7ez1pdC5jbGFzc19uYW1lfX1fcmVzZXQoJmluc3RhbmNlKTsKfQp2b2lkIHlhYWFlYXBhX3Byb2Nlc3MoY29uc3QgZmxvYXQqKiB4LCBmbG9hdCoqIHksIGludCBuX3NhbXBsZXMpIHsKCXt7PWl0LmNsYXNzX25hbWV9fV9wcm9jZXNzKCZpbnN0YW5jZSwge3t+aXQuYXVkaW9faW5wdXRzOmE6aX19eFt7ez1pfX1dLCB7e359fXt7fml0Lm91dHB1dHM6bzppfX15W3t7PWl9fV0sIHt7fn19IG5fc2FtcGxlcyk7Cn0Kdm9pZCB5YWFhZWFwYV9zZXRfcGFyYW1ldGVyKGludCBpbmRleCwgZmxvYXQgdmFsdWUpIHsKCXt7PWl0LmNsYXNzX25hbWV9fV9zZXRfcGFyYW1ldGVyKCZpbnN0YW5jZSwgaW5kZXgsIHZhbHVlKTsKfQpmbG9hdCB5YWFhZWFwYV9nZXRfcGFyYW1ldGVyKGludCBpbmRleCkgewoJcmV0dXJuIHt7PWl0LmNsYXNzX25hbWV9fV9nZXRfcGFyYW1ldGVyKCZpbnN0YW5jZSwgaW5kZXgpOwp9CnZvaWQgeWFhYWVhcGFfbm90ZV9vbihjaGFyIG5vdGUsIGNoYXIgdmVsb2NpdHkpIHsKCSh2b2lkKW5vdGU7Cgkodm9pZCl2ZWxvY2l0eTsKfQp2b2lkIHlhYWFlYXBhX25vdGVfb2ZmKGNoYXIgbm90ZSkgewoJKHZvaWQpbm90ZTsKfQp2b2lkIHlhYWFlYXBhX3BpdGNoX2JlbmQoaW50IGJlbmQpIHsKCSh2b2lkKWJlbmQ7Cn0Kdm9pZCB5YWFhZWFwYV9tb2Rfd2hlZWwoY2hhciB3aGVlbCkgewoJKHZvaWQpd2hlZWw7Cn0KCmludCB5YWFhZWFwYV9wYXJhbWV0ZXJzX24gCT0ge3s9aXQuY29udHJvbF9pbnB1dHMubGVuZ3RofX07CmludCB5YWFhZWFwYV9idXNlc19pbl9uIAk9IDE7CmludCB5YWFhZWFwYV9idXNlc19vdXRfbiAJPSAxOwppbnQgeWFhYWVhcGFfY2hhbm5lbHNfaW5fbiAJPSB7ez1pdC5hdWRpb19pbnB1dHMubGVuZ3RofX07CmludCB5YWFhZWFwYV9jaGFubmVsc19vdXRfbgk9IHt7PWl0Lm91dHB1dHMubGVuZ3RofX07Ci8vdm9pZCogeWFhYWVhcGFfZGF0YSAJCT0gTlVMTDsKCnZvaWQgeWFhYWVhcGFfZ2V0X3BhcmFtZXRlcl9pbmZvIChpbnQgaW5kZXgsIGNoYXIqKiBuYW1lLCBjaGFyKiogc2hvcnROYW1lLCBjaGFyKiogdW5pdHMsIGNoYXIqIG91dCwgY2hhciogYnlwYXNzLCBpbnQqIHN0ZXBzLCBmbG9hdCogZGVmYXVsdFZhbHVlVW5tYXBwZWQpIHsKCWlmIChpbmRleCA8IDAgfHwgaW5kZXggPj0ge3s9aXQuY29udHJvbF9pbnB1dHMubGVuZ3RofX0pIHJldHVybjsKCXN3aXRjaCAoaW5kZXgpIHsKCXt7fml0LmNvbnRyb2xfaW5wdXRzOmM6aX19CgkJY2FzZSB7ez1pfX06CgkJCWlmIChuYW1lKSAqbmFtZSA9IChjaGFyKikgInt7PWN9fSI7CgkJCWlmIChzaG9ydE5hbWUpICpzaG9ydE5hbWUgPSAoY2hhciopICJ7ez1jfX0iOwoJCQlpZiAodW5pdHMpICp1bml0cyA9IChjaGFyKikgIiI7CgkJCWlmIChvdXQpICpvdXQgPSAwOwoJCQlpZiAoYnlwYXNzKSAqYnlwYXNzID0gMDsKCQkJaWYgKHN0ZXBzKSAqc3RlcHMgPSAwOwoJCQlpZiAoZGVmYXVsdFZhbHVlVW5tYXBwZWQpICpkZWZhdWx0VmFsdWVVbm1hcHBlZCA9IDAuZjsgLy8gRml4CgkJCWJyZWFrOwoJe3t+fX0KCX0KfQo=","base64")),
-					"js_html": 			String(Buffer("PCFET0NUWVBFIGh0bWw+CjxodG1sPgo8aGVhZD4KPHRpdGxlPlBsdWdpbjwvdGl0bGU+CjxzY3JpcHQgdHlwZT0idGV4dC9qYXZhc2NyaXB0Ij4KCnZhciBub2RlOwp2YXIgY3R4Owp2YXIgaW5wdXROb2RlOwoKdmFyIGJlZ2luID0gYXN5bmMgZnVuY3Rpb24gKCkgewoJY3R4ID0gbmV3IEF1ZGlvQ29udGV4dCgpOwoKCWF3YWl0IGN0eC5hdWRpb1dvcmtsZXQuYWRkTW9kdWxlKCJwcm9jZXNzb3IuanMiKTsKCglub2RlID0gbmV3IEF1ZGlvV29ya2xldE5vZGUoY3R4LCAiUGx1Z2luUHJvY2Vzc29yIiwgeyBudW1iZXJPZklucHV0czoxLCAgbnVtYmVyT2ZPdXRwdXRzOjEsIG91dHB1dENoYW5uZWxDb3VudDogW3t7PWl0Lm91dHB1dHMubGVuZ3RofX1dIH0pOwoKCW5vZGUuY29ubmVjdChjdHguZGVzdGluYXRpb24pOwoKCXZhciBzdHJlYW0gPSBhd2FpdCBuYXZpZ2F0b3IubWVkaWFEZXZpY2VzLmdldFVzZXJNZWRpYSh7IGF1ZGlvOiB7IGF1dG9HYWluQ29udHJvbDogZmFsc2UsIGVjaG9DYW5jZWxsYXRpb246IGZhbHNlLCBub2lzZVN1cHByZXNzaW9uOiBmYWxzZSwgbGF0ZW5jeTogMC4wMDUgfSB9KTsKCWlucHV0Tm9kZSA9IGN0eC5jcmVhdGVNZWRpYVN0cmVhbVNvdXJjZShzdHJlYW0pOwoKCWlucHV0Tm9kZS5jb25uZWN0KG5vZGUpOwoKICB7e35pdC5jb250cm9sX2lucHV0czpjfX0KICBkb2N1bWVudC5nZXRFbGVtZW50QnlJZCgie3s9Y319Iikub25pbnB1dCA9IGhhbmRsZUlucHV0OyB7e359fQogIAp9OwoKZnVuY3Rpb24gaGFuZGxlSW5wdXQoZSkgewoJbm9kZS5wb3J0LnBvc3RNZXNzYWdlKHt0eXBlOiAicGFyYW1DaGFuZ2UiLCBpZDogZS50YXJnZXQuaWQsIHZhbHVlOiBlLnRhcmdldC52YWx1ZX0pCn07Cjwvc2NyaXB0Pgo8L2hlYWQ+Cjxib2R5PgogIDxoMT57ez1pdC5jbGFzc19uYW1lfX08L2gxPgogIAogIHt7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQogIDxsYWJlbCBmb3I9Int7PWN9fSI+e3s9Y319PC9sYWJlbD4KICA8aW5wdXQgdHlwZT0icmFuZ2UiIGlkPSJ7ez1jfX0iIG5hbWU9Int7PWN9fSIgbWluPSIwIiBtYXg9IjEiIHZhbHVlPSIwLjUiIHN0ZXA9ImFueSI+PGJyPnt7fn19CgogIDxidXR0b24gb25jbGljaz0iYmVnaW4oKSI+U3RhcnQ8L2J1dHRvbj4KPC9ib2R5Pgo8L2h0bWw+Cg==","base64")),
-					"js_processor": 	String(Buffer("e3t+aXQuY29uc3RhbnRfcmF0ZTpjfX1jb25zdCB7ez1jfX07Cnt7fn19Cgp2YXIgUGx1Z2luID0gewoJaW5pdDogZnVuY3Rpb24gKCkgewoJCXRoaXMuZnMgPSAwOwoJCXRoaXMuZmlyc3RSdW4gPSAxOwoKCQl0aGlzLnBhcmFtcyA9IFt7ez1pdC5jb250cm9sX2lucHV0cy5tYXAoYyA9PiAnIicgKyBjICsgJyInKS5qb2luKCIsICIpfX1dOwoKCQl7e35pdC5pbml0OmR9fQoJCXt7PWR9fTt7e359fQoKCQl7e35pdC5jb250cm9sX2lucHV0czpjfX0KCQl0aGlzLnt7PWN9fV96MSA9IDA7CgkJdGhpcy57ez1jfX1fQ0hBTkdFRCA9IHRydWU7CgkJe3t+fX0KCX0sCgoJcmVzZXQ6IGZ1bmN0aW9uICgpIHsKCQl0aGlzLmZpcnN0UnVuID0gMQoJfSwKCglzZXRTYW1wbGVSYXRlOiBmdW5jdGlvbiAoc2FtcGxlUmF0ZSkgewoJCXRoaXMuZnMgPSBzYW1wbGVSYXRlOwoJCXt7fml0LnNhbXBsaW5nX3JhdGU6c319e3s9c319OwoJCXt7fn19Cgl9LAoKCXByb2Nlc3M6IGZ1bmN0aW9uICh7ez1pdC5hdWRpb19pbnB1dHMuY29uY2F0KGl0Lm91dHB1dHMpLmpvaW4oJywgJyl9fSwgblNhbXBsZXMpIHsKCQlpZiAodGhpcy5maXJzdFJ1bikge3t7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQoJCQl0aGlzLnt7PWN9fV9DSEFOR0VEID0gdHJ1ZTt7e359fQoJCX0KCQllbHNlIHt7e35pdC5jb250cm9sX2lucHV0czpjfX0KCQkJdGhpcy57ez1jfX1fQ0hBTkdFRCA9IHRoaXMue3s9Y319ICE9IHRoaXMue3s9Y319X3oxO3t7fn19CgkJfQoKCQl7e35pdC5jb250cm9sc19yYXRlOmN9fQoJCWlmICh7ez1BcnJheS5mcm9tKGMuc2V0KS5tYXAoZSA9PiAidGhpcy4iICsgZSArICJfQ0hBTkdFRCIpLmpvaW4oJyB8ICcpfX0pIHt7e35jLnN0bXRzOiBzfX0KCQkJe3s9c319O3t7fn19CgkJfXt7fn19CgkJe3t+aXQuY29udHJvbF9pbnB1dHM6Y319CgkJdGhpcy57ez1jfX1fQ0hBTkdFRCA9IGZhbHNlO3t7fn19CgoJCWlmICh0aGlzLmZpcnN0UnVuKSB7IHt7fml0LnJlc2V0MTpyfX0KCQkJe3s9cn19O3t7fn19CgkJCXt7fml0LnJlc2V0MjpyfX0KCQkJe3s9cn19O3t7fn19CgkJfQoKCQlmb3IgKGxldCBpID0gMDsgaSA8IG5TYW1wbGVzOyBpKyspIHsKCQkJe3t+aXQuYXVkaW9fcmF0ZTogYX19CgkJCXt7PWF9fTt7e359fQoJCQkKCQkJe3t+aXQuZGVsYXlfdXBkYXRlczp1fX17ez11fX07CgkJCXt7fn19CgkJCXt7fml0Lm91dHB1dF91cGRhdGVzOnV9fQoJCQl7ez11fX07e3t+fX0KCQl9CgoJCXt7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQoJCXRoaXMue3s9Y319X3oxID0gdGhpcy57ez1jfX07e3t+fX0KCQl0aGlzLmZpcnN0UnVuID0gMDsKCX0KfQoKLy8gU3RhdGljIHBhcnQKY2xhc3MgUGx1Z2luUHJvY2Vzc29yIGV4dGVuZHMgQXVkaW9Xb3JrbGV0UHJvY2Vzc29yIHsKCWNvbnN0cnVjdG9yICgpIHsKCgkJc3VwZXIoKTsKCQl0aGlzLmluc3RhbmNlID0gT2JqZWN0LmNyZWF0ZShQbHVnaW4pOwoJCXRoaXMuaW5zdGFuY2UuaW5pdCgpOwoJCXRoaXMuaW5zdGFuY2Uuc2V0U2FtcGxlUmF0ZShzYW1wbGVSYXRlKTsKCQl0aGlzLmluc3RhbmNlLnJlc2V0KCk7CgoJCXRoaXMucG9ydC5vbm1lc3NhZ2UgPSAoZSkgPT4gewoJCQlpZiAoZS5kYXRhLnR5cGUgPT0gImNoYW5nZUluc3RhbmNlIikgewoJCQkJZXZhbChlLmRhdGEudmFsdWUpCgkJCQl0aGlzLmluc3RhbmNlID0gT2JqZWN0LmNyZWF0ZShQbHVnaW4pOwoJCQkJdGhpcy5pbnN0YW5jZS5pbml0KCk7CgkJCQl0aGlzLmluc3RhbmNlLnNldFNhbXBsZVJhdGUoc2FtcGxlUmF0ZSk7CgkJCQl0aGlzLmluc3RhbmNlLnJlc2V0KCk7CgkJCX0KCQkJZWxzZSBpZiAoZS5kYXRhLnR5cGUgPT0gInBhcmFtQ2hhbmdlIikgewoJCQkJdGhpcy5pbnN0YW5jZVtlLmRhdGEuaWRdID0gZS5kYXRhLnZhbHVlCgkJCX0KCQl9Cgl9Cglwcm9jZXNzIChpbnB1dHMsIG91dHB1dHMsIHBhcmFtZXRlcnMpIHsKCgkJdmFyIGlucHV0ID0gaW5wdXRzWzBdOwoJCXZhciBvdXRwdXQgPSBvdXRwdXRzWzBdOwoJCWxldCBuU2FtcGxlcyA9IE1hdGgubWluKGlucHV0Lmxlbmd0aCA+PSAxID8gaW5wdXRbMF0ubGVuZ3RoIDogMCwgb3V0cHV0WzBdLmxlbmd0aCkKCQkKCgoJCXRoaXMuaW5zdGFuY2UucHJvY2Vzcyh7ez1pdC5hdWRpb19pbnB1dHMubWFwKChpaSwgaSkgPT4gImlucHV0WyIgKyBpICsgIl0iKX19e3s/aXQuYXVkaW9faW5wdXRzLmxlbmd0aCA+IDB9fSwge3s/fX0ge3s9aXQub3V0cHV0cy5tYXAoKGlpLCBpKSA9PiAib3V0cHV0WyIgKyBpICsgIl0iKX19LCBuU2FtcGxlcyk7CgoJCXJldHVybiB0cnVlOwoJfQoKCXN0YXRpYyBnZXQgcGFyYW1ldGVyRGVzY3JpcHRvcnMoKSB7CgkJcmV0dXJuIFtdOwoJfQp9CgpyZWdpc3RlclByb2Nlc3NvcigiUGx1Z2luUHJvY2Vzc29yIiwgUGx1Z2luUHJvY2Vzc29yKTsK","base64")),
+					"js_html": 			String(Buffer("PCFET0NUWVBFIGh0bWw+CjxodG1sPgo8aGVhZD4KPHRpdGxlPlBsdWdpbjwvdGl0bGU+CjxzY3JpcHQgdHlwZT0idGV4dC9qYXZhc2NyaXB0Ij4KCmxldCBub2RlOwpsZXQgY3R4OwpsZXQgaW5wdXROb2RlOwoKY29uc3QgYmVnaW4gPSBhc3luYyBmdW5jdGlvbiAoKSB7CgljdHggPSBuZXcgQXVkaW9Db250ZXh0KCk7CgoJYXdhaXQgY3R4LmF1ZGlvV29ya2xldC5hZGRNb2R1bGUoInByb2Nlc3Nvci5qcyIpOwoKCW5vZGUgPSBuZXcgQXVkaW9Xb3JrbGV0Tm9kZShjdHgsICJQbHVnaW5Qcm9jZXNzb3IiLCB7IG51bWJlck9mSW5wdXRzOjEsICBudW1iZXJPZk91dHB1dHM6MSwgb3V0cHV0Q2hhbm5lbENvdW50OiBbe3s9aXQub3V0cHV0cy5sZW5ndGh9fV0gfSk7CgoJbm9kZS5jb25uZWN0KGN0eC5kZXN0aW5hdGlvbik7CgoJY29uc3Qgc3RyZWFtID0gYXdhaXQgbmF2aWdhdG9yLm1lZGlhRGV2aWNlcy5nZXRVc2VyTWVkaWEoeyBhdWRpbzogeyBhdXRvR2FpbkNvbnRyb2w6IGZhbHNlLCBlY2hvQ2FuY2VsbGF0aW9uOiBmYWxzZSwgbm9pc2VTdXBwcmVzc2lvbjogZmFsc2UsIGxhdGVuY3k6IDAuMDA1IH0gfSk7CglpbnB1dE5vZGUgPSBjdHguY3JlYXRlTWVkaWFTdHJlYW1Tb3VyY2Uoc3RyZWFtKTsKCglpbnB1dE5vZGUuY29ubmVjdChub2RlKTsKCiAge3t+aXQuY29udHJvbF9pbnB1dHM6Y319CiAgZG9jdW1lbnQuZ2V0RWxlbWVudEJ5SWQoInt7PWN9fSIpLm9uaW5wdXQgPSBoYW5kbGVJbnB1dDsge3t+fX0KICAKfQoKZnVuY3Rpb24gaGFuZGxlSW5wdXQoZSkgewoJbm9kZS5wb3J0LnBvc3RNZXNzYWdlKHt0eXBlOiAicGFyYW1DaGFuZ2UiLCBpZDogZS50YXJnZXQuaWQsIHZhbHVlOiBlLnRhcmdldC52YWx1ZX0pCn0KPC9zY3JpcHQ+CjwvaGVhZD4KPGJvZHk+CiAgPGgxPnt7PWl0LmNsYXNzX25hbWV9fTwvaDE+CiAgCiAge3t+aXQuY29udHJvbF9pbnB1dHM6Y319CiAgPGxhYmVsIGZvcj0ie3s9Y319Ij57ez1jfX08L2xhYmVsPgogIDxpbnB1dCB0eXBlPSJyYW5nZSIgaWQ9Int7PWN9fSIgbmFtZT0ie3s9Y319IiBtaW49IjAiIG1heD0iMSIgdmFsdWU9IjAuNSIgc3RlcD0iYW55Ij48YnI+e3t+fX0KCiAgPGJ1dHRvbiBvbmNsaWNrPSJiZWdpbigpIj5TdGFydDwvYnV0dG9uPgo8L2JvZHk+CjwvaHRtbD4K","base64")),
+					"js_processor": 	String(Buffer("e3t+aXQuY29uc3RhbnRfcmF0ZTpjfX1jb25zdCB7ez1jfX07Cnt7fn19Cgpjb25zdCBQbHVnaW4gPSB7Cglpbml0OiBmdW5jdGlvbiAoKSB7CgkJdGhpcy5mcyA9IDA7CgkJdGhpcy5maXJzdFJ1biA9IDE7CgoJCXRoaXMucGFyYW1zID0gW3t7PWl0LmNvbnRyb2xfaW5wdXRzLm1hcChjID0+ICciJyArIGMgKyAnIicpLmpvaW4oIiwgIil9fV07CgoJCXt7fml0LmluaXQ6ZH19CgkJe3s9ZH19O3t7fn19CgoJCXt7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQoJCXRoaXMue3s9Y319X3oxID0gMDsKCQl0aGlzLnt7PWN9fV9DSEFOR0VEID0gdHJ1ZTsKCQl7e359fQoJfSwKCglyZXNldDogZnVuY3Rpb24gKCkgewoJCXRoaXMuZmlyc3RSdW4gPSAxCgl9LAoKCXNldFNhbXBsZVJhdGU6IGZ1bmN0aW9uIChzYW1wbGVSYXRlKSB7CgkJdGhpcy5mcyA9IHNhbXBsZVJhdGU7CgkJe3t+aXQuc2FtcGxpbmdfcmF0ZTpzfX17ez1zfX07CgkJe3t+fX0KCX0sCgoJcHJvY2VzczogZnVuY3Rpb24gKHt7PWl0LmF1ZGlvX2lucHV0cy5jb25jYXQoaXQub3V0cHV0cykuam9pbignLCAnKX19LCBuU2FtcGxlcykgewoJCWlmICh0aGlzLmZpcnN0UnVuKSB7e3t+aXQuY29udHJvbF9pbnB1dHM6Y319CgkJCXRoaXMue3s9Y319X0NIQU5HRUQgPSB0cnVlO3t7fn19CgkJfQoJCWVsc2Uge3t7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQoJCQl0aGlzLnt7PWN9fV9DSEFOR0VEID0gdGhpcy57ez1jfX0gIT09IHRoaXMue3s9Y319X3oxO3t7fn19CgkJfQoKCQl7e35pdC5jb250cm9sc19yYXRlOmN9fQoJCWlmICh7ez1BcnJheS5mcm9tKGMuc2V0KS5tYXAoZSA9PiAidGhpcy4iICsgZSArICJfQ0hBTkdFRCIpLmpvaW4oJyB8ICcpfX0pIHt7e35jLnN0bXRzOiBzfX0KCQkJe3s9c319O3t7fn19CgkJfXt7fn19CgkJe3t+aXQuY29udHJvbF9pbnB1dHM6Y319CgkJdGhpcy57ez1jfX1fQ0hBTkdFRCA9IGZhbHNlO3t7fn19CgoJCWlmICh0aGlzLmZpcnN0UnVuKSB7IHt7fml0LnJlc2V0MTpyfX0KCQkJe3s9cn19O3t7fn19CgkJCXt7fml0LnJlc2V0MjpyfX0KCQkJe3s9cn19O3t7fn19CgkJfQoKCQlmb3IgKGxldCBpID0gMDsgaSA8IG5TYW1wbGVzOyBpKyspIHsKCQkJe3t+aXQuYXVkaW9fcmF0ZTogYX19CgkJCXt7PWF9fTt7e359fQoJCQkKCQkJe3t+aXQuZGVsYXlfdXBkYXRlczp1fX17ez11fX07CgkJCXt7fn19CgkJCXt7fml0Lm91dHB1dF91cGRhdGVzOnV9fQoJCQl7ez11fX07e3t+fX0KCQl9CgoJCXt7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQoJCXRoaXMue3s9Y319X3oxID0gdGhpcy57ez1jfX07e3t+fX0KCQl0aGlzLmZpcnN0UnVuID0gMDsKCX0KfQoKLy8gU3RhdGljIHBhcnQKY2xhc3MgUGx1Z2luUHJvY2Vzc29yIGV4dGVuZHMgQXVkaW9Xb3JrbGV0UHJvY2Vzc29yIHsKCWNvbnN0cnVjdG9yICgpIHsKCgkJc3VwZXIoKTsKCQl0aGlzLmluc3RhbmNlID0gT2JqZWN0LmNyZWF0ZShQbHVnaW4pOwoJCXRoaXMuaW5zdGFuY2UuaW5pdCgpOwoJCXRoaXMuaW5zdGFuY2Uuc2V0U2FtcGxlUmF0ZShzYW1wbGVSYXRlKTsKCQl0aGlzLmluc3RhbmNlLnJlc2V0KCk7CgoJCXRoaXMucG9ydC5vbm1lc3NhZ2UgPSAoZSkgPT4gewoJCQlpZiAoZS5kYXRhLnR5cGUgPT09ICJjaGFuZ2VJbnN0YW5jZSIpIHsKCQkJCWV2YWwoZS5kYXRhLnZhbHVlKQoJCQkJdGhpcy5pbnN0YW5jZSA9IE9iamVjdC5jcmVhdGUoUGx1Z2luKTsKCQkJCXRoaXMuaW5zdGFuY2UuaW5pdCgpOwoJCQkJdGhpcy5pbnN0YW5jZS5zZXRTYW1wbGVSYXRlKHNhbXBsZVJhdGUpOwoJCQkJdGhpcy5pbnN0YW5jZS5yZXNldCgpOwoJCQl9CgkJCWVsc2UgaWYgKGUuZGF0YS50eXBlID09PSAicGFyYW1DaGFuZ2UiKSB7CgkJCQl0aGlzLmluc3RhbmNlW2UuZGF0YS5pZF0gPSBlLmRhdGEudmFsdWUKCQkJfQoJCX0KCX0KCXByb2Nlc3MgKGlucHV0cywgb3V0cHV0cywgcGFyYW1ldGVycykgewoKCQljb25zdCBpbnB1dCA9IGlucHV0c1swXTsKCQljb25zdCBvdXRwdXQgPSBvdXRwdXRzWzBdOwoJCWxldCBuU2FtcGxlcyA9IE1hdGgubWluKGlucHV0Lmxlbmd0aCA+PSAxID8gaW5wdXRbMF0ubGVuZ3RoIDogMCwgb3V0cHV0WzBdLmxlbmd0aCkKCQkKCgoJCXRoaXMuaW5zdGFuY2UucHJvY2Vzcyh7ez1pdC5hdWRpb19pbnB1dHMubWFwKChpaSwgaSkgPT4gImlucHV0WyIgKyBpICsgIl0iKX19e3s/aXQuYXVkaW9faW5wdXRzLmxlbmd0aCA+IDB9fSwge3s/fX0ge3s9aXQub3V0cHV0cy5tYXAoKGlpLCBpKSA9PiAib3V0cHV0WyIgKyBpICsgIl0iKX19LCBuU2FtcGxlcyk7CgoJCXJldHVybiB0cnVlOwoJfQoKCXN0YXRpYyBnZXQgcGFyYW1ldGVyRGVzY3JpcHRvcnMoKSB7CgkJcmV0dXJuIFtdOwoJfQp9CgpyZWdpc3RlclByb2Nlc3NvcigiUGx1Z2luUHJvY2Vzc29yIiwgUGx1Z2luUHJvY2Vzc29yKTsK","base64")),
 					"d_processor":		String(Buffer("c3RydWN0IHt7PWl0LmNsYXNzX25hbWV9fQp7Cm5vdGhyb3c6CnB1YmxpYzoKQG5vZ2M6CgogICAge3t+aXQuY29uc3RhbnRfcmF0ZTpjfX1lbnVtIGZsb2F0IHt7PWN9fTsKICAgIHt7fn19CgogICAgdm9pZCBzZXRTYW1wbGVSYXRlKGZsb2F0IHNhbXBsZVJhdGUpCiAgICB7CiAgICAgICAgZnMgPSBzYW1wbGVSYXRlOwogICAgICAgIHt7fml0LnNhbXBsaW5nX3JhdGU6c319e3s9c319OwogICAgICAgIHt7fn19CiAgICB9CgogICAgdm9pZCByZXNldCgpCiAgICB7CiAgICAgICAgZmlyc3RSdW4gPSAxOwogICAgfQoKICAgIHZvaWQgcHJvY2Vzcyh7ez1pdC5hdWRpb19pbnB1dHMuY29uY2F0KGl0Lm91dHB1dHMpLm1hcCh4ID0+ICdmbG9hdCAqJyArIHgpLmpvaW4oJywgJyl9fSwgaW50IG5TYW1wbGVzKQogICAgewogICAgICAgIGlmIChmaXJzdFJ1bikgCiAgICAgICAgewogICAgICAgICAgICB7e35pdC5jb250cm9sX2lucHV0czpjfX17ez1jfX1fQ0hBTkdFRCA9IDE7CiAgICAgICAgICAgIHt7fn19CiAgICAgICAgfQogICAgICAgIGVsc2Uge3t7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQogICAgICAgICAgICB7ez1jfX1fQ0hBTkdFRCA9IHt7PWN9fSAhPSB7ez1jfX1fejE7e3t+fX0KICAgICAgICB9CiAgICAgICAge3t+aXQuY29udHJvbHNfcmF0ZTpjfX0KICAgICAgICBpZiAoe3s9QXJyYXkuZnJvbShjLnNldCkubWFwKGUgPT4gZSArICJfQ0hBTkdFRCIpLmpvaW4oJyB8ICcpfX0pIHt7e35jLnN0bXRzOiBzfX0KICAgICAgICAgICAge3s9c319O3t7fn19CiAgICAgICAgfXt7fn19CiAgICAgICAge3t+aXQuY29udHJvbF9pbnB1dHM6Y319CiAgICAgICAge3s9Y319X0NIQU5HRUQgPSAwO3t7fn19CgogICAgICAgIGlmIChmaXJzdFJ1bikge3t7fml0LnJlc2V0MTpyfX0KICAgICAgICAgICAge3s9cn19O3t7fn19CiAgICAgICAgICAgIHt7fml0LnJlc2V0MjpyfX0KICAgICAgICAgICAge3s9cn19O3t7fn19CiAgICAgICAgfQoKICAgICAgICBmb3IgKGludCBpID0gMDsgaSA8IG5TYW1wbGVzOyBpKyspIHsKICAgICAgICAgICAge3t+aXQuYXVkaW9fcmF0ZTogYX19CiAgICAgICAgICAgIHt7PWF9fTt7e359fQoKICAgICAgICAgICAge3t+aXQuZGVsYXlfdXBkYXRlczp1fX17ez11fX07CiAgICAgICAgICAgIHt7fn19CiAgICAgICAgICAgIHt7fml0Lm91dHB1dF91cGRhdGVzOnV9fQogICAgICAgICAgICB7ez11fX07e3t+fX0KICAgICAgICB9CgogICAgICAgIHt7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQogICAgICAgIHt7PWN9fV96MSA9IHt7PWN9fTt7e359fQogICAgICAgIGZpcnN0UnVuID0gMDsKICAgIH0KCiAgICB7e35pdC5jb250cm9sX2lucHV0czpjfX0KICAgIGZsb2F0IGdldHt7PWN9fSgpCiAgICB7CiAgICAgICAgcmV0dXJuIHt7PWN9fTsKICAgIH0KICAgIHZvaWQgc2V0e3s9Y319KGZsb2F0IHZhbHVlKQogICAgewogICAgICAgIHt7PWN9fSA9IHZhbHVlOwogICAgfQogICAge3t+fX0KCnByaXZhdGU6CgogICAge3t+aXQuaW5pdDpkfX0KICAgIGZsb2F0IHt7PWR9fTt7e359fQoKICAgIHt7fml0LmNvbnRyb2xfaW5wdXRzOmN9fQogICAgZmxvYXQge3s9Y319X3oxOwogICAgY2hhciB7ez1jfX1fQ0hBTkdFRDsKICAgIHt7fn19CgogICAgZmxvYXQgZnM7CiAgICBpbnQgZmlyc3RSdW47Cgp9Owo=","base64"))
 				}
 			}

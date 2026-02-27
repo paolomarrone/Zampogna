@@ -18,16 +18,16 @@
 	function getIndexer (target_lang, index) {
 		if (['C', 'cpp', 'VST2', 'yaaaeapa', 'd', 'js'].includes(target_lang))
 			return "[" + index + "]"
-		else if (target_lang == 'MATLAB')
+		else if (target_lang === 'MATLAB')
 			return "(" + index + ")"
 	}
 
 	function getNumber(target_lang, n) {
 		if (['C', 'cpp', 'VST2', 'yaaaeapa', 'd'].includes(target_lang))
-			return n + ((n.includes('.') || n.toLowerCase().includes('e')) ? 'f' : '.0f');
+			return n + ((n.includes('.') || n.toLowerCase().includes('e')) ? 'f' : '.0f')
 		else if (['MATLAB', 'js'].includes(target_lang))
-			return n;
-		return n;
+			return n
+		return n
 	}
 
 	function getIdPrefix(target_lang) {
@@ -69,17 +69,17 @@
 			}
 		}
 		function MagicString(...init) {
-			const m = Object.create(MagicStringProto);
+			const m = Object.create(MagicStringProto)
 			m.s = []
 			for (let i of init)
 				m.add(i)	
-			return m;
+			return m
 		}
 
-		let program = {
+		const program = {
 			class_name: 	graph.id,
-			control_inputs: graph.input_ports.filter(p => p.update_rate == 2).map(p => p.block.label()),
-			audio_inputs: 	graph.input_ports.filter(p => p.update_rate == 3).map(p => p.block.label()),
+			control_inputs: graph.input_ports.filter(p => p.update_rate === 2).map(p => p.block.label()),
+			audio_inputs: 	graph.input_ports.filter(p => p.update_rate === 3).map(p => p.block.label()),
 			outputs: 		[],
 
 			declarations1: 	[],
@@ -109,38 +109,38 @@
 		graph.output_ports.forEach(op => op.block.operation = "VAR_OUT")
 		graph_init.input_ports.forEach(ip => ip.block.operation = 'VAR_IN')
 
-		const id_prefix_ = getIdPrefix(target_lang);
+		const id_prefix_ = getIdPrefix(target_lang)
 
 		schedule.forEach(block => convertBlock(block))
 		schedule_init.forEach(block => convertBlockInit(block))
 
 		for (let outi = 0; outi < graph.output_ports.length; outi++) {
-			program.outputs[outi] = graph.output_ports[outi].block.label() + '_out_';
+			program.outputs[outi] = graph.output_ports[outi].block.label() + '_out_'
 			appendAssignment(program.outputs[outi] + getIndexer(target_lang, 'i'), graph.output_ports[outi].code, 5, null)
 		}
 
 		groupControls()
 
-		graph.input_ports.filter(p => p.update_rate == 2).map(p => p.block).forEach(function (block) {
-			program.declarations2.push(MagicString(block.output_ports[0].code));
-			program.init.push(MagicString(block.output_ports[0].code, " = ", getNumber(target_lang, block.block_init.output_ports[0].code.toString())));
+		graph.input_ports.filter(p => p.update_rate === 2).map(p => p.block).forEach(function (block) {
+			program.declarations2.push(MagicString(block.output_ports[0].code))
+			program.init.push(MagicString(block.output_ports[0].code, " = ", getNumber(target_lang, block.block_init.output_ports[0].code.toString())))
 		})
 
 		doT.templateSettings.strip = false
 	
-		if (target_lang == 'C') {
+		if (target_lang === 'C') {
 			return [
 				{ name: graph.id + ".h", str: doT.template(templates["C_h"])(program) },
 				{ name: graph.id + ".c", str: doT.template(templates["C_c"])(program) },
 			]
 		}
-		else if (target_lang == 'cpp') {
+		else if (target_lang === 'cpp') {
 			return [
 				{ name: graph.id + ".h", str: doT.template(templates["cpp_h"])(program) },
 				{ name: graph.id + ".cpp", str: doT.template(templates["cpp_cpp"])(program) }
 			]
 		}
-		else if (target_lang == 'VST2') {
+		else if (target_lang === 'VST2') {
 			return [
 				{ name: graph.id + ".h", str: doT.template(templates["cpp_h"])(program) },
 				{ name: graph.id + ".cpp", str: doT.template(templates["cpp_cpp"])(program) },
@@ -148,25 +148,25 @@
 				{ name: graph.id + "_vst2_wrapper.cpp", str: doT.template(templates["vst2_wrapper_cpp"])(program) }
 			]
 		}
-		else if (target_lang == 'yaaaeapa') {
+		else if (target_lang === 'yaaaeapa') {
 			return [
 				{ name: graph.id + ".h", str: doT.template(templates["C_h"])(program) },
 				{ name: graph.id + ".c", str: doT.template(templates["C_c"])(program) },
 				{ name: graph.id + "_yaaaeapa_wrapper.c", str: doT.template(templates["yaaaeapa_wrapper_c"])(program) }
 			]
 		}
-		else if (target_lang == 'MATLAB') {
+		else if (target_lang === 'MATLAB') {
 			return [
 				{ name: graph.id + '.m', str: doT.template(templates["matlab"])(program) }
 			]
 		}
-		else if (target_lang == "js") {
+		else if (target_lang === "js") {
 			return [
 				{ name: "main.html", str: doT.template(templates["js_html"])(program) },
 				{ name: "processor.js", str: doT.template(templates["js_processor"])(program) }
 			]
 		}
-		else if (target_lang == "d") {
+		else if (target_lang === "d") {
 			return [
 				{ name: "d_processor.d", str: doT.template(templates["d_processor"])(program) }
 			]
@@ -188,11 +188,11 @@
 				is_used_locally = output_blocks.every(b => checkSetEquality(b.control_dependencies, block.control_dependencies))
 			if (is_used_locally && block.if_owners.length > 0) {
 				let bb = block.if_owners[block.if_owners.length - 1]
-				is_used_locally = output_blocks.every(b => b.if_owners.some(i => i.ifblock == bb.ifblock && i.branch == bb.branch))
-				if (output_blocks.some(b => b.operation == "DELAY1_EXPR"))
-					is_used_locally = false;
+				is_used_locally = output_blocks.every(b => b.if_owners.some(i => i.ifblock === bb.ifblock && i.branch === bb.branch))
+				if (output_blocks.some(b => b.operation === "DELAY1_EXPR"))
+					is_used_locally = false
 			}
-			const id_prefix = is_used_locally || update_rate === 0 ? "" : id_prefix_;
+			const id_prefix = is_used_locally || update_rate === 0 ? "" : id_prefix_
 
 			if (!block.output_ports[0].toBeCached) {
 				if (update_rate === 2 && output_blocks.length > 0 && !checkSetEquality(output_blocks[0].control_dependencies, block.control_dependencies))
@@ -217,10 +217,10 @@
 						code.add(input_blocks_code[0])
 					return
 				case 'VAR_IN':
-					if (update_rate == 3) {
+					if (update_rate === 3) {
 						code.add(block.label(), getIndexer(target_lang, 'i'))
 					}
-					else if (update_rate == 2)
+					else if (update_rate === 2)
 						code.add(id_prefix_, block.label())
 					return
 				case 'VAR_OUT':
@@ -234,7 +234,7 @@
 					appendAssignment(code, input_blocks[0].block_init.output_ports[0].code, -1, null, true, false, block.if_owners)
 					return
 				case 'NUMBER':
-					code.add(getNumber(target_lang, block.val.toString()));
+					code.add(getNumber(target_lang, block.val.toString()))
 					return
 				case 'SAMPLERATE':
 					code.add(id_prefix_, 'fs')
@@ -247,7 +247,7 @@
 						code.add('_branch1_') // 5
 						code.add("\n}\n")
 					}
-					else if (target_lang == 'MATLAB') {
+					else if (target_lang === 'MATLAB') {
 						code.add("if (", input_blocks_code[0], ')\n')
 						code.add('_branch0_') // 3
 						code.add("\nelse\n")
@@ -275,7 +275,7 @@
 					auxcode.add(block.id, '(')
 					for (let ii = 0; ii < input_blocks_code.length; ii++) {
 						auxcode.add(input_blocks_code[ii])
-						if (ii != input_blocks_code.length - 1)
+						if (ii !== input_blocks_code.length - 1)
 							auxcode.add(', ')
 					}
 					auxcode.add(')')
@@ -337,13 +337,13 @@
 				is_used_locally = output_blocks.every(b => checkSetEquality(b.control_dependencies, block.control_dependencies))
 			*/
 			// TMP... TODO: fix
-			is_used_locally = false;
+			is_used_locally = false
 
-			const id_prefix = is_used_locally || update_rate === 0 ? "" : id_prefix_;
+			const id_prefix = is_used_locally || update_rate === 0 ? "" : id_prefix_
 
 			switch (block.operation) {
 				case 'VAR':
-					if (input_blocks[0].operation == 'NUMBER')
+					if (input_blocks[0].operation === 'NUMBER')
 						code.add(input_blocks_code[0])
 					else if (block.output_ports[0].toBeCached || output_blocks.length > 1) {
 						code.add(id_prefix, block.label())
@@ -362,7 +362,7 @@
 					code.add(input_blocks_code[0])
 					return
 				case 'NUMBER':
-					code.add(getNumber(target_lang, block.val.toString()));
+					code.add(getNumber(target_lang, block.val.toString()))
 					return
 				case 'SAMPLERATE':
 					code.add(id_prefix, 'fs')
@@ -386,11 +386,11 @@
 					auxcode.add(block.id, '(')
 					for (let ii = 0; ii < input_blocks_code.length; ii++) {
 						auxcode.add(input_blocks_code[ii])
-						if (ii != input_blocks_code.length - 1)
+						if (ii !== input_blocks_code.length - 1)
 							auxcode.add(', ')
 					}
 					auxcode.add(')')
-					break;
+					break
 				case 'OR_EXPR':
 					auxcode.add('(', input_blocks_code[0], ' || ', input_blocks_code[1], ')')
 					break
@@ -490,12 +490,12 @@
 						out_i.push(i)
 					}
 				}
-				if (out_i.length == 0)
+				if (out_i.length === 0)
 					continue
 
-				let stmts = program[levels[lvl]].filter(s => s.if_owners[s.if_owners.length - 1] && s.if_owners[s.if_owners.length - 1].ifblock == block)
-				let b0 = stmts.filter(s => s.if_owners[s.if_owners.length - 1].branch == 0)
-				let b1 = stmts.filter(s => s.if_owners[s.if_owners.length - 1].branch == 1)
+				let stmts = program[levels[lvl]].filter(s => s.if_owners[s.if_owners.length - 1] && s.if_owners[s.if_owners.length - 1].ifblock === block)
+				let b0 = stmts.filter(s => s.if_owners[s.if_owners.length - 1].branch === 0)
+				let b1 = stmts.filter(s => s.if_owners[s.if_owners.length - 1].branch === 1)
 
 				for (let i of out_i) {
 					b0.push(MagicString(
@@ -546,7 +546,7 @@
 				group.stmts.push(stmt)
 			})
 
-			groups.sort((A, B) => A.cardinality < B.cardinality ? -1 : A.cardinality === B.cardinality ? 0 : 1 )
+			groups.sort((a, b) => a.cardinality - b.cardinality)
 
 			program.controls_rate = groups
 		}
@@ -560,5 +560,5 @@
 	}
 
 
-	exports["convert"] = convert;
+	exports["convert"] = convert
 }())
