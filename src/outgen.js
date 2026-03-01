@@ -62,10 +62,15 @@
 
 	function LazyString (...init) {
 		this.s = [];
+		this.read_memory_ids = new Set();
 		this.add = function (...x) {
 			for (let k of x) {
 				if (k == undefined)
 					throw new Error(k);
+				if (k && k.read_memory_ids) {
+					for (let id of k.read_memory_ids)
+						this.read_memory_ids.add(id);
+				}
 				this.s.push(k);
 			}
 			return this;
@@ -256,6 +261,7 @@
 			this.type = type;
 			this.id = id;
 			this.size = size;
+			this.memory_id = id;
 			this.toString = function () {
 				const s = new LazyString();
 				if (target_language == "MATLAB")
@@ -266,6 +272,7 @@
 			};
 		};
 		funcs.MemoryInit = function (id, size, value) {
+			this.memory_id = id && id.__memory_id ? id.__memory_id : undefined;
 			this.s = new LazyString();
 			if (target_language == "MATLAB") {
 				this.s.add(id, '(:) = ', value, ';');
@@ -646,8 +653,8 @@
 			program.audio_update.items.forEach(s => loop_body.add(s));
 			program.memory_updates.items.forEach(s => loop_body.add(s));
 			program.output_updates.items.forEach(s => loop_body.add(s));
-			let changed = true;
-			while (changed) {
+				let changed = true;
+				while (changed) {
 				changed = false;
 				if (merge_adjacent_conditionals(loop_body))
 					changed = true;
@@ -663,11 +670,12 @@
 					changed = true;
 				if (options.outgen_code_hoisting !== false && distribute_following_statements_into_ifelse(loop_body))
 					changed = true;
-				if (options.outgen_code_hoisting !== false && cleanup_branch_local_scopes(loop_body, new Set()))
-					changed = true;
+					if (options.outgen_code_hoisting !== false && cleanup_branch_local_scopes(loop_body, new Set()))
+						changed = true;
+				}
+				prune_dead_memories(loop_body);
+				return loop_body;
 			}
-			return loop_body;
-		}
 
 			function merge_adjacent_conditionals (statements) {
 				let changed = false;
@@ -1129,7 +1137,7 @@
 			return changed;
 		}
 
-		function remove_noop_assignments (statements) {
+			function remove_noop_assignments (statements) {
 			let changed = false;
 			for (let s of statements.items) {
 				if (s && s.kind == "if" && remove_noop_assignments(s.body))
@@ -1151,10 +1159,136 @@
 				changed = true;
 				i--;
 			}
-			return changed;
-		}
+				return changed;
+			}
 
-		function is_sinkable_statement (s) {
+			function prune_dead_memories (loop_body) {
+				const memoryIds = program.memory_declarations.items
+					.filter(d => d && d.memory_id)
+					.map(d => d.memory_id);
+				if (memoryIds.length == 0)
+					return;
+
+				const readIds = new Set();
+				const writeIds = new Set();
+
+				function escapeRegExp (s) {
+					return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+				}
+
+				function collectMemoryRefsFromText (text, ownWriteId) {
+					for (let id of memoryIds) {
+						if (id == ownWriteId)
+							continue;
+						const rx = new RegExp('(^|[^A-Za-z0-9_])' + escapeRegExp(id) + '\\s*[\\(\\[]');
+						if (rx.test(text))
+							readIds.add(id);
+					}
+				}
+
+				function walkStatements (statements) {
+					if (!statements || !statements.items)
+						return;
+					for (let s of statements.items) {
+						if (!s)
+							continue;
+						if (s.kind == "assignment") {
+							if (s.memory_write_id)
+								writeIds.add(s.memory_write_id);
+							const rhs = s.r ? s.r.toString() : "";
+							collectMemoryRefsFromText(rhs, undefined);
+							if (!s.memory_write_id) {
+								const lhs = s.l ? s.l.toString() : "";
+								collectMemoryRefsFromText(lhs, undefined);
+							}
+							continue;
+						}
+						if (s.kind == "if") {
+							collectMemoryRefsFromText(s.condition ? s.condition.toString() : "", undefined);
+							walkStatements(s.body);
+							continue;
+						}
+						if (s.kind == "ifelse") {
+							collectMemoryRefsFromText(s.condition ? s.condition.toString() : "", undefined);
+							walkStatements(s.then_body);
+							walkStatements(s.else_body);
+							continue;
+						}
+						if (s.memory_id) {
+							writeIds.add(s.memory_id);
+							collectMemoryRefsFromText(s.toString(), s.memory_id);
+							continue;
+						}
+						if (typeof s.toString == "function")
+							collectMemoryRefsFromText(s.toString(), undefined);
+					}
+				}
+
+				walkStatements(program.constants);
+				walkStatements(program.fs_update);
+				walkStatements(program.update_coeffs_ctrl);
+				walkStatements(program.init);
+				walkStatements(program.reset);
+				if (loop_body)
+					walkStatements(loop_body);
+				else {
+					walkStatements(program.update_coeffs_audio);
+					walkStatements(program.audio_update);
+					walkStatements(program.memory_updates);
+					walkStatements(program.output_updates);
+				}
+
+				const deadIds = new Set();
+				program.memory_declarations.items = program.memory_declarations.items.filter(d => {
+					if (!d || !d.memory_id)
+						return true;
+					if (readIds.has(d.memory_id))
+						return true;
+					deadIds.add(d.memory_id);
+					return false;
+				});
+				if (deadIds.size == 0)
+					return;
+
+				program.reset.items = program.reset.items.filter(s => !(s && s.memory_id && deadIds.has(s.memory_id)));
+				if (t != "MATLAB")
+					program.init.items = program.init.items.filter(s => !(s && s.memory_id && deadIds.has(s.memory_id)));
+
+				function pruneWrites (statements) {
+					if (!statements || !statements.items)
+						return;
+					statements.items = statements.items.filter(s => {
+						if (!s)
+							return false;
+						if (s.kind == "if")
+							pruneWrites(s.body);
+						if (s.kind == "ifelse") {
+							pruneWrites(s.then_body);
+							pruneWrites(s.else_body);
+						}
+						if (s.memory_write_id && deadIds.has(s.memory_write_id))
+							return false;
+						if (s.memory_id && deadIds.has(s.memory_id))
+							return false;
+						return true;
+					});
+				}
+
+				pruneWrites(program.constants);
+				pruneWrites(program.fs_update);
+				pruneWrites(program.update_coeffs_ctrl);
+				if (loop_body)
+					pruneWrites(loop_body);
+				else {
+					pruneWrites(program.update_coeffs_audio);
+					pruneWrites(program.audio_update);
+					pruneWrites(program.memory_updates);
+					pruneWrites(program.output_updates);
+				}
+			}
+
+
+			function is_sinkable_statement (s) {
 			if (!s)
 				return false;
 			if (s.kind == "assignment")
@@ -1604,24 +1738,13 @@
 					return undefined;
 				}
 
-				let id = b.__pending_scalar_alias_id;
-				if (!id && input_codes[0].toString().trim() == "1") {
-					const writers = bdef.blocks.filter(bb => bs.MemoryWriterBlock.isPrototypeOf(bb) && bb.memoryblock == b);
-					for (const mw of writers) {
-						const cv = bdef.connections.find(c => c.out == mw.i_ports[1]);
-						const base = cv ? tracePreferredScalarBase(cv.in, new Set()) : undefined;
-						if (base) {
-							const preferred = base.endsWith("_z1") ? base : (base + "_z1");
-							id = program.identifiers.add(preferred);
-							b.__pending_scalar_alias_id = id;
-							break;
-						}
-					}
-				}
-				if (!id)
-					id = program.identifiers.add(b.id);
+					let id = b.__pending_scalar_alias_id;
+					if (!id)
+						id = program.identifiers.add(b.id);
 				const d = new funcs.MemoryDeclaration(b.datatype(), id, input_codes[0]);
 				b.code.s = [funcs.getObjectPrefix(), id];
+				b.code.__memory_id = id;
+				b.__outgen_memory_id = id;
 				b.__outgen_memory_decl__ = d;
 				b.__outgen_memory_size_code = input_codes[0].toString().trim();
 
@@ -1638,6 +1761,8 @@
 				const c = op0.code;
 				c.add(b.memoryblock.code);
 				c.add(funcs.getMemoryArrayIndexer(input_codes[0]));
+				if (b.memoryblock.__outgen_memory_id)
+					c.read_memory_ids.add(b.memoryblock.__outgen_memory_id);
 				return;
 			}
 			if (bs.MemoryWriterBlock.isPrototypeOf(b)) {
@@ -1647,6 +1772,7 @@
 				if (c.toString() == input_codes[1].toString())
 					return;
 				const a = new funcs.Assignment(c, input_codes[1], null);
+				a.memory_write_id = b.memoryblock.__outgen_memory_id;
 				if (b.predicate_terms && b.predicate_terms.length > 0) {
 					const i0 = new funcs.IfBlock();
 					if (b.predicate_terms[0].negated)
