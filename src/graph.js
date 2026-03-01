@@ -1227,6 +1227,14 @@
 					return;
 				if (rcs.length != 1 && !src_is_const)
 					return;
+				if (rcs.some(c => {
+					const consumer_rate =
+						c.out.block && c.out.block.o_ports && c.out.block.o_ports.length > 0
+							? c.out.block.o_ports[0].updaterate()
+							: c.out.updaterate();
+					return !RATES.equal(consumer_rate, b.o_ports[0].updaterate());
+				}))
+					return; // Keep rate-cache vars inserted to avoid recomputing at a faster/slower rate
 				if (rcs.some(c => c.out.block == bdef))
 					return;
 				if (carrier_props.length > 0 && !bs.VarBlock.isPrototypeOf(lc.in.block) && !src_is_const)
