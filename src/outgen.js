@@ -652,6 +652,8 @@
 					changed = true;
 				if (simplify_known_conditions(loop_body, new Set(), new Set()))
 					changed = true;
+				if (collapse_trivial_aliases(loop_body))
+					changed = true;
 			}
 			return loop_body;
 		}
@@ -803,6 +805,53 @@
 			return changed;
 		}
 
+		function collapse_trivial_aliases (statements) {
+			let changed = false;
+			for (let i = 0; i < statements.items.length; i++) {
+				const s = statements.items[i];
+				if (!s)
+					continue;
+				if (s.kind == "if") {
+					if (collapse_trivial_aliases(s.body))
+						changed = true;
+					continue;
+				}
+				if (s.kind == "ifelse") {
+					if (collapse_trivial_aliases(s.then_body))
+						changed = true;
+					if (collapse_trivial_aliases(s.else_body))
+						changed = true;
+					continue;
+				}
+			}
+			for (let i = 0; i < statements.items.length - 1; i++) {
+				const a = statements.items[i];
+				const b = statements.items[i + 1];
+				if (!(a && b && a.kind == "assignment" && b.kind == "assignment"))
+					continue;
+				const tmp = a.defined_id;
+				if (!tmp)
+					continue;
+				if (!is_simple_identifier_expr(b.r.toString(), tmp))
+					continue;
+				if (count_uses_in_items(statements.items.slice(i + 2), tmp) > 0)
+					continue;
+				b.r = a.r;
+				b.s = new LazyString();
+				if (b.declaration) {
+					b.s = b.declaration.s;
+					b.s.add(' = ', b.r, ';');
+				}
+				else {
+					b.s.add(b.l, ' = ', b.r, ';');
+				}
+				statements.items.splice(i, 1);
+				changed = true;
+				i--;
+			}
+			return changed;
+		}
+
 		function is_sinkable_statement (s) {
 			if (!s)
 				return false;
@@ -850,6 +899,11 @@
 			while (rx.exec(expr))
 				n++;
 			return n;
+		}
+
+		function is_simple_identifier_expr (expr, id) {
+			const s = strip_outer_parens_local((expr || "").trim());
+			return s == id;
 		}
 
 		function canonical_condition (expr) {
