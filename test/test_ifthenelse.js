@@ -207,11 +207,12 @@
 							s = x_z1A
 						}
 						else {
-							s = y_z1
+							s = t_z1
 						}
-						y = lp1(x, s)
-						y.init = 0.0
-						y_z1 = delay(y)
+						t = lp1(x, s)
+						t.init = 0.0
+						t_z1 = delay(t)
+						y = t
 						x_z1 = delay(x_z1)
 					}
 					x_z1.init = 0.0
