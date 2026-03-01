@@ -641,7 +641,114 @@
 			mw.predicate_terms.push({ port: port, negated: negated });
 		}
 
-		const reroute_branch_output_alias_writers = (_bb, _aliasToSelectedPort) => {};
+		const reroute_branch_output_alias_writers = (bb, aliasToSelectedPort) => {
+			function trace_alias_source (port, visited) {
+				if (!port || visited.has(port))
+					return undefined;
+				visited.add(port);
+				if (port.block && aliasToSelectedPort.has(port.block))
+					return port.block;
+				if (!port.block)
+					return undefined;
+				if (VarBlock.isPrototypeOf(port.block)) {
+					const cvin = bdef.connections.find(c => c.out == port.block.i_ports[0]);
+					if (!cvin)
+						return undefined;
+					return trace_alias_source(cvin.in, visited);
+				}
+				return undefined;
+			}
+
+			function reader_to_alias_kind (memoryblock, aliasBlock) {
+				const readers = bb.blocks.filter(b => MemoryReaderBlock.isPrototypeOf(b) && b.memoryblock == memoryblock);
+				let sawDirect = false;
+
+				function dfs_from_port (port, seenNonVar, visitedPorts) {
+					if (!port || visitedPorts.has(port))
+						return false;
+					visitedPorts.add(port);
+					const outConns = bdef.connections.filter(c => c.in == port);
+					for (let c of outConns) {
+						const db = c.out.block;
+						if (!db)
+							continue;
+						if (db == aliasBlock) {
+							if (seenNonVar)
+								return "computed";
+							sawDirect = true;
+							continue;
+						}
+						if (VarBlock.isPrototypeOf(db)) {
+							const r = dfs_from_port(db.o_ports[0], seenNonVar, visitedPorts);
+							if (r)
+								return r;
+							continue;
+						}
+						for (let op of db.o_ports) {
+							const r = dfs_from_port(op, true, visitedPorts);
+							if (r)
+								return r;
+						}
+					}
+					return false;
+				}
+
+				for (let mr of readers) {
+					const r = dfs_from_port(mr.o_ports[0], false, new Set());
+					if (r == "computed")
+						return "computed";
+				}
+				return sawDirect ? "direct" : "none";
+			}
+
+			function has_distinct_reader_alias (memoryblock, aliasBlock) {
+				function traces_to_reader (port, visited) {
+					if (!port || visited.has(port))
+						return false;
+					visited.add(port);
+					if (port.block && MemoryReaderBlock.isPrototypeOf(port.block))
+						return port.block.memoryblock == memoryblock;
+					if (port.block && VarBlock.isPrototypeOf(port.block)) {
+						const cvin = bdef.connections.find(c => c.out == port.block.i_ports[0]);
+						if (!cvin)
+							return false;
+						return traces_to_reader(cvin.in, visited);
+					}
+					return false;
+				}
+
+				return bb.blocks.some(vb => {
+					if (!VarBlock.isPrototypeOf(vb))
+						return false;
+					if (vb == aliasBlock)
+						return false;
+					if (vb.id == aliasBlock.id)
+						return false;
+					const cvin = bdef.connections.find(c => c.out == vb.i_ports[0]);
+					if (!cvin)
+						return false;
+					return traces_to_reader(cvin.in, new Set());
+				});
+			}
+
+			bb.blocks.filter(b => MemoryWriterBlock.isPrototypeOf(b)).forEach(mw => {
+				const vc = bdef.connections.find(c => c.out == mw.i_ports[1]);
+				if (!vc)
+					return;
+				const aliasBlock = trace_alias_source(vc.in, new Set());
+				if (!aliasBlock)
+					return;
+				const kind = reader_to_alias_kind(mw.memoryblock, aliasBlock);
+				if (kind == "direct") {
+					const id = aliasBlock.id || "";
+					if (!id.endsWith("_z1"))
+						return;
+				}
+				if (kind == "computed" && !has_distinct_reader_alias(mw.memoryblock, aliasBlock))
+					return;
+				vc.in = aliasToSelectedPort.get(aliasBlock);
+			});
+		};
 
 		const predicate_branch_writers = (bb, negated) => {
 			bb.blocks.filter(b => MemoryWriterBlock.isPrototypeOf(b)).forEach(mw => {
