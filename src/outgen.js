@@ -366,6 +366,71 @@
 				return prependTabs(r, tabLevel);
 			};
 		};
+		function count_uses_in_items_local (items, id) {
+			let n = 0;
+			for (let s of items || []) {
+				if (!s)
+					continue;
+				if (s.kind == "assignment") {
+					const rx = new RegExp('(^|[^A-Za-z0-9_])' + id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^A-Za-z0-9_]|$)', 'g');
+					const expr = s.r ? s.r.toString() : "";
+					while (rx.exec(expr))
+						n++;
+					continue;
+				}
+				if (s.kind == "if") {
+					const rx = new RegExp('(^|[^A-Za-z0-9_])' + id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^A-Za-z0-9_]|$)', 'g');
+					const cond = s.condition ? s.condition.toString() : "";
+					while (rx.exec(cond))
+						n++;
+					n += count_uses_in_items_local(s.body && s.body.items, id);
+					continue;
+				}
+				if (s.kind == "ifelse") {
+					const rx = new RegExp('(^|[^A-Za-z0-9_])' + id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^A-Za-z0-9_]|$)', 'g');
+					const cond = s.condition ? s.condition.toString() : "";
+					while (rx.exec(cond))
+						n++;
+					n += count_uses_in_items_local(s.then_body && s.then_body.items, id);
+					n += count_uses_in_items_local(s.else_body && s.else_body.items, id);
+				}
+			}
+			return n;
+		}
+		function compactImmediateMemoryAliases (statements) {
+			if (!statements || !statements.items)
+				return;
+			for (let s of statements.items) {
+				if (s && s.kind == "if")
+					compactImmediateMemoryAliases(s.body);
+				if (s && s.kind == "ifelse") {
+					compactImmediateMemoryAliases(s.then_body);
+					compactImmediateMemoryAliases(s.else_body);
+				}
+			}
+			for (let i = 0; i < statements.items.length - 1; i++) {
+				const a = statements.items[i];
+				const b = statements.items[i + 1];
+				if (!(a && b && a.kind == "assignment" && a.defined_id))
+					continue;
+				if (!(b.kind == "assignment"))
+					continue;
+				const lhs = ((b.l || "") + "").trim();
+				if (!/^\s*[A-Za-z_][A-Za-z0-9_]*\s*[\(\[]/.test(lhs))
+					continue;
+				const rhs = ((b.r || "") + "").trim();
+				const rr = rhs.replace(/^\(+\s*|\s*\)+$/g, '');
+				if (rr != a.defined_id)
+					continue;
+				if (count_uses_in_items_local(statements.items.slice(i + 2), a.defined_id) > 0)
+					continue;
+				b.r = new LazyString(a.r.toString());
+				b.s = new LazyString();
+				b.s.add(b.l, ' = ', b.r, ';');
+				statements.items.splice(i, 1);
+				i--;
+			}
+		}
 		funcs.IfBlock = function () {
 			this.kind = "if";
 			this.condition = new LazyString();
@@ -380,6 +445,7 @@
 				this.end = new LazyString('\n} \n');
 
 			this.toString = function (tabLevel = 0) {
+				compactImmediateMemoryAliases(this.body);
 				const r = this.start.toString() + this.body.toString(1) + this.end.toString();
 				return prependTabs(r, tabLevel);
 			};
@@ -401,6 +467,8 @@
 			this.else_body = new funcs.Statements();
 			this.defined_id = undefined;
 			this.toString = function (tabLevel = 0) {
+				compactImmediateMemoryAliases(this.then_body);
+				compactImmediateMemoryAliases(this.else_body);
 				const r = this.start.toString() +
 					this.then_body.toString(1) +
 					this.mid.toString() +
@@ -663,6 +731,8 @@
 				if (simplify_known_conditions(loop_body, new Set(), new Set()))
 					changed = true;
 				if (substitute_single_use_assignments(loop_body))
+					changed = true;
+				if (collapse_assignment_into_single_memory_write(loop_body))
 					changed = true;
 				if (remove_noop_assignments(loop_body))
 					changed = true;
@@ -990,6 +1060,42 @@
 			return changed;
 		}
 
+		function collapse_assignment_into_single_memory_write (statements) {
+			let changed = false;
+			for (let s of statements.items) {
+				if (s && s.kind == "if" && collapse_assignment_into_single_memory_write(s.body))
+					changed = true;
+				if (s && s.kind == "ifelse") {
+					if (collapse_assignment_into_single_memory_write(s.then_body))
+						changed = true;
+					if (collapse_assignment_into_single_memory_write(s.else_body))
+						changed = true;
+				}
+			}
+			for (let i = 0; i < statements.items.length - 1; i++) {
+				const a = statements.items[i];
+				const b = statements.items[i + 1];
+				if (!(a && b && a.kind == "assignment" && a.defined_id))
+					continue;
+				if (!(b.kind == "assignment"))
+					continue;
+				const lhs = ((b.l || "") + "").trim();
+				if (!(b.memory_write_id || /^\s*[A-Za-z_][A-Za-z0-9_]*\s*[\(\[]/.test(lhs)))
+					continue;
+				if (!is_simple_identifier_expr(b.r.toString(), a.defined_id))
+					continue;
+				if (count_uses_in_items(statements.items.slice(i + 2), a.defined_id) > 0)
+					continue;
+				b.r = new LazyString(a.r.toString());
+				b.s = new LazyString();
+				b.s.add(b.l, ' = ', b.r, ';');
+				statements.items.splice(i, 1);
+				changed = true;
+				i--;
+			}
+			return changed;
+		}
+
 		function substitute_single_use_assignments (statements) {
 			let changed = false;
 			for (let i = 0; i < statements.items.length - 1; i++) {
@@ -1034,6 +1140,8 @@
 			}
 			if (substitute_single_use_assignments_scoped(statements, live_out))
 				changed = true;
+			if (collapse_assignment_into_single_memory_write_scoped(statements, live_out))
+				changed = true;
 			if (forward_substitute_stable_assignments_scoped(statements, live_out))
 				changed = true;
 			if (collapse_trivial_aliases_scoped(statements, live_out))
@@ -1061,6 +1169,44 @@
 				if (count_uses_in_items(statements.items.slice(i + 2), a.defined_id) > 0)
 					continue;
 				substitute_identifier_in_statement(b, a.defined_id, a.r.toString());
+				statements.items.splice(i, 1);
+				changed = true;
+				i--;
+			}
+			return changed;
+		}
+
+		function collapse_assignment_into_single_memory_write_scoped (statements, live_out) {
+			let changed = false;
+			for (let s of statements.items) {
+				if (s && s.kind == "if" && collapse_assignment_into_single_memory_write_scoped(s.body, live_out))
+					changed = true;
+				if (s && s.kind == "ifelse") {
+					if (collapse_assignment_into_single_memory_write_scoped(s.then_body, live_out))
+						changed = true;
+					if (collapse_assignment_into_single_memory_write_scoped(s.else_body, live_out))
+						changed = true;
+				}
+			}
+			for (let i = 0; i < statements.items.length - 1; i++) {
+				const a = statements.items[i];
+				const b = statements.items[i + 1];
+				if (!(a && b && a.kind == "assignment" && a.defined_id))
+					continue;
+				if (live_out.has(a.defined_id))
+					continue;
+				if (!(b.kind == "assignment"))
+					continue;
+				const lhs = ((b.l || "") + "").trim();
+				if (!(b.memory_write_id || /^\s*[A-Za-z_][A-Za-z0-9_]*\s*[\(\[]/.test(lhs)))
+					continue;
+				if (!is_simple_identifier_expr(b.r.toString(), a.defined_id))
+					continue;
+				if (count_uses_in_items(statements.items.slice(i + 2), a.defined_id) > 0)
+					continue;
+				b.r = new LazyString(a.r.toString());
+				b.s = new LazyString();
+				b.s.add(b.l, ' = ', b.r, ';');
 				statements.items.splice(i, 1);
 				changed = true;
 				i--;
@@ -1640,6 +1786,10 @@
 			if (bs.VarBlock.isPrototypeOf(b)) {
 				const var_out_conns = bdef.connections.filter(c => c.in == op0);
 				if (var_out_conns.length == 1 && var_out_conns[0].out.block == bdef) {
+					op0.code = input_codes[0];
+					return;
+				}
+				if (var_out_conns.length == 1 && bs.MemoryWriterBlock.isPrototypeOf(var_out_conns[0].out.block)) {
 					op0.code = input_codes[0];
 					return;
 				}
