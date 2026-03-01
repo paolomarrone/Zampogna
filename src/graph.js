@@ -1215,15 +1215,20 @@
 
 				const lc  = bdef.connections.find(c => c.out == b.i_ports[0]);
 				const rcs = bdef.connections.filter(c => c.in  == b.o_ports[0]);
+				const carrier_props = bdef.properties.filter(p => p.block == b);
 
+				if (!lc)
+					return;
 				if (rcs.length != 1)
 					return;
 				if (rcs.some(c => c.out.block == bdef))
 					return;
-				if (bdef.properties.some(p => p.block == b))
+				if (carrier_props.length > 0 && !bs.VarBlock.isPrototypeOf(lc.in.block))
 					return;
 
 				maybe_set_preferred_id(lc.in, b.id);
+				bdef.properties.filter(p => p.of == b).forEach(p => p.of = lc.in.block);
+				carrier_props.forEach(p => p.block = lc.in.block);
 
 				rcs[0].in = lc.in;
 				rem_blocks.push(b)

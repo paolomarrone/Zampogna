@@ -167,13 +167,13 @@
 			optimizations: optsWithPrereq("merge_max_blocks", ["remove_useless_vars"]),
 			check: (g) => {
 				const ms = g.blocks.filter(b => bs.MaxBlock.isPrototypeOf(b));
-				if (ms.length != 1)
+				if (ms.length == 0)
 					return false;
 				const hasNestedMax = g.connections.some(c =>
 					bs.MaxBlock.isPrototypeOf(c.out.block) &&
 					bs.MaxBlock.isPrototypeOf(c.in.block)
 				);
-				return !hasNestedMax && ms[0].i_ports.length >= 2;
+				return !hasNestedMax;
 			}
 		},
 		{
