@@ -16,19 +16,28 @@ y = lp1(x, s) {
 	y = B0 * x - A1 * s
 }
 
-
 y = lp1_bypass(x, bypass) {
-	y = if (bypass > 0.5) {
+
+	# We use x_z1A to avoid delay updates when it won't be needed in the next execution.
+	# This a program logic info and cannot be known by the compiler.
+
+	x_z1A = x_z1
+
+	y, x_z1 = if (bypass > 0.5) {
 		y = x
+		x_z1 = delay(x)
 	}
 	else {
 		s = if (delay(bypass) > 0.5) {
-			s = delay(x)
+			s = x_z1A
 		}
 		else {
-			s = delay(y)
+			s = y_z1
 		}
-		s.init = 0.0
 		y = lp1(x, s)
+		y.init = 0.0
+		y_z1 = delay(y)
+		x_z1 = delay(x_z1)
 	}
+	x_z1.init = 0.0
 }
