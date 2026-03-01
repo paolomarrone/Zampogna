@@ -1012,6 +1012,9 @@
 		if (options.optimizations["merge_vars"])
 			merge_vars();
 
+		if (options.optimizations["remove_useless_vars"])
+			remove_useless_vars();
+
 		// Needed cuz we eventually created new blocks... Anything better?
 		propagateControlDependencies (bdef);
 
@@ -1216,21 +1219,24 @@
 				const lc  = bdef.connections.find(c => c.out == b.i_ports[0]);
 				const rcs = bdef.connections.filter(c => c.in  == b.o_ports[0]);
 				const carrier_props = bdef.properties.filter(p => p.block == b);
+				const src_is_const = lc && bs.ConstantBlock.isPrototypeOf(lc.in.block);
 
 				if (!lc)
 					return;
-				if (rcs.length != 1)
+				if (rcs.length == 0)
+					return;
+				if (rcs.length != 1 && !src_is_const)
 					return;
 				if (rcs.some(c => c.out.block == bdef))
 					return;
-				if (carrier_props.length > 0 && !bs.VarBlock.isPrototypeOf(lc.in.block))
+				if (carrier_props.length > 0 && !bs.VarBlock.isPrototypeOf(lc.in.block) && !src_is_const)
 					return;
 
 				maybe_set_preferred_id(lc.in, b.id);
 				bdef.properties.filter(p => p.of == b).forEach(p => p.of = lc.in.block);
 				carrier_props.forEach(p => p.block = lc.in.block);
 
-				rcs[0].in = lc.in;
+				rcs.forEach(c => c.in = lc.in);
 				rem_blocks.push(b)
 				rem_conns.push(lc);
 
