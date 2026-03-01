@@ -649,14 +649,94 @@
 			let changed = true;
 			while (changed) {
 				changed = false;
+				if (merge_adjacent_conditionals(loop_body))
+					changed = true;
 				if (sink_branch_local_statements(loop_body))
 					changed = true;
 				if (simplify_known_conditions(loop_body, new Set(), new Set()))
 					changed = true;
+				if (substitute_single_use_assignments(loop_body))
+					changed = true;
+				if (remove_noop_assignments(loop_body))
+					changed = true;
 				if (collapse_trivial_aliases(loop_body))
+					changed = true;
+				if (options.outgen_hoisting && distribute_following_statements_into_ifelse(loop_body))
+					changed = true;
+				if (options.outgen_hoisting && cleanup_branch_local_scopes(loop_body, new Set()))
 					changed = true;
 			}
 			return loop_body;
+		}
+
+		function merge_adjacent_conditionals (statements) {
+			let changed = false;
+			for (let s of statements.items) {
+				if (s && s.kind == "if" && merge_adjacent_conditionals(s.body))
+					changed = true;
+				if (s && s.kind == "ifelse") {
+					if (merge_adjacent_conditionals(s.then_body))
+						changed = true;
+					if (merge_adjacent_conditionals(s.else_body))
+						changed = true;
+				}
+			}
+			for (let i = 0; i < statements.items.length - 1; i++) {
+				const a = statements.items[i];
+				const b = statements.items[i + 1];
+				if (!a || !b)
+					continue;
+				if (a.kind == "ifelse" && b.kind == "ifelse"
+						&& canonical_condition(a.condition.toString()) == canonical_condition(b.condition.toString())) {
+					b.then_body.items.forEach(x => a.then_body.items.push(x));
+					b.else_body.items.forEach(x => a.else_body.items.push(x));
+					statements.items.splice(i + 1, 1);
+					changed = true;
+					i--;
+					continue;
+				}
+				if (a.kind == "if" && b.kind == "if"
+						&& canonical_condition(a.condition.toString()) == canonical_condition(b.condition.toString())) {
+					b.body.items.forEach(x => a.body.items.push(x));
+					statements.items.splice(i + 1, 1);
+					changed = true;
+					i--;
+					continue;
+				}
+				if (a.kind == "ifelse" && b.kind == "if") {
+					const branch = get_matching_ifelse_branch(a, b.condition.toString());
+					if (branch) {
+						b.body.items.forEach(x => branch.items.push(x));
+						statements.items.splice(i + 1, 1);
+						changed = true;
+						i--;
+					}
+				}
+			}
+			return changed;
+		}
+
+		function distribute_following_statements_into_ifelse (statements) {
+			let changed = false;
+			for (let i = 0; i < statements.items.length - 1; i++) {
+				const a = statements.items[i];
+				const b = statements.items[i + 1];
+				if (!(a && a.kind == "ifelse" && b))
+					continue;
+				if (!is_cloneable_statement(b))
+					continue;
+				const def = get_defined_id(a);
+				if (!def || count_uses_in_statement(b, def) == 0)
+					continue;
+				if (count_uses_in_items(statements.items.slice(i + 2), def) > 0)
+					continue;
+				a.then_body.items.push(clone_statement(b));
+				a.else_body.items.push(clone_statement(b));
+				statements.items.splice(i + 1, 1);
+				changed = true;
+				i--;
+			}
+			return changed;
 		}
 
 		function sink_branch_local_statements (statements) {
@@ -664,18 +744,6 @@
 			let any_changed = false;
 			while (changed) {
 				changed = false;
-				for (let i = 0; i < statements.items.length; i++) {
-					const s = statements.items[i];
-					if (s && s.body && s.body.items)
-						if (sink_branch_local_statements(s.body))
-							changed = any_changed = true;
-					if (s && s.then_body && s.then_body.items)
-						if (sink_branch_local_statements(s.then_body))
-							changed = any_changed = true;
-					if (s && s.else_body && s.else_body.items)
-						if (sink_branch_local_statements(s.else_body))
-							changed = any_changed = true;
-				}
 				for (let i = 0; i < statements.items.length - 1; i++) {
 					const cur = statements.items[i];
 					const nxt = statements.items[i + 1];
@@ -808,23 +876,6 @@
 
 		function collapse_trivial_aliases (statements) {
 			let changed = false;
-			for (let i = 0; i < statements.items.length; i++) {
-				const s = statements.items[i];
-				if (!s)
-					continue;
-				if (s.kind == "if") {
-					if (collapse_trivial_aliases(s.body))
-						changed = true;
-					continue;
-				}
-				if (s.kind == "ifelse") {
-					if (collapse_trivial_aliases(s.then_body))
-						changed = true;
-					if (collapse_trivial_aliases(s.else_body))
-						changed = true;
-					continue;
-				}
-			}
 			for (let i = 0; i < statements.items.length - 1; i++) {
 				const a = statements.items[i];
 				const b = statements.items[i + 1];
@@ -853,12 +904,194 @@
 			return changed;
 		}
 
+		function substitute_single_use_assignments (statements) {
+			let changed = false;
+			for (let i = 0; i < statements.items.length - 1; i++) {
+				const a = statements.items[i];
+				const b = statements.items[i + 1];
+				if (!(a && b && a.kind == "assignment" && a.defined_id))
+					continue;
+				if (a.declaration)
+					continue;
+				if (b.defined_id == a.defined_id)
+					continue;
+				if (count_uses_in_statement(b, a.defined_id) == 0)
+					continue;
+				if (count_uses_in_items(statements.items.slice(i + 2), a.defined_id) > 0)
+					continue;
+				substitute_identifier_in_statement(b, a.defined_id, a.r.toString());
+				statements.items.splice(i, 1);
+				changed = true;
+				i--;
+			}
+			return changed;
+		}
+
+		function cleanup_branch_local_scopes (statements, live_out) {
+			let changed = false;
+			for (let i = 0; i < statements.items.length; i++) {
+				const s = statements.items[i];
+				if (!s)
+					continue;
+				const suffix_live = union_id_sets(live_out, collect_uses_in_items_set(statements.items.slice(i + 1)));
+				if (s.kind == "if") {
+					if (cleanup_branch_local_scopes(s.body, suffix_live))
+						changed = true;
+					continue;
+				}
+				if (s.kind == "ifelse") {
+					if (cleanup_branch_local_scopes(s.then_body, suffix_live))
+						changed = true;
+					if (cleanup_branch_local_scopes(s.else_body, suffix_live))
+						changed = true;
+				}
+			}
+			if (substitute_single_use_assignments_scoped(statements, live_out))
+				changed = true;
+			if (forward_substitute_stable_assignments_scoped(statements, live_out))
+				changed = true;
+			if (collapse_trivial_aliases_scoped(statements, live_out))
+				changed = true;
+			if (remove_noop_assignments(statements))
+				changed = true;
+			return changed;
+		}
+
+		function substitute_single_use_assignments_scoped (statements, live_out) {
+			let changed = false;
+			for (let i = 0; i < statements.items.length - 1; i++) {
+				const a = statements.items[i];
+				const b = statements.items[i + 1];
+				if (!(a && b && a.kind == "assignment" && a.defined_id))
+					continue;
+				if (a.declaration)
+					continue;
+				if (live_out.has(a.defined_id))
+					continue;
+				if (b.defined_id == a.defined_id)
+					continue;
+				if (count_uses_in_statement(b, a.defined_id) == 0)
+					continue;
+				if (count_uses_in_items(statements.items.slice(i + 2), a.defined_id) > 0)
+					continue;
+				substitute_identifier_in_statement(b, a.defined_id, a.r.toString());
+				statements.items.splice(i, 1);
+				changed = true;
+				i--;
+			}
+			return changed;
+		}
+
+		function collapse_trivial_aliases_scoped (statements, live_out) {
+			let changed = false;
+			for (let i = 0; i < statements.items.length - 1; i++) {
+				const a = statements.items[i];
+				const b = statements.items[i + 1];
+				if (!(a && b && a.kind == "assignment" && b.kind == "assignment"))
+					continue;
+				const tmp = a.defined_id;
+				if (!tmp)
+					continue;
+				if (live_out.has(tmp))
+					continue;
+				if (!is_simple_identifier_expr(b.r.toString(), tmp))
+					continue;
+				if (count_uses_in_items(statements.items.slice(i + 2), tmp) > 0)
+					continue;
+				b.r = a.r;
+				b.s = new LazyString();
+				if (b.declaration) {
+					b.s = b.declaration.s;
+					b.s.add(' = ', b.r, ';');
+				}
+				else {
+					b.s.add(b.l, ' = ', b.r, ';');
+				}
+				statements.items.splice(i, 1);
+				changed = true;
+				i--;
+			}
+			return changed;
+		}
+
+		function forward_substitute_stable_assignments_scoped (statements, live_out) {
+			let changed = false;
+			for (let i = 0; i < statements.items.length; i++) {
+				const a = statements.items[i];
+				if (!(a && a.kind == "assignment" && a.defined_id))
+					continue;
+				if (a.declaration)
+					continue;
+				if (live_out.has(a.defined_id))
+					continue;
+				const repl = a.r.toString();
+				const dep_ids = collect_uses_in_expr_set(repl);
+				let used = false;
+				for (let j = i + 1; j < statements.items.length; j++) {
+					const s = statements.items[j];
+					if (count_uses_in_statement(s, a.defined_id) > 0) {
+						substitute_identifier_in_statement(s, a.defined_id, repl);
+						used = true;
+						changed = true;
+					}
+					const writes = collect_defs_in_statement_set(s);
+					const hits_dep = sets_intersect(dep_ids, writes);
+					const hits_self = writes.has(a.defined_id);
+					if (hits_dep || hits_self)
+						break;
+				}
+				if (!used)
+					continue;
+				if (count_uses_in_items(statements.items.slice(i + 1), a.defined_id) > 0)
+					continue;
+				statements.items.splice(i, 1);
+				changed = true;
+				i--;
+			}
+			return changed;
+		}
+
+		function remove_noop_assignments (statements) {
+			let changed = false;
+			for (let s of statements.items) {
+				if (s && s.kind == "if" && remove_noop_assignments(s.body))
+					changed = true;
+				if (s && s.kind == "ifelse") {
+					if (remove_noop_assignments(s.then_body))
+						changed = true;
+					if (remove_noop_assignments(s.else_body))
+						changed = true;
+				}
+			}
+			for (let i = 0; i < statements.items.length; i++) {
+				const s = statements.items[i];
+				if (!(s && s.kind == "assignment"))
+					continue;
+				if (strip_outer_parens_local((s.l || "").toString()) != strip_outer_parens_local((s.r || "").toString()))
+					continue;
+				statements.items.splice(i, 1);
+				changed = true;
+				i--;
+			}
+			return changed;
+		}
+
 		function is_sinkable_statement (s) {
 			if (!s)
 				return false;
 			if (s.kind == "assignment")
 				return !!s.defined_id;
 			if ((s.kind == "ifelse" || s.kind == "if") && s.defined_id)
+				return true;
+			return false;
+		}
+
+		function is_cloneable_statement (s) {
+			if (!s)
+				return false;
+			if (s.kind == "assignment" && !s.declaration)
+				return true;
+			if (s.kind == "if" || s.kind == "ifelse")
 				return true;
 			return false;
 		}
@@ -902,9 +1135,173 @@
 			return n;
 		}
 
+		function collect_uses_in_items_set (items) {
+			const r = new Set();
+			for (let s of items) {
+				const rs = collect_uses_in_statement_set(s);
+				rs.forEach(x => r.add(x));
+			}
+			return r;
+		}
+
+		function collect_uses_in_statement_set (s) {
+			const r = new Set();
+			if (!s)
+				return r;
+			if (s.kind == "assignment") {
+				collect_uses_in_expr_set(s.r.toString()).forEach(x => r.add(x));
+				return r;
+			}
+			if (s.kind == "if") {
+				collect_uses_in_expr_set(s.condition.toString()).forEach(x => r.add(x));
+				collect_uses_in_items_set(s.body.items).forEach(x => r.add(x));
+				return r;
+			}
+			if (s.kind == "ifelse") {
+				collect_uses_in_expr_set(s.condition.toString()).forEach(x => r.add(x));
+				collect_uses_in_items_set(s.then_body.items).forEach(x => r.add(x));
+				collect_uses_in_items_set(s.else_body.items).forEach(x => r.add(x));
+			}
+			return r;
+		}
+
+		function collect_uses_in_expr_set (expr) {
+			const r = new Set();
+			const ms = (expr || "").match(/[A-Za-z_][A-Za-z0-9_]*/g) || [];
+			ms.forEach(x => r.add(x));
+			return r;
+		}
+
+		function collect_defs_in_statement_set (s) {
+			const r = new Set();
+			if (!s)
+				return r;
+			if (s.kind == "assignment") {
+				if (s.defined_id) {
+					r.add(s.defined_id);
+					return r;
+				}
+				const m = ((s.l || "") + "").match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
+				if (m)
+					r.add(m[1]);
+				return r;
+			}
+			if (s.kind == "if") {
+				s.body.items.forEach(x => collect_defs_in_statement_set(x).forEach(y => r.add(y)));
+				return r;
+			}
+			if (s.kind == "ifelse") {
+				s.then_body.items.forEach(x => collect_defs_in_statement_set(x).forEach(y => r.add(y)));
+				s.else_body.items.forEach(x => collect_defs_in_statement_set(x).forEach(y => r.add(y)));
+			}
+			return r;
+		}
+
+		function sets_intersect (a, b) {
+			for (let x of a) {
+				if (b.has(x))
+					return true;
+			}
+			return false;
+		}
+
+		function union_id_sets (a, b) {
+			const r = new Set();
+			(a || new Set()).forEach(x => r.add(x));
+			(b || new Set()).forEach(x => r.add(x));
+			return r;
+		}
+
 		function is_simple_identifier_expr (expr, id) {
 			const s = strip_outer_parens_local((expr || "").trim());
 			return s == id;
+		}
+
+		function clone_statement (s) {
+			if (s.kind == "assignment") {
+				const c = new funcs.Assignment(s.l, s.r, null);
+				c.defined_id = s.defined_id;
+				return c;
+			}
+			if (s.kind == "if") {
+				const c = new funcs.IfBlock();
+				c.condition = new LazyString(s.condition.toString());
+				if (t == "MATLAB")
+					c.start = new LazyString('if ', c.condition, '\n');
+				else
+					c.start = new LazyString('if ( ', c.condition, ' ) { \n');
+				s.body.items.forEach(x => c.body.items.push(clone_statement(x)));
+				return c;
+			}
+			if (s.kind == "ifelse") {
+				const c = new funcs.IfElseBlock();
+				c.defined_id = s.defined_id;
+				c.condition = new LazyString(s.condition.toString());
+				if (t == "MATLAB") {
+					c.start = new LazyString('if ', c.condition, '\n');
+					c.mid = new LazyString('\nelse\n');
+					c.end = new LazyString('\nend\n');
+				}
+				else {
+					c.start = new LazyString('if ( ', c.condition, ' ) { \n');
+					c.mid = new LazyString('\n} else { \n');
+					c.end = new LazyString('\n} \n');
+				}
+				s.then_body.items.forEach(x => c.then_body.items.push(clone_statement(x)));
+				s.else_body.items.forEach(x => c.else_body.items.push(clone_statement(x)));
+				return c;
+			}
+			throw new Error("Cannot clone statement");
+		}
+
+		function substitute_identifier_in_statement (s, id, replacement) {
+			if (!s)
+				return;
+			if (s.kind == "assignment") {
+				if (typeof s.l == "string")
+					s.l = replace_identifier_in_expr(s.l, id, replacement);
+				s.r = new LazyString(replace_identifier_in_expr(s.r.toString(), id, replacement));
+				s.s = new LazyString();
+				if (s.declaration) {
+					s.s = s.declaration.s;
+					s.s.add(' = ', s.r, ';');
+				}
+				else {
+					s.s.add(s.l, ' = ', s.r, ';');
+				}
+				return;
+			}
+			if (s.kind == "if") {
+				s.condition = new LazyString(replace_identifier_in_expr(s.condition.toString(), id, replacement));
+				if (t == "MATLAB")
+					s.start = new LazyString('if ', s.condition, '\n');
+				else
+					s.start = new LazyString('if ( ', s.condition, ' ) { \n');
+				s.body.items.forEach(x => substitute_identifier_in_statement(x, id, replacement));
+				return;
+			}
+			if (s.kind == "ifelse") {
+				s.condition = new LazyString(replace_identifier_in_expr(s.condition.toString(), id, replacement));
+				if (t == "MATLAB") {
+					s.start = new LazyString('if ', s.condition, '\n');
+					s.mid = new LazyString('\nelse\n');
+					s.end = new LazyString('\nend\n');
+				}
+				else {
+					s.start = new LazyString('if ( ', s.condition, ' ) { \n');
+					s.mid = new LazyString('\n} else { \n');
+					s.end = new LazyString('\n} \n');
+				}
+				s.then_body.items.forEach(x => substitute_identifier_in_statement(x, id, replacement));
+				s.else_body.items.forEach(x => substitute_identifier_in_statement(x, id, replacement));
+			}
+		}
+
+		function replace_identifier_in_expr (expr, id, replacement) {
+			const rx = new RegExp('(^|[^A-Za-z0-9_])' + escapeRegExp(id) + '([^A-Za-z0-9_]|$)', 'g');
+			return (expr || "").replace(rx, function (_m, a, b) {
+				return a + "(" + replacement + ")" + b;
+			});
 		}
 
 		function canonical_condition (expr) {
