@@ -29,10 +29,14 @@ function [{{=it.audio_outputs.join(', ')}}] = {{=it.name}}({{=it.audio_inputs.jo
 	{{~}}
 
 	for i = 1:{{?it.audio_inputs.length > 0}}length({{=it.audio_inputs[0]}}){{??}}nSamples{{?}}
+{{?it.loop_body}}
+{{=it.loop_body.toString(2)}}
+{{??}}
 {{=it.update_coeffs_audio.toString(2)}}
 {{=it.audio_update.toString(2)}}
 {{=it.memory_updates.toString(2)}}
 {{=it.output_updates.toString(2)}}
+{{?}}
 	end
 
 end

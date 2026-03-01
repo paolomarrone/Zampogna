@@ -85,7 +85,9 @@ void {{=it.name}}_process({{=it.name}} *instance, {{?it.audio_inputs.length > 0}
 	}
 
 	for (int i = 0; i < n_samples; i++) {
-
+{{?it.loop_body}}
+{{=it.loop_body.toString(2)}}
+{{??}}
 {{=it.update_coeffs_audio.toString(2)}}
 
 {{=it.audio_update.toString(2)}}
@@ -93,6 +95,7 @@ void {{=it.name}}_process({{=it.name}} *instance, {{?it.audio_inputs.length > 0}
 {{=it.memory_updates.toString(2)}}
 
 {{=it.output_updates.toString(2)}}
+{{?}}
 
 	}
 

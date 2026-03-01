@@ -281,6 +281,9 @@
 			}
 		};
 		funcs.Declaration = function (isStatic, isConst, type, isPointer, id, lonely) {
+			this.kind = "declaration";
+			this.id = id;
+			this.lonely = lonely;
 			this.s = new LazyString();
 			if (target_language == "MATLAB") {
 				if (lonely)
@@ -308,6 +311,13 @@
 			};
 		};
 		funcs.Assignment = function (l, r, declaration) {
+			this.kind = "assignment";
+			this.l = l;
+			this.r = r;
+			this.declaration = declaration;
+			this.defined_id = declaration && declaration.id
+				? declaration.id
+				: (typeof l == "string" && l.match(/^[A-Za-z_][A-Za-z0-9_]*$/) ? l : undefined);
 			if (declaration) {
 				this.s = declaration.s;
 				this.s.add(' = ', r, ';');
@@ -332,17 +342,25 @@
 			};
 		};
 		funcs.Statements = function () {
-			this.s = new LazyString();
+			this.items = [];
 			this.add = function (...x) {
-				this.s.add.apply(this.s, x);
-				this.s.add('\n');
+				for (let k of x) {
+					if (k == undefined)
+						throw new Error(k);
+					this.items.push(k);
+				}
 				return this;
 			};
 			this.toString = function (tabLevel = 0) {
-				return prependTabs(this.s, tabLevel);
+				const r = this.items
+					.map(k => typeof k.toString == "function" ? k.toString() : (k + ""))
+					.filter(k => k.trim().length > 0)
+					.join('\n');
+				return prependTabs(r, tabLevel);
 			};
 		};
 		funcs.IfBlock = function () {
+			this.kind = "if";
 			this.condition = new LazyString();
 			if (target_language == "MATLAB")
 				this.start = new LazyString('if ', this.condition, '\n');
@@ -360,6 +378,7 @@
 			};
 		};
 		funcs.IfElseBlock = function () {
+			this.kind = "ifelse";
 			this.condition = new LazyString();
 			if (target_language == "MATLAB") {
 				this.start = new LazyString('if ', this.condition, '\n');
@@ -373,6 +392,7 @@
 			}
 			this.then_body = new funcs.Statements();
 			this.else_body = new funcs.Statements();
+			this.defined_id = undefined;
 			this.toString = function (tabLevel = 0) {
 				const r = this.start.toString() +
 					this.then_body.toString(1) +
@@ -557,6 +577,7 @@
 			const c = bdef.connections.find(c => c.out == p);
 			program.output_updates.add(new funcs.Assignment(c.out.code, c.in.code, false));
 		});
+		program.loop_body = build_optimized_loop_body();
 
 
 		doT.templateSettings.strip = false;
@@ -617,6 +638,187 @@
 		}
 
 		throw new Error("Not recognized target language");
+
+		function build_optimized_loop_body () {
+			const loop_body = new funcs.Statements();
+			program.update_coeffs_audio.items.forEach(s => loop_body.add(s));
+			program.audio_update.items.forEach(s => loop_body.add(s));
+			program.memory_updates.items.forEach(s => loop_body.add(s));
+			program.output_updates.items.forEach(s => loop_body.add(s));
+			sink_branch_local_statements(loop_body);
+			return loop_body;
+		}
+
+		function sink_branch_local_statements (statements) {
+			let changed = true;
+			let any_changed = false;
+			while (changed) {
+				changed = false;
+				for (let i = 0; i < statements.items.length; i++) {
+					const s = statements.items[i];
+					if (s && s.body && s.body.items)
+						if (sink_branch_local_statements(s.body))
+							changed = any_changed = true;
+					if (s && s.then_body && s.then_body.items)
+						if (sink_branch_local_statements(s.then_body))
+							changed = any_changed = true;
+					if (s && s.else_body && s.else_body.items)
+						if (sink_branch_local_statements(s.else_body))
+							changed = any_changed = true;
+				}
+				for (let i = 0; i < statements.items.length - 1; i++) {
+					const cur = statements.items[i];
+					const nxt = statements.items[i + 1];
+					if (!(cur && cur.kind == "ifelse" && nxt && nxt.kind == "if"))
+						continue;
+					const branch = get_matching_ifelse_branch(cur, nxt.condition.toString());
+					if (!branch)
+						continue;
+					nxt.body.items.forEach(x => branch.items.push(x));
+					statements.items.splice(i + 1, 1);
+					changed = any_changed = true;
+					break;
+				}
+				for (let i = 0; i < statements.items.length - 1; i++) {
+					const cur = statements.items[i];
+					const nxt = statements.items[i + 1];
+					if (!is_sinkable_statement(cur))
+						continue;
+					const def = get_defined_id(cur);
+					if (!def)
+						continue;
+					const rest_items = statements.items.slice(i + 2);
+					if (nxt && nxt.kind == "ifelse") {
+						if (count_uses_in_expr(nxt.condition.toString(), def) > 0)
+							continue;
+						const then_uses = count_uses_in_statements(nxt.then_body, def);
+						const else_uses = count_uses_in_statements(nxt.else_body, def);
+						const rest_uses = count_uses_in_items(rest_items, def);
+						if (rest_uses > 0)
+							continue;
+						if (then_uses > 0 && else_uses == 0) {
+							nxt.then_body.items.unshift(cur);
+							statements.items.splice(i, 1);
+							changed = any_changed = true;
+							break;
+						}
+						if (else_uses > 0 && then_uses == 0) {
+							nxt.else_body.items.unshift(cur);
+							statements.items.splice(i, 1);
+							changed = any_changed = true;
+							break;
+						}
+						continue;
+					}
+					if (nxt && nxt.kind == "if") {
+						if (count_uses_in_expr(nxt.condition.toString(), def) > 0)
+							continue;
+						const body_uses = count_uses_in_statements(nxt.body, def);
+						const rest_uses = count_uses_in_items(rest_items, def);
+						if (body_uses > 0 && rest_uses == 0) {
+							nxt.body.items.unshift(cur);
+							statements.items.splice(i, 1);
+							changed = any_changed = true;
+							break;
+						}
+					}
+				}
+			}
+			return any_changed;
+		}
+
+		function get_matching_ifelse_branch (ifelseStmt, conditionExpr) {
+			const base = canonical_condition(ifelseStmt.condition.toString());
+			const cond = canonical_condition(conditionExpr);
+			if (cond == base)
+				return ifelseStmt.then_body;
+			if (cond == negate_condition(base))
+				return ifelseStmt.else_body;
+			return undefined;
+		}
+
+		function is_sinkable_statement (s) {
+			if (!s)
+				return false;
+			if (s.kind == "assignment")
+				return !!s.defined_id;
+			if ((s.kind == "ifelse" || s.kind == "if") && s.defined_id)
+				return true;
+			return false;
+		}
+
+		function get_defined_id (s) {
+			return s && s.defined_id ? s.defined_id : undefined;
+		}
+
+		function count_uses_in_items (items, id) {
+			let n = 0;
+			for (let s of items)
+				n += count_uses_in_statement(s, id);
+			return n;
+		}
+
+		function count_uses_in_statements (stmts, id) {
+			return count_uses_in_items(stmts.items, id);
+		}
+
+		function count_uses_in_statement (s, id) {
+			if (!s)
+				return 0;
+			if (s.kind == "assignment")
+				return count_uses_in_expr(s.r.toString(), id);
+			if (s.kind == "declaration")
+				return 0;
+			if (s.kind == "if")
+				return count_uses_in_expr(s.condition.toString(), id) + count_uses_in_statements(s.body, id);
+			if (s.kind == "ifelse")
+				return count_uses_in_expr(s.condition.toString(), id)
+					+ count_uses_in_statements(s.then_body, id)
+					+ count_uses_in_statements(s.else_body, id);
+			return count_uses_in_expr(s.toString(), id);
+		}
+
+		function count_uses_in_expr (expr, id) {
+			const rx = new RegExp('(^|[^A-Za-z0-9_])' + escapeRegExp(id) + '([^A-Za-z0-9_]|$)', 'g');
+			let n = 0;
+			while (rx.exec(expr))
+				n++;
+			return n;
+		}
+
+		function canonical_condition (expr) {
+			return strip_outer_parens_local((expr || "").trim());
+		}
+
+		function negate_condition (expr) {
+			return "!(" + strip_outer_parens_local(expr) + ")";
+		}
+
+		function strip_outer_parens_local (s) {
+			s = (s || "").trim();
+			while (s.length > 1 && s[0] == '(' && s[s.length - 1] == ')') {
+				let depth = 0;
+				let ok = true;
+				for (let i = 0; i < s.length; i++) {
+					if (s[i] == '(')
+						depth++;
+					else if (s[i] == ')')
+						depth--;
+					if (depth == 0 && i < s.length - 1) {
+						ok = false;
+						break;
+					}
+				}
+				if (!ok)
+					break;
+				s = s.slice(1, -1).trim();
+			}
+			return s;
+		}
+
+		function escapeRegExp (s) {
+			return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+		}
 
 		function dispatch (b, ur, control_dependencies) {
 			const outblocks = bdef.connections.filter(c => c.in.block == b).map(c => c.out.block);
@@ -1287,6 +1489,7 @@
 				}
 
 				const ib = new funcs.IfElseBlock();
+				ib.defined_id = id;
 				ib.condition.add(w0);
 				ib.then_body.add(new funcs.Assignment(lhs, w1, null));
 				ib.else_body.add(new funcs.Assignment(lhs, w2, null));
