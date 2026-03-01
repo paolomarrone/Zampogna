@@ -645,7 +645,14 @@
 			program.audio_update.items.forEach(s => loop_body.add(s));
 			program.memory_updates.items.forEach(s => loop_body.add(s));
 			program.output_updates.items.forEach(s => loop_body.add(s));
-			sink_branch_local_statements(loop_body);
+			let changed = true;
+			while (changed) {
+				changed = false;
+				if (sink_branch_local_statements(loop_body))
+					changed = true;
+				if (simplify_known_conditions(loop_body, new Set(), new Set()))
+					changed = true;
+			}
 			return loop_body;
 		}
 
@@ -735,6 +742,65 @@
 			if (cond == negate_condition(base))
 				return ifelseStmt.else_body;
 			return undefined;
+		}
+
+		function simplify_known_conditions (statements, known_true, known_false) {
+			let changed = false;
+			for (let i = 0; i < statements.items.length; i++) {
+				const s = statements.items[i];
+				if (!s)
+					continue;
+				if (s.kind == "if") {
+					const cond = canonical_condition(s.condition.toString());
+					if (known_true.has(cond)) {
+						statements.items.splice(i, 1, ...s.body.items);
+						changed = true;
+						i--;
+						continue;
+					}
+					if (known_false.has(cond)) {
+						statements.items.splice(i, 1);
+						changed = true;
+						i--;
+						continue;
+					}
+					const child_true = new Set(known_true);
+					const child_false = new Set(known_false);
+					child_true.add(cond);
+					child_false.add(negate_condition(cond));
+					if (simplify_known_conditions(s.body, child_true, child_false))
+						changed = true;
+					continue;
+				}
+				if (s.kind == "ifelse") {
+					const cond = canonical_condition(s.condition.toString());
+					if (known_true.has(cond)) {
+						statements.items.splice(i, 1, ...s.then_body.items);
+						changed = true;
+						i--;
+						continue;
+					}
+					if (known_false.has(cond)) {
+						statements.items.splice(i, 1, ...s.else_body.items);
+						changed = true;
+						i--;
+						continue;
+					}
+					const then_true = new Set(known_true);
+					const then_false = new Set(known_false);
+					then_true.add(cond);
+					then_false.add(negate_condition(cond));
+					if (simplify_known_conditions(s.then_body, then_true, then_false))
+						changed = true;
+					const else_true = new Set(known_true);
+					const else_false = new Set(known_false);
+					else_false.add(cond);
+					else_true.add(negate_condition(cond));
+					if (simplify_known_conditions(s.else_body, else_true, else_false))
+						changed = true;
+				}
+			}
+			return changed;
 		}
 
 		function is_sinkable_statement (s) {
