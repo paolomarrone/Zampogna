@@ -51,6 +51,8 @@
 				lazyfy_subexpressions_controls: true,
 			}
 		outgen_optimizations: true/false
+		outgen_code_sinking: true/false
+		outgen_code_hoisting: true/false
 		debug_mode: true/false
 		debug_output_dir: optional path where debug artifacts are written
 		debug_emit_outputs: true/false (write generated target files into debug artifacts)
@@ -82,6 +84,8 @@
 				lazyfy_subexpressions_controls: true,
 			},
 			outgen_optimizations: true,
+			outgen_code_sinking: true,
+			outgen_code_hoisting: true,
 			debug_output_dir: "",
 			debug_emit_outputs: true,
 			debug_return_intermediates: false,

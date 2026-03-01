@@ -90,9 +90,13 @@
 
 	const outdir = path.join(outputDir, "OUTGEN_OPT0");
 	const nooptDir = path.join(outdir, "MATLAB_noopt");
-	const optDir = path.join(outdir, "MATLAB_opt");
+	const baseOptDir = path.join(outdir, "MATLAB_opt_base");
+	const sinkDir = path.join(outdir, "MATLAB_opt_sink");
+	const hoistDir = path.join(outdir, "MATLAB_opt_sink_hoist");
 	fs.mkdirSync(nooptDir, { recursive: true });
-	fs.mkdirSync(optDir, { recursive: true });
+	fs.mkdirSync(baseOptDir, { recursive: true });
+	fs.mkdirSync(sinkDir, { recursive: true });
+	fs.mkdirSync(hoistDir, { recursive: true });
 
 	function writeFiles (dir, files) {
 		files.forEach(f => {
@@ -119,12 +123,36 @@
 			target_language: "MATLAB",
 			optimizations: default_optimizations,
 			outgen_optimizations: true,
+			outgen_code_sinking: false,
+			outgen_code_hoisting: false,
 			debug_mode: true,
-			debug_output_dir: path.join(outdir, "_debug_opt"),
+			debug_output_dir: path.join(outdir, "_debug_opt_base"),
+		});
+		const filesSink = z.compile(code, filereader, {
+			initial_block_id: "lp1_bypass",
+			target_language: "MATLAB",
+			optimizations: default_optimizations,
+			outgen_optimizations: true,
+			outgen_code_sinking: true,
+			outgen_code_hoisting: false,
+			debug_mode: true,
+			debug_output_dir: path.join(outdir, "_debug_opt_sink"),
+		});
+		const filesHoist = z.compile(code, filereader, {
+			initial_block_id: "lp1_bypass",
+			target_language: "MATLAB",
+			optimizations: default_optimizations,
+			outgen_optimizations: true,
+			outgen_code_sinking: true,
+			outgen_code_hoisting: true,
+			debug_mode: true,
+			debug_output_dir: path.join(outdir, "_debug_opt_sink_hoist"),
 		});
 
 		writeFiles(nooptDir, filesNoOpt);
-		writeFiles(optDir, filesOpt);
+		writeFiles(baseOptDir, filesOpt);
+		writeFiles(sinkDir, filesSink);
+		writeFiles(hoistDir, filesHoist);
 
 		if (hasOctave()) {
 			try {
@@ -136,12 +164,24 @@
 					"y_noopt = lp1_bypass(x, bypass, fs);",
 					"rmpath('" + nooptDir.replace(/\\/g, "/") + "');",
 					"clear lp1_bypass;",
-					"addpath('" + optDir.replace(/\\/g, "/") + "');",
-					"y_opt = lp1_bypass(x, bypass, fs);",
-					"rmpath('" + optDir.replace(/\\/g, "/") + "');",
+					"addpath('" + baseOptDir.replace(/\\/g, "/") + "');",
+					"y_opt_base = lp1_bypass(x, bypass, fs);",
+					"rmpath('" + baseOptDir.replace(/\\/g, "/") + "');",
+					"clear lp1_bypass;",
+					"addpath('" + sinkDir.replace(/\\/g, "/") + "');",
+					"y_opt_sink = lp1_bypass(x, bypass, fs);",
+					"rmpath('" + sinkDir.replace(/\\/g, "/") + "');",
+					"clear lp1_bypass;",
+					"addpath('" + hoistDir.replace(/\\/g, "/") + "');",
+					"y_opt_hoist = lp1_bypass(x, bypass, fs);",
+					"rmpath('" + hoistDir.replace(/\\/g, "/") + "');",
 					"disp(y_noopt);",
-					"disp(y_opt);",
-					"assert(isequal(y_noopt, y_opt));",
+					"disp(y_opt_base);",
+					"disp(y_opt_sink);",
+					"disp(y_opt_hoist);",
+					"assert(isequal(y_noopt, y_opt_base));",
+					"assert(isequal(y_noopt, y_opt_sink));",
+					"assert(isequal(y_noopt, y_opt_hoist));",
 				]);
 			}
 			catch (e) {

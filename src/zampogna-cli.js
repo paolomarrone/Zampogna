@@ -20,6 +20,7 @@
 			[-t target_lang]
 			[-o output_folder]
 			[-og outgen_opt_bool]
+			[-os outgen_sink_bool]
 			[-oh outgen_hoist_bool]
 			[-d debug_bool]
 			[-dl debug_last_step]
@@ -34,6 +35,7 @@
 		"-t": "C",
 		"-o": "build",
 		"-og": "true",
+		"-os": "true",
 		"-oh": "true",
 		"-paths": "",
 		"-d": "false",
@@ -103,7 +105,8 @@
 		initial_values: initial_values,
 		target_language: options["-t"],
 		outgen_optimizations: options["-og"].toLowerCase() !== "false",
-		outgen_hoisting: options["-oh"].toLowerCase() !== "false",
+		outgen_code_sinking: options["-os"].toLowerCase() !== "false",
+		outgen_code_hoisting: options["-oh"].toLowerCase() !== "false",
 		debug_mode: debug,
 		debug_output_dir: debug ? path.join(options["-o"], "_debug") : "",
 		debug_last_step: options["-dl"],

@@ -651,7 +651,7 @@
 				changed = false;
 				if (merge_adjacent_conditionals(loop_body))
 					changed = true;
-				if (sink_branch_local_statements(loop_body))
+				if (options.outgen_code_sinking !== false && sink_branch_local_statements(loop_body))
 					changed = true;
 				if (simplify_known_conditions(loop_body, new Set(), new Set()))
 					changed = true;
@@ -661,9 +661,9 @@
 					changed = true;
 				if (collapse_trivial_aliases(loop_body))
 					changed = true;
-				if (options.outgen_hoisting && distribute_following_statements_into_ifelse(loop_body))
+				if (options.outgen_code_hoisting !== false && distribute_following_statements_into_ifelse(loop_body))
 					changed = true;
-				if (options.outgen_hoisting && cleanup_branch_local_scopes(loop_body, new Set()))
+				if (options.outgen_code_hoisting !== false && cleanup_branch_local_scopes(loop_body, new Set()))
 					changed = true;
 			}
 			return loop_body;
