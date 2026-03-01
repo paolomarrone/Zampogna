@@ -50,6 +50,7 @@
 				lazyfy_subexpressions_rates: true,
 				lazyfy_subexpressions_controls: true,
 			}
+		outgen_optimizations: true/false
 		debug_mode: true/false
 		debug_output_dir: optional path where debug artifacts are written
 		debug_emit_outputs: true/false (write generated target files into debug artifacts)
@@ -80,6 +81,7 @@
 				lazyfy_subexpressions_rates: true,
 				lazyfy_subexpressions_controls: true,
 			},
+			outgen_optimizations: true,
 			debug_output_dir: "",
 			debug_emit_outputs: true,
 			debug_return_intermediates: false,

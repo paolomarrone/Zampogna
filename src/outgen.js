@@ -577,7 +577,8 @@
 			const c = bdef.connections.find(c => c.out == p);
 			program.output_updates.add(new funcs.Assignment(c.out.code, c.in.code, false));
 		});
-		program.loop_body = build_optimized_loop_body();
+		if (options.outgen_optimizations !== false)
+			program.loop_body = build_optimized_loop_body();
 
 
 		doT.templateSettings.strip = false;

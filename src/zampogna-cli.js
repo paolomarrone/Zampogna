@@ -19,6 +19,7 @@
 			[-v initial_values]
 			[-t target_lang]
 			[-o output_folder]
+			[-og outgen_opt_bool]
 			[-d debug_bool]
 			[-dl debug_last_step]
 			input_file
@@ -31,6 +32,7 @@
 		"-v": "",
 		"-t": "C",
 		"-o": "build",
+		"-og": "true",
 		"-paths": "",
 		"-d": "false",
 		"-dl": "all"
@@ -98,6 +100,7 @@
 		control_inputs: control_inputs,
 		initial_values: initial_values,
 		target_language: options["-t"],
+		outgen_optimizations: options["-og"].toLowerCase() !== "false",
 		debug_mode: debug,
 		debug_output_dir: debug ? path.join(options["-o"], "_debug") : "",
 		debug_last_step: options["-dl"],
