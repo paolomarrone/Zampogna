@@ -706,6 +706,11 @@
 			const op0 = b.o_ports[0];
 
 			if (bs.VarBlock.isPrototypeOf(b)) {
+				const var_out_conns = bdef.connections.filter(c => c.in == op0);
+				if (var_out_conns.length == 1 && var_out_conns[0].out.block == bdef) {
+					op0.code = input_codes[0];
+					return;
+				}
 				let tracedSrcBlock = input_blocks[0];
 				while (bs.VarBlock.isPrototypeOf(tracedSrcBlock)) {
 					const cvin = bdef.connections.find(c => c.out == tracedSrcBlock.i_ports[0]);
