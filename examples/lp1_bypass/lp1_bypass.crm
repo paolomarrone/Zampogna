@@ -19,16 +19,17 @@ y = lp1(x, s) {
 y = lp1_bypass(x, bypass) {
 
 	# We use x_z1A to avoid delay updates when it won't be needed in the next execution.
-	# This a program logic info and cannot be known by the compiler.
+	# This is a program logic info and cannot be known by the compiler.
 
 	x_z1A = x_z1
+	bypass_z1 = delay(bypass)
 
 	y, x_z1 = if (bypass > 0.5) {
 		y = x
 		x_z1 = delay(x)
 	}
 	else {
-		s = if (delay(bypass) > 0.5) {
+		s = if (bypass_z1 > 0.5) {
 			s = x_z1A
 		}
 		else {

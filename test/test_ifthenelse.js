@@ -160,7 +160,7 @@
 			initial_block_id: "counters",
 			matlabScript: [
 				"x = [0.1 0.1 0.2 0.5 0.5 0.5 0.5 0.5 0.5 0.1 0.1 1 2];",
-				"[A, T, F] = counters(x, 48000)",
+				"[A, T, F] = counters(x, 48000);",
 				"EA = [1 2 3 4 5 6 7 8 9 10 11 12 13];",
 				"ET = [1 2 3 0 0 0 0 0 0  4  5  0  0];",
 				"EF = [0 0 0 1 2 3 4 5 6  0  0  7  8];",
@@ -182,6 +182,7 @@
 				pi = 3.141592653589793
 				pi2 = pi * 2.0
 
+				# Backward Euler method
 				y = lp1(x, s) {
 					fc = 1000.0
 					B0 = (pi2 * fc) / (fs + pi2 * fc)
@@ -191,14 +192,18 @@
 
 				y = lp1_bypass(x, bypass) {
 
+					# We use x_z1A to avoid delay updates when it won't be needed in the next execution.
+					# This is a program logic info and cannot be known by the compiler.
+
 					x_z1A = x_z1
+					bypass_z1 = delay(bypass)
 
 					y, x_z1 = if (bypass > 0.5) {
 						y = x
 						x_z1 = delay(x)
 					}
 					else {
-						s = if (delay(bypass) > 0.5) {
+						s = if (bypass_z1 > 0.5) {
 							s = x_z1A
 						}
 						else {
@@ -211,13 +216,14 @@
 					}
 					x_z1.init = 0.0
 				}
+
 			`,
 			initial_block_id: "lp1_bypass",
 			matlabScript: [
 				"x = [1 2 3 4 5 6 7 8 9 10];",
 				"bypass = [0 0 1 1 0 0 0 1 1 0];",
 				"Ey = [0.115748279538573 0.333847174399580 3.0 4.0 4.115748279538574 4.333847174399581 4.642449776949734 8.0 9.0 9.115748279538574];",
-				"[y] = lp1_bypass(x, bypass, 48000);",
+				"[y] = lp1_bypass(x, bypass, 48000)",
 				"assert(max(abs(y - Ey)) < 1e-12);",
 			]
 		}
