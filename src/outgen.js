@@ -669,9 +669,9 @@
 			return loop_body;
 		}
 
-		function merge_adjacent_conditionals (statements) {
-			let changed = false;
-			for (let s of statements.items) {
+			function merge_adjacent_conditionals (statements) {
+				let changed = false;
+				for (let s of statements.items) {
 				if (s && s.kind == "if" && merge_adjacent_conditionals(s.body))
 					changed = true;
 				if (s && s.kind == "ifelse") {
@@ -710,34 +710,112 @@
 						statements.items.splice(i + 1, 1);
 						changed = true;
 						i--;
+						}
 					}
 				}
+				for (let i = 0; i < statements.items.length - 2; i++) {
+					const a = statements.items[i];
+					if (!a)
+						continue;
+					for (let j = i + 2; j < statements.items.length; j++) {
+						const b = statements.items[j];
+						if (!b)
+							continue;
+						let canMoveAcross = true;
+						for (let k = i + 1; k < j; k++) {
+							if (!can_reorder_statement_pair(statements.items[k], b)) {
+								canMoveAcross = false;
+								break;
+							}
+						}
+						if (!canMoveAcross)
+							continue;
+						if (a.kind == "ifelse" && b.kind == "ifelse"
+								&& canonical_condition(a.condition.toString()) == canonical_condition(b.condition.toString())) {
+							b.then_body.items.forEach(x => a.then_body.items.push(x));
+							b.else_body.items.forEach(x => a.else_body.items.push(x));
+							statements.items.splice(j, 1);
+							changed = true;
+							i--;
+							break;
+						}
+						if (a.kind == "if" && b.kind == "if"
+								&& canonical_condition(a.condition.toString()) == canonical_condition(b.condition.toString())) {
+							b.body.items.forEach(x => a.body.items.push(x));
+							statements.items.splice(j, 1);
+							changed = true;
+							i--;
+							break;
+						}
+						if (a.kind == "ifelse" && b.kind == "if") {
+							const branch = get_matching_ifelse_branch(a, b.condition.toString());
+							if (branch) {
+								b.body.items.forEach(x => branch.items.push(x));
+								statements.items.splice(j, 1);
+								changed = true;
+								i--;
+								break;
+							}
+						}
+					}
+				}
+				return changed;
 			}
-			return changed;
+
+		function can_reorder_statement_pair (a, b) {
+			const a_defs = collect_defs_in_statement_set(a);
+			const b_defs = collect_defs_in_statement_set(b);
+			const a_uses = collect_uses_in_statement_set(a);
+			const b_uses = collect_uses_in_statement_set(b);
+			if (sets_intersect(a_defs, b_uses))
+				return false;
+			if (sets_intersect(b_defs, a_uses))
+				return false;
+			if (sets_intersect(a_defs, b_defs))
+				return false;
+			return true;
 		}
 
-		function distribute_following_statements_into_ifelse (statements) {
-			let changed = false;
-			for (let i = 0; i < statements.items.length - 1; i++) {
-				const a = statements.items[i];
-				const b = statements.items[i + 1];
-				if (!(a && a.kind == "ifelse" && b))
-					continue;
-				if (!is_cloneable_statement(b))
-					continue;
-				const def = get_defined_id(a);
-				if (!def || count_uses_in_statement(b, def) == 0)
-					continue;
-				if (count_uses_in_items(statements.items.slice(i + 2), def) > 0)
-					continue;
-				a.then_body.items.push(clone_statement(b));
-				a.else_body.items.push(clone_statement(b));
-				statements.items.splice(i + 1, 1);
-				changed = true;
-				i--;
+			function distribute_following_statements_into_ifelse (statements) {
+				let changed = false;
+				for (let i = 0; i < statements.items.length - 1; i++) {
+					const a = statements.items[i];
+					if (!(a && a.kind == "ifelse"))
+						continue;
+					const def = get_defined_id(a);
+					if (!def)
+						continue;
+					for (let j = i + 1; j < statements.items.length; j++) {
+						const b = statements.items[j];
+						if (!b)
+							continue;
+						if (!is_cloneable_statement(b))
+							continue;
+						if (count_uses_in_statement(b, def) == 0)
+							continue;
+						if (count_uses_in_items(statements.items.slice(i + 1, j), def) > 0)
+							break;
+						if (count_uses_in_items(statements.items.slice(j + 1), def) > 0)
+							break;
+						let canMoveAcross = true;
+						for (let k = i + 1; k < j; k++) {
+							if (!can_reorder_statement_pair(statements.items[k], b)) {
+								canMoveAcross = false;
+								break;
+							}
+						}
+						if (!canMoveAcross)
+							continue;
+						a.then_body.items.push(clone_statement(b));
+						a.else_body.items.push(clone_statement(b));
+						statements.items.splice(j, 1);
+						changed = true;
+						i--;
+						break;
+					}
+				}
+				return changed;
 			}
-			return changed;
-		}
 
 		function sink_branch_local_statements (statements) {
 			let changed = true;
