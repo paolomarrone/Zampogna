@@ -67,7 +67,7 @@
 			matlabScript: [
 				"x =  [0 0 0 1 1 0 0 1 1 0 0 1 1];",
 				"Ey = [0 0 0 1 2 0 0 3 4 0 0 5 6];",
-				"[y] = counter(x, 48000)",
+				"[y] = counter(x, 48000);",
 				"assert(isequal(y, Ey));",
 			]
 		},
@@ -94,7 +94,7 @@
 			matlabScript: [
 				"x  = [0 0 0 1 1 0 0 1 1 0 0 1 1];",
 				"Ey = [0 0 0 1 2 0 0 1 2 0 0 1 2];",
-				"[y] = counter(x, 48000)",
+				"[y] = counter(x, 48000);",
 				"assert(isequal(y, Ey));",
 			]
 		},
@@ -125,7 +125,7 @@
 			matlabScript: [
 				"x  = [0 0 0   1 2 2 2 0 0 2 2 2 2];",
 				"Ey = [0 0 0 -10 1 2 3 0 0 4 5 6 7];",
-				"[y] = counter(x, 48000)",
+				"[y] = counter(x, 48000);",
 				"assert(isequal(y, Ey));",
 			]
 		},
@@ -160,13 +160,65 @@
 			initial_block_id: "counters",
 			matlabScript: [
 				"x = [0.1 0.1 0.2 0.5 0.5 0.5 0.5 0.5 0.5 0.1 0.1 1 2];",
-				"[A, T, F] = counters(x, 48000);",
+				"[A, T, F] = counters(x, 48000)",
 				"EA = [1 2 3 4 5 6 7 8 9 10 11 12 13];",
 				"ET = [1 2 3 0 0 0 0 0 0  4  5  0  0];",
 				"EF = [0 0 0 1 2 3 4 5 6  0  0  7  8];",
 				"assert(isequal(A, EA));",
 				"assert(isequal(T, ET));",
 				"assert(isequal(F, EF));"
+			]
+		},
+		{
+			name: "lp1_bypass example behavior (Octave/MATLAB)",
+			code: `
+				float y = delay (float x) {
+					mem[1] float s
+					y = s[0]
+					s[0] = x
+					s.init = x
+				}
+
+				pi = 3.141592653589793
+				pi2 = pi * 2.0
+
+				y = lp1(x, s) {
+					fc = 1000.0
+					B0 = (pi2 * fc) / (fs + pi2 * fc)
+					A1 = -fs / (fs + pi2 * fc)
+					y = B0 * x - A1 * s
+				}
+
+				y = lp1_bypass(x, bypass) {
+
+					x_z1A = x_z1
+
+					y, x_z1 = if (bypass > 0.5) {
+						y = x
+						x_z1 = delay(x)
+					}
+					else {
+						s = if (delay(bypass) > 0.5) {
+							s = x_z1A
+						}
+						else {
+							s = y_z1
+						}
+						y = lp1(x, s)
+						y.init = 0.0
+						y_z1 = delay(y)
+						x_z1 = delay(x_z1)
+					}
+					x_z1.init = 0.0
+				}
+			`,
+			initial_block_id: "lp1_bypass",
+			matlabScript: [
+				"x = [1 2 3 4 5 6 7 8 9 10];",
+				"bypass = [0 0 1 1 0 0 0 1 1 0];",
+				"Ey = [0.115748279538573 0.333847174399580 3.0 4.0 4.115748279538574 4.333847174399581 4.642449776949734 8.0 9.0 9.115748279538574];",
+				"[y] = lp1_bypass(x, bypass, 48000);",
+				"assert(max(abs(y - Ey)) < 1e-12);",
 			]
 		}
 	];

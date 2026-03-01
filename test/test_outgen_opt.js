@@ -130,8 +130,8 @@
 			try {
 				runOctaveCheck(outdir, [
 					"addpath('" + nooptDir.replace(/\\/g, "/") + "');",
-					"x =      [0 1 2 3 4 5 6 7 8 9 8 7 6 5];",
-					"bypass = [1 1 1 0 0 1 1 1 0 0 0 1 1 0];",
+					"x =      [1 2 3 4 5 6 7 8 9 10];",
+					"bypass = [0 0 1 1 0 0 0 1 1  0];",
 					"fs = 48000;",
 					"y_noopt = lp1_bypass(x, bypass, fs);",
 					"rmpath('" + nooptDir.replace(/\\/g, "/") + "');",
