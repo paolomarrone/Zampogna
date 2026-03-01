@@ -253,13 +253,16 @@
 			};
 		};
 		funcs.MemoryDeclaration = function (type, id, size) {
-			this.s = new LazyString();
-			if (target_language == "MATLAB")
-				this.s.add(id, ' = zeros(1, ', size, ');');
-			else
-				this.s.add(funcs.getTypeDecl(type), ' ', id, '[', size, '];');
+			this.type = type;
+			this.id = id;
+			this.size = size;
 			this.toString = function () {
-				return this.s.toString();
+				const s = new LazyString();
+				if (target_language == "MATLAB")
+					s.add(this.id, ' = zeros(1, ', this.size, ');');
+				else
+					s.add(funcs.getTypeDecl(this.type), ' ', this.id, '[', this.size, '];');
+				return s.toString();
 			};
 		};
 		funcs.MemoryInit = function (id, size, value) {
@@ -703,6 +706,38 @@
 			const op0 = b.o_ports[0];
 
 			if (bs.VarBlock.isPrototypeOf(b)) {
+				let tracedSrcBlock = input_blocks[0];
+				while (bs.VarBlock.isPrototypeOf(tracedSrcBlock)) {
+					const cvin = bdef.connections.find(c => c.out == tracedSrcBlock.i_ports[0]);
+					if (!cvin)
+						break;
+					tracedSrcBlock = cvin.in.block;
+				}
+				if (bs.MemoryReaderBlock.isPrototypeOf(tracedSrcBlock)) {
+					const mr = tracedSrcBlock;
+					const mb = mr.memoryblock;
+					let sizeCode = mb && mb.__outgen_memory_size_code;
+					if (!sizeCode && mb) {
+						const csize = bdef.connections.find(c => c.out == mb.i_ports[0]);
+						if (csize && bs.ConstantBlock.isPrototypeOf(csize.in.block))
+							sizeCode = csize.in.block.value.toString();
+						else if (csize && csize.in && csize.in.code)
+							sizeCode = csize.in.code.toString().trim();
+					}
+					const scalarMem = mb && sizeCode == "1";
+					if (scalarMem) {
+						if (!mb.__scalar_alias_applied) {
+							const aliasId = mb.__pending_scalar_alias_id || program.identifiers.add(b.id);
+							mb.__pending_scalar_alias_id = aliasId;
+							if (mb.__outgen_memory_decl__)
+								mb.__outgen_memory_decl__.id = aliasId;
+							mb.code.s = [funcs.getObjectPrefix(), aliasId];
+							mb.__scalar_alias_applied = true;
+						}
+						op0.code.add(input_codes[0]);
+						return;
+					}
+				}
 				
 				const ur = b.o_ports[0].updaterate();
 				const r = dispatch(b, ur, b.control_dependencies);
@@ -738,9 +773,54 @@
 				return;
 			}
 			if (bs.MemoryBlock.isPrototypeOf(b)) {
-				const id = program.identifiers.add(b.id);
+				function tracePreferredScalarBase (srcp, visitedPorts) {
+					if (!srcp || visitedPorts.has(srcp))
+						return undefined;
+					visitedPorts.add(srcp);
+					if (bs.VarBlock.isPrototypeOf(srcp.block)) {
+						const id = srcp.block.id;
+						const semantic = (typeof id == "string"
+							&& id.length > 0
+							&& !id.startsWith("x__")
+							&& !id.endsWith(".init")
+							&& !id.endsWith(".fs"))
+							? id
+							: undefined;
+						const cvin = bdef.connections.find(c => c.out == srcp.block.i_ports[0]);
+						const upstream = cvin ? tracePreferredScalarBase(cvin.in, visitedPorts) : undefined;
+						if (srcp.block.__is_bdef_input__)
+							return upstream || semantic;
+						return semantic || upstream;
+					}
+					if (bs.SelectBlock.isPrototypeOf(srcp.block)) {
+						const c1 = bdef.connections.find(c => c.out == srcp.block.i_ports[1]);
+						const c2 = bdef.connections.find(c => c.out == srcp.block.i_ports[2]);
+						return (c1 ? tracePreferredScalarBase(c1.in, visitedPorts) : undefined)
+							|| (c2 ? tracePreferredScalarBase(c2.in, visitedPorts) : undefined);
+					}
+					return undefined;
+				}
+
+				let id = b.__pending_scalar_alias_id;
+				if (!id && input_codes[0].toString().trim() == "1") {
+					const writers = bdef.blocks.filter(bb => bs.MemoryWriterBlock.isPrototypeOf(bb) && bb.memoryblock == b);
+					for (const mw of writers) {
+						const cv = bdef.connections.find(c => c.out == mw.i_ports[1]);
+						const base = cv ? tracePreferredScalarBase(cv.in, new Set()) : undefined;
+						if (base) {
+							const preferred = base.endsWith("_z1") ? base : (base + "_z1");
+							id = program.identifiers.add(preferred);
+							b.__pending_scalar_alias_id = id;
+							break;
+						}
+					}
+				}
+				if (!id)
+					id = program.identifiers.add(b.id);
 				const d = new funcs.MemoryDeclaration(b.datatype(), id, input_codes[0]);
-				b.code.add(funcs.getObjectPrefix(), id);
+				b.code.s = [funcs.getObjectPrefix(), id];
+				b.__outgen_memory_decl__ = d;
+				b.__outgen_memory_size_code = input_codes[0].toString().trim();
 
 				program.memory_declarations.add(d);
 
@@ -761,6 +841,8 @@
 				const c = new LazyString();
 				c.add(b.memoryblock.code);
 				c.add(funcs.getMemoryArrayIndexer(input_codes[0]));
+				if (c.toString() == input_codes[1].toString())
+					return;
 				const a = new funcs.Assignment(c, input_codes[1], null);
 				if (b.predicate_terms && b.predicate_terms.length > 0) {
 					const i0 = new funcs.IfBlock();
