@@ -340,7 +340,14 @@
 		};
 		funcs.ParWrapper = function (s, parLevelOp, parLevelB) {
 			this.s = new LazyString();
-			if (parLevelB <= parLevelOp)
+			const raw = s.toString().trim();
+			const core = stripOuterParens(raw);
+			const atomic =
+				/^[A-Za-z_][A-Za-z0-9_]*$/.test(core) ||
+				/^[A-Za-z_][A-Za-z0-9_]*\s*[\(\[].*[\)\]]$/.test(core) ||
+				/^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?f?$/.test(core) ||
+				/^(true|false)$/.test(core);
+			if (parLevelB <= parLevelOp && !atomic)
 				this.s.add('(', s, ')');
 			else
 				this.s.add(s);
@@ -1657,8 +1664,15 @@
 
 		function replace_identifier_in_expr (expr, id, replacement) {
 			const rx = new RegExp('(^|[^A-Za-z0-9_])' + escapeRegExp(id) + '([^A-Za-z0-9_]|$)', 'g');
+			const core = strip_outer_parens_local((replacement || "").trim());
+			const atomic =
+				/^[A-Za-z_][A-Za-z0-9_]*$/.test(core) ||
+				/^[A-Za-z_][A-Za-z0-9_]*\s*[\(\[].*[\)\]]$/.test(core) ||
+				/^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?f?$/.test(core) ||
+				/^(true|false)$/.test(core);
+			const repl = atomic ? core : ("(" + core + ")");
 			return (expr || "").replace(rx, function (_m, a, b) {
-				return a + "(" + replacement + ")" + b;
+				return a + repl + b;
 			});
 		}
 
