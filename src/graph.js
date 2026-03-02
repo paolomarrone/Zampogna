@@ -934,6 +934,27 @@
 		// TODO: think about memory update rate. Readings should be up-bounded to writings...?
 	}
 
+	function collect_memory_preferred_ids (bdef) {
+		bdef.blocks
+			.filter(b => bs.MemoryBlock.isPrototypeOf(b))
+			.forEach(m => m.__preferred_ids__ = []);
+
+		bdef.blocks
+			.filter(b => bs.VarBlock.isPrototypeOf(b))
+			.forEach(v => {
+				const lc = bdef.connections.find(c => c.out == v.i_ports[0]);
+				if (!lc || !lc.in || !lc.in.block)
+					return;
+				if (!bs.MemoryReaderBlock.isPrototypeOf(lc.in.block))
+					return;
+				const m = lc.in.block.memoryblock;
+				if (!m.__preferred_ids__)
+					m.__preferred_ids__ = [];
+				if (!m.__preferred_ids__.includes(v.id))
+					m.__preferred_ids__.push(v.id);
+			});
+	}
+
 	// Assuming bdef flattened
 	function propagateControlDependencies (bdef) {
 
@@ -966,6 +987,17 @@
 	function optimize (bdef, options) {
 
 		var _x_counter = 0;
+
+		collect_memory_preferred_ids(bdef);
+
+		function add_memory_preferred_id (memoryblock, id) {
+			if (!memoryblock || typeof id != "string" || id.length == 0)
+				return;
+			if (!Array.isArray(memoryblock.__preferred_ids__))
+				memoryblock.__preferred_ids__ = [];
+			if (!memoryblock.__preferred_ids__.includes(id))
+				memoryblock.__preferred_ids__.push(id);
+		}
 
 		if (options.optimizations["remove_dead_graph"])
 			remove_dead_graph();
@@ -1240,6 +1272,8 @@
 				if (carrier_props.length > 0 && !bs.VarBlock.isPrototypeOf(lc.in.block) && !src_is_const)
 					return;
 
+				if (bs.MemoryReaderBlock.isPrototypeOf(lc.in.block))
+					add_memory_preferred_id(lc.in.block.memoryblock, b.id);
 				maybe_set_preferred_id(lc.in, b.id);
 				bdef.properties.filter(p => p.of == b).forEach(p => p.of = lc.in.block);
 				carrier_props.forEach(p => p.block = lc.in.block);

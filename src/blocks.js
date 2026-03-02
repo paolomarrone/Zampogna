@@ -157,6 +157,7 @@
 		const r = Block.clone.call(this);
 		r.datatype = this.datatype;
 		r.id = this.id;
+		r.__preferred_ids__ = Array.isArray(this.__preferred_ids__) ? Array.from(this.__preferred_ids__) : [];
 		return r;
 	};
 

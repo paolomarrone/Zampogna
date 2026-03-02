@@ -210,7 +210,7 @@
 		funcs.Identifiers = function () {
 			this.ids = [];
 			const nuostr = Array.from(funcs.getReservedKeywords());
-			nuostr.push('i', 'instance', 'n_samples', 'sample_rate', 'firstRun', 'x', 'y');
+			nuostr.push('i', 'instance', 'n_samples', 'sample_rate', 'firstRun');
 			nuostr.forEach(k => {
 				this.ids.push( {
 					raw: k,
@@ -621,7 +621,7 @@
 		program.name = program.identifiers.add(bdef.id);
 		program.identifiers.add('_' + bdef.id);
 		bdef.i_ports.filter(p => p.updaterate() == RATES.Audio).forEach(p => {
-			const id = program.identifiers.add(p.id);
+			const id = program.identifiers.add(p.id + '0');
 			const code = new LazyString(id, funcs.getArrayIndexer('i'));
 			program.audio_inputs.push(id);
 			p.code = code;
@@ -632,7 +632,7 @@
 			p.code = code;
 		});
 		bdef.o_ports.forEach(p => {
-			const id = program.identifiers.add(p.id);
+			const id = program.identifiers.add(p.id + '0');
 			const code = new LazyString(id, funcs.getArrayIndexer('i'));
 			program.audio_outputs.push(id);
 			p.code = code;
@@ -1783,6 +1783,16 @@
 			
 			const op0 = b.o_ports[0];
 
+			function pick_preferred_memory_id (memoryblock, fallback) {
+				if (!memoryblock || !Array.isArray(memoryblock.__preferred_ids__) || memoryblock.__preferred_ids__.length == 0)
+					return fallback;
+				return memoryblock.__preferred_ids__.reduce((best, cur) => {
+					if (typeof best != "string" || cur.length > best.length)
+						return cur;
+					return best;
+				}, fallback);
+			}
+
 			if (bs.VarBlock.isPrototypeOf(b)) {
 				const var_out_conns = bdef.connections.filter(c => c.in == op0);
 				if (var_out_conns.length == 1 && var_out_conns[0].out.block == bdef) {
@@ -1814,7 +1824,8 @@
 					const scalarMem = mb && sizeCode == "1";
 					if (scalarMem) {
 						if (!mb.__scalar_alias_applied) {
-							const aliasId = mb.__pending_scalar_alias_id || program.identifiers.add(b.id);
+							const preferredId = pick_preferred_memory_id(mb, b.id);
+							const aliasId = mb.__pending_scalar_alias_id || program.identifiers.add(preferredId);
 							mb.__pending_scalar_alias_id = aliasId;
 							if (mb.__outgen_memory_decl__)
 								mb.__outgen_memory_decl__.id = aliasId;
@@ -1890,7 +1901,7 @@
 
 					let id = b.__pending_scalar_alias_id;
 					if (!id)
-						id = program.identifiers.add(b.id);
+						id = program.identifiers.add(pick_preferred_memory_id(b, b.id));
 				const d = new funcs.MemoryDeclaration(b.datatype(), id, input_codes[0]);
 				b.code.s = [funcs.getObjectPrefix(), id];
 				b.code.__memory_id = id;
