@@ -1,4 +1,7 @@
 package-lock.json
 node_modules/
 output/
-examples/*/build
+examples/*/build/*
+
+!examples/lp1_bypass/build/build_noopt/lp1_bypass.m
+!examples/lp1_bypass/build/build_opt/lp1_bypass.m
