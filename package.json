@@ -13,7 +13,7 @@
   },
   "files": [
     "src/*.js",
-    "src/templates/*.txt",
+    "src/templates/*.js",
     "web/zampogna-web.js",
     "README.md",
     "LICENSE",
@@ -36,12 +36,13 @@
   "license": "ISC",
   "scripts": {
     "gen-grammar": "jison src/grammar.jison src/lex.jisonflex -o src/grammar.js",
-    "gen-web": "browserify -t brfs src/zampogna.js --s zampogna -o web/zampogna-web.js"
+    "gen-web": "esbuild src/zampogna.js --bundle --format=iife --global-name=zampogna --platform=browser --external:fs --external:path --outfile=web/zampogna-web.js"
   },
   "dependencies": {
     "dot": "1.1.3"
   },
   "devDependencies": {
-    "brfs": "^2.0.2"
+    "esbuild": "^0.28.0",
+    "jison": "^0.4.18"
   }
 }
