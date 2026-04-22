@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+module.exports = `<!DOCTYPE html>
 <html>
 <head>
 <title>Plugin</title>
@@ -42,3 +42,4 @@ function handleInput(e) {
   <button onclick="begin()">Start</button>
 </body>
 </html>
+`

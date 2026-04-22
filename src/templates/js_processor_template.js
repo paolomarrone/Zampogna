@@ -1,4 +1,4 @@
-{{~it.constant_rate:c}}const {{=c}};
+module.exports = `{{~it.constant_rate:c}}const {{=c}};
 {{~}}
 
 const Plugin = {
@@ -106,3 +106,4 @@ class PluginProcessor extends AudioWorkletProcessor {
 }
 
 registerProcessor("PluginProcessor", PluginProcessor);
+`

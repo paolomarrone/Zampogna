@@ -1,4 +1,4 @@
-#include "{{=it.class_name}}.h"
+module.exports = `#include "{{=it.class_name}}.h"
 
 // Implementing the yaaaeapa interface
 
@@ -61,3 +61,4 @@ void yaaaeapa_get_parameter_info (int index, char** name, char** shortName, char
 	{{~}}
 	}
 }
+`

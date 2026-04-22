@@ -1,4 +1,4 @@
-#include "{{=it.class_name}}.h"
+module.exports = `#include "{{=it.class_name}}.h"
 
 
 {{~it.constant_rate:c}}static const float {{=c}};
@@ -60,3 +60,4 @@ void {{=it.class_name}}::set{{=c}}(float value) {
 	{{=c}} = value;
 }
 {{~}}
+`

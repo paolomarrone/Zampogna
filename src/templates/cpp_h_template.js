@@ -1,4 +1,4 @@
-class {{=it.class_name}}
+module.exports = `class {{=it.class_name}}
 {
 public:
 	void setSampleRate(float sampleRate);
@@ -22,3 +22,4 @@ private:
 	char firstRun;
 
 };
+`

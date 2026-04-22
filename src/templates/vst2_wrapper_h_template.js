@@ -1,4 +1,4 @@
-#ifndef _EFFECT_H
+module.exports = `#ifndef _EFFECT_H
 #define _EFFECT_H
 
 #include "audioeffectx.h"
@@ -34,3 +34,4 @@ private:
 };
 
 #endif
+`

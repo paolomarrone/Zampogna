@@ -1,4 +1,4 @@
-#ifndef _{{=it.class_name.toUpperCase()}}_H
+module.exports = `#ifndef _{{=it.class_name.toUpperCase()}}_H
 #define _{{=it.class_name.toUpperCase()}}_H
 
 {{?it.control_inputs.length > 0}}
@@ -34,3 +34,4 @@ float {{=it.class_name}}_get_parameter({{=it.class_name}} *instance, int index);
 void {{=it.class_name}}_set_parameter({{=it.class_name}} *instance, int index, float value);
 
 #endif
+`

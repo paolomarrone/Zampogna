@@ -1,4 +1,4 @@
-struct {{=it.class_name}}
+module.exports = `struct {{=it.class_name}}
 {
 nothrow:
 public:
@@ -82,3 +82,4 @@ private:
     int firstRun;
 
 };
+`

@@ -1,4 +1,4 @@
-#include "{{=it.class_name}}_vst2_wrapper.h"
+module.exports = `#include "{{=it.class_name}}_vst2_wrapper.h"
 
 #include <cstdlib>
 #include <cstdio>
@@ -56,16 +56,16 @@ float Effect::getParameter(VstInt32 index) {
 }
 
 void Effect::getParameterName(VstInt32 index, char *text) {
-	const char *names[] = { {{=it.control_inputs.map(c => '\"' +c+'\"')}}};
+	const char *names[] = { {{=it.control_inputs.map(c => '\\"' +c+'\\"')}}};
 	strcpy(text, names[index]);
 }
 
 void Effect::getParameterDisplay(VstInt32 index, char *text) {
-	text[0] = '\0';
+	text[0] = '\\0';
 }
 
 void Effect::getParameterLabel(VstInt32 index, char *text)  {
-	text[0] = '\0';
+	text[0] = '\\0';
 }
 
 void Effect::setSampleRate(float sampleRate) {
@@ -80,3 +80,4 @@ void Effect::process(float **inputs, float **outputs, VstInt32 sampleFrames) {
 void Effect::processReplacing(float **inputs, float **outputs, VstInt32 sampleFrames) {
 	instance.process({{=it.audio_inputs.map(i => 'inputs['+it.audio_inputs.indexOf(i)+']')}}, {{=it.outputs.map(i => 'outputs['+it.outputs.indexOf(i)+']')}}, sampleFrames);
 }
+`
