@@ -146,7 +146,7 @@
 
 },{}],2:[function(require,module,exports){
 /*
-	Copyright (C) 2021, 2022 Orastron Srl
+	Copyright (C) 2021-2026 Orastron Srl
 
 	Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is 
 	hereby granted, provided that the above copyright notice and this permission notice appear in all copies.
@@ -1352,7 +1352,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 }).call(this)}).call(this,require('_process'))
 },{"_process":13,"fs":8,"path":12}],4:[function(require,module,exports){
 /*
-	Copyright (C) 2021, 2022 Orastron Srl
+	Copyright (C) 2021-2026 Orastron Srl
 
 	Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is 
 	hereby granted, provided that the above copyright notice and this permission notice appear in all copies.
@@ -2199,7 +2199,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 },{}],5:[function(require,module,exports){
 /*
-	Copyright (C) 2021, 2022 Orastron Srl
+	Copyright (C) 2021-2026 Orastron Srl
 
 	Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is 
 	hereby granted, provided that the above copyright notice and this permission notice appear in all copies.
@@ -2765,7 +2765,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 },{}],6:[function(require,module,exports){
 /*
-	Copyright (C) 2021, 2022 Orastron Srl
+	Copyright (C) 2021-2026 Orastron Srl
 
 	Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is 
 	hereby granted, provided that the above copyright notice and this permission notice appear in all copies.
@@ -2853,7 +2853,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 },{}],7:[function(require,module,exports){
 (function (Buffer){(function (){
 /*
-	Copyright (C) 2021, 2022 Orastron Srl
+	Copyright (C) 2021-2026 Orastron Srl
 
 	Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is 
 	hereby granted, provided that the above copyright notice and this permission notice appear in all copies.
