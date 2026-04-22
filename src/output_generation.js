@@ -23,11 +23,12 @@
 	}
 
 	function getNumber(target_lang, n) {
+		const value = n.toString()
 		if (['C', 'cpp', 'VST2', 'yaaaeapa', 'd'].includes(target_lang))
-			return n + ((n.includes('.') || n.toLowerCase().includes('e')) ? 'f' : '.0f')
+			return value + ((value.includes('.') || value.toLowerCase().includes('e')) ? 'f' : '.0f')
 		else if (['MATLAB', 'js'].includes(target_lang))
-			return n
-		return n
+			return value
+		return value
 	}
 
 	function getIdPrefix(target_lang) {
