@@ -58,6 +58,9 @@ float {{=it.class_name}}_get_parameter({{=it.class_name}} *instance, int index) 
 		{{~it.control_inputs:c}}case p_{{=c}}:
 			return instance->{{=c}};
 		{{~}}
+		default:
+			(void)instance;
+			return 0.0f;
 	}
 }
 
@@ -67,5 +70,9 @@ void {{=it.class_name}}_set_parameter({{=it.class_name}} *instance, int index, f
 			instance->{{=c}} = value;
 			break;
 		{{~}}
+		default:
+			(void)instance;
+			(void)value;
+			return;
 	}
 }

@@ -59,7 +59,7 @@
 		"--debug": "-d"
 	}
 	const help_options = new Set(["-h", "--help"])
-	const version_options = new Set(["--version"])
+	const version_options = new Set(["-v", "--version"])
 	let input_code = ""
 
 	const args = process.argv.slice(2)
@@ -75,16 +75,6 @@
 
 	for (let a = 0; a < args.length; a++) {
 		const arg = args[a]
-		if (arg === "-v") {
-			const value = args[a + 1]
-			if (value !== undefined && !value.startsWith('-')) {
-				options["-V"] = value
-				a++
-				continue
-			}
-			console.log(package_info.version)
-			process.exit(0)
-		}
 		const option = long_options[arg] || arg
 		if (options.hasOwnProperty(option)) {
 			const value = args[a + 1]
@@ -112,14 +102,18 @@
 	const debug = options["-d"].toLowerCase() === "true"
 	const control_inputs = options['-c'] ? options['-c'].split(',') : []
 	const initial_values = {}
-	if (options['-V'])
-		options['-V'].split(',').map(o => o.split('=')).forEach(e => initial_values[e[0]] = e[1])
+	if (options['-V']) {
+		options['-V'].split(',').forEach(entry => {
+			const pair = entry.split('=')
+			if (pair.length !== 2 || pair[0] === '' || pair[1] === '')
+				throw new Error("Bad syntax in initial values. Use key=value pairs. " + usage)
+			initial_values[pair[0]] = pair[1]
+		})
+	}
 	const files = zampogna.compile(null, debug, input_code, options["-i"], control_inputs, initial_values, options["-t"])
 
-	if (!fs.existsSync(options['-o']))
-		fs.mkdirSync(options['-o'])
-	if (!fs.existsSync(path.join(options['-o'], options["-t"])))
-		fs.mkdirSync(path.join(options['-o'], options["-t"]))
-	files.forEach(f => fs.writeFile(path.normalize(path.join(options['-o'], options["-t"], f.name)), f.str, err => { if (err) throw err }))
+	const output_dir = path.normalize(path.join(options['-o'], options["-t"]))
+	fs.mkdirSync(output_dir, { recursive: true })
+	files.forEach(f => fs.writeFileSync(path.normalize(path.join(output_dir, f.name)), f.str))
 
 }());
