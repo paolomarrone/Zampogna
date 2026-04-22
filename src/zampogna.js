@@ -16,33 +16,33 @@
 (function() {
 	'use strict'
 
-	function compile(env, debug, code, initial_block, control_inputs, initial_values, target_lang) {
-		if (!env) {
-			const fs = require('fs')
-			const path = require('path')
-
-			env = {
-				"parser": 			require("./grammar"),
-				"extended_syntax": 	require("./extended_syntax"),
-				"graph": 			require("./graph"),
-				"scheduler": 		require("./scheduler"),
-				"output_generation":require("./output_generation"),
-				"doT": 				require("dot"),
-				"templates":{
-					"matlab": 			String(fs.readFileSync(path.join(__dirname, "templates", "matlab_template.txt"))),
-					"C_h": 				String(fs.readFileSync(path.join(__dirname, "templates", "C_h_template.txt"))),
-					"C_c": 				String(fs.readFileSync(path.join(__dirname, "templates", "C_c_template.txt"))),
-					"cpp_h": 			String(fs.readFileSync(path.join(__dirname, "templates", "cpp_h_template.txt"))),
-					"cpp_cpp": 			String(fs.readFileSync(path.join(__dirname, "templates", "cpp_cpp_template.txt"))),
-					"vst2_wrapper_h": 	String(fs.readFileSync(path.join(__dirname, "templates", "vst2_wrapper_h_template.txt"))),
-					"vst2_wrapper_cpp": String(fs.readFileSync(path.join(__dirname, "templates", "vst2_wrapper_cpp_template.txt"))),
-					"yaaaeapa_wrapper_c": String(fs.readFileSync(path.join(__dirname, "templates", "yaaaeapa_wrapper_c_template.txt"))),
-					"js_html": 			String(fs.readFileSync(path.join(__dirname, "templates", "js_html_template.txt"))),
-					"js_processor": 	String(fs.readFileSync(path.join(__dirname, "templates", "js_processor_template.txt"))),
-					"d_processor":		String(fs.readFileSync(path.join(__dirname, "templates", "d_processor_template.txt")))
-				}
+	function createDefaultEnv() {
+		return {
+			"parser": 			require("./grammar"),
+			"extended_syntax": 	require("./extended_syntax"),
+			"graph": 			require("./graph"),
+			"scheduler": 		require("./scheduler"),
+			"output_generation":require("./output_generation"),
+			"doT": 				require("dot"),
+			"templates":{
+				"matlab": 			require("./templates/matlab_template"),
+				"C_h": 				require("./templates/C_h_template"),
+				"C_c": 				require("./templates/C_c_template"),
+				"cpp_h": 			require("./templates/cpp_h_template"),
+				"cpp_cpp": 			require("./templates/cpp_cpp_template"),
+				"vst2_wrapper_h": 	require("./templates/vst2_wrapper_h_template"),
+				"vst2_wrapper_cpp": require("./templates/vst2_wrapper_cpp_template"),
+				"yaaaeapa_wrapper_c": require("./templates/yaaaeapa_wrapper_c_template"),
+				"js_html": 			require("./templates/js_html_template"),
+				"js_processor": 	require("./templates/js_processor_template"),
+				"d_processor":		require("./templates/d_processor_template")
 			}
 		}
+	}
+
+	function compile(env, debug, code, initial_block, control_inputs, initial_values, target_lang) {
+		if (!env)
+			env = createDefaultEnv()
 
 		const tree = env["parser"].parse(code);
 		if (debug) console.log(tree)
