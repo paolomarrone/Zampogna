@@ -1,3 +1,10 @@
+0.3.2
+-----
+* Switched web bundle generation to esbuild
+* Converted templates to native JavaScript modules
+* Improved CLI and example build scripts
+* Added package-lock.json and local build tool dependencies
+
 0.3.1
 -----
 * Bug fixing
