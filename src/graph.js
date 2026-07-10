@@ -342,6 +342,8 @@
 					case 'TIMES_EXPR':
 					case 'DIV_EXPR':
 					case 'UMINUS_EXPR':
+					case 'OR_EXPR':
+					case 'AND_EXPR':
 					case 'EQUAL_EXPR':
 					case 'NOTEQUAL_EXPR':
 					case 'LESS_EXPR':
