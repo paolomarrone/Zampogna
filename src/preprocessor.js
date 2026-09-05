@@ -18,13 +18,10 @@
 	'use strict';
 
 	function parse_include (s) {
-		s = s.substr(8).replace(/[; \t]+$/, '');
-		var id = s.match(/[_a-zA-Z0-9]*/);
-		if (id)
-			id = id[0];
-		if (!id || s.length != id.length)
-			throw new Error("Bad include line");
-		return id;
+		const match = s.match(/^include[ \t]+([_a-zA-Z0-9]+)[; \t]*$/);
+		if (!match)
+			throw new Error("Bad include line: " + s);
+		return match[1];
 	}
 
 	function detach_includes (str) {
@@ -40,7 +37,7 @@
 				continue;
 			if (l[0] == '#')
 				continue;
-			if (l.startsWith('include ')) {
+			if (/^include[ \t]/.test(l)) {
 				includes.push(parse_include(l));
 				continue;
 			}
@@ -67,13 +64,15 @@
 			program += '\n' + r[0];
 
 			r[1].forEach(include => {
+				if (typeof filereader != "function")
+					throw new Error("Cannot resolve include without a file reader: " + include);
 				var filename;
 				var s;
 				filename = include + '.crm';
 				if (included_files.includes(filename))
 					return;
 				s = filereader(filename);
-				if (s) {
+				if (s != null) {
 					included_files.push(filename);
 					toparse.push(s);
 					return;
@@ -82,7 +81,7 @@
 				if (included_files.includes(filename))
 					return;
 				s = filereader(filename);
-				if (s) {
+				if (s != null) {
 					included_files.push(filename);
 					const j = JSON.parse(s);
 					if (j.wrapper)
@@ -90,7 +89,7 @@
 					jsons.push(j);
 					return;
 				}
-				throw new Error("Invalid/Not found included file");
+				throw new Error("Included file not found: " + include + ".crm or " + include + ".json");
 			});
 		}
 

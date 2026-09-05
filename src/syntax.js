@@ -21,8 +21,6 @@
 
 	'use strict';
 
-	const util = require("util");
-
 	function ScopeTable (father) {
 		this.elements = [];
 		this.father = father;
@@ -130,14 +128,14 @@
 			}
 
 			if (reserved_variables.includes(o.id))
-				err("Cannot use reserved_variables in assignments");
+				err("Cannot use reserved variables in assignments");
 			
 			if (o.name == 'VARIABLE') {
 				let elements = scope.findLocally(o.id);
 				if (elements.filter(e => e.name == 'BLOCK_DEFINITION').length > 0)
 					err("ID already used for a BLOCK_DEFINITION");
 				if (elements.filter(e => e.name == 'MEMORY_DECLARATION').length > 0)
-					err("use [] operator to access memory");
+					err("Use [] operator to access memory");
 				elements = elements.filter(e => e.name == 'VARIABLE');
 				if (elements.length == 0) {
 					o.assigned = true;
@@ -159,6 +157,8 @@
 
 				function check_property_left (p) {
 					if (p.expr.name == 'VARIABLE') {
+						if (reserved_variables.includes(p.expr.id))
+							err("Cannot set properties of reserved variables");
 						let elements = scope.findGlobally(p.expr.id);
 						if (elements.length == 0)
 							err("Property of undefined");
@@ -194,7 +194,7 @@
 			if (assignment.expr.name == 'ARRAY_CONST') {
 				const o = assignment.outputs[0];
 				if (o.name != 'PROPERTY' || o.property_id != 'init')
-					err("Array can be assigned to init propety only");
+					err("Array can be assigned to init property only");
 			}
 			analyze_expr(assignment.expr, scope, assignment.outputs.length, true);
 		}
@@ -268,14 +268,14 @@
 				break;
 			}
 			if (!found)
-				err("ID not found" + expr.id +  vs.join(',,'));
+				err("ID not found: " + expr.id);
 			break;
 		}
 		case "PROPERTY":
 		{
 			if (expr.expr.name == 'VARIABLE') {
 				if (reserved_variables.includes(expr.expr.id))
-					err("Cannot access properties of reserved_variables");
+					err("Cannot access properties of reserved variables");
 				analyze_expr({ name: "VARIABLE", id: expr.expr.id }, scope, 1, false);
 			}
 			else if (expr.expr.name == 'MEMORY_ELEMENT') {

@@ -15,6 +15,7 @@
 		Usage: 
 			zampogna-cli.js 
 			[-i initial_block]
+			[-in initial_block_inputs_n]
 			[-c control_inputs]
 			[-v initial_values]
 			[-t target_lang]
@@ -22,6 +23,7 @@
 			[-og outgen_opt_bool]
 			[-os outgen_sink_bool]
 			[-oh outgen_hoist_bool]
+			[-paths include_search_paths]
 			[-d debug_bool]
 			[-dl debug_last_step]
 			input_file
@@ -59,11 +61,13 @@
 		else {
 			if (arg.startsWith("-"))
 				throw new Error("Unknown option: " + arg + ". " + usage);
+			if (input_code !== undefined)
+				throw new Error("Only one input file is supported. " + usage);
 			const inputPath = path.resolve(callerCwd, arg);
 			input_code = String(fs.readFileSync(inputPath));
 		}
 	}
-	if (!input_code)
+	if (input_code === undefined)
 		throw new Error("No input file. " + usage);
 
 	if (options["-i"] === "")
@@ -74,7 +78,12 @@
 	if (!supported_target_languages.includes(options["-t"]))
 		throw new Error(options["-t"] + " is not a supported target language. Choose among: " + supported_target_languages.join(", "));
 
-	const debug = options["-d"].toLowerCase() === "true";
+	for (const flag of ["-d", "-og", "-os", "-oh"]) {
+		options[flag] = options[flag].toLowerCase();
+		if (options[flag] !== "true" && options[flag] !== "false")
+			throw new Error("Invalid " + flag + " argument. Must be true or false.");
+	}
+	const debug = options["-d"] === "true";
 	const control_inputs = (options["-c"] ? options["-c"].split(",") : []).filter(c => c !== "");
 	const initial_values = {};
 	if (options["-v"]) {
@@ -94,9 +103,10 @@
 
 	const initial_block_inputs_n = options["-in"] === ""
 		? -1
-		: parseInt(options["-in"], 10);
-	if (options["-in"] !== "" && Number.isNaN(initial_block_inputs_n))
-		throw new Error("Invalid -in argument. Must be an integer.");
+		: Number(options["-in"]);
+	if (options["-in"] !== "" && (!/^[+-]?[0-9]+$/.test(options["-in"])
+		|| !Number.isSafeInteger(initial_block_inputs_n) || initial_block_inputs_n < -1))
+		throw new Error("Invalid -in argument. Must be a nonnegative integer or -1 for automatic selection.");
 
 	const z_options = {
 		initial_block_id: options["-i"],
@@ -104,9 +114,9 @@
 		control_inputs: control_inputs,
 		initial_values: initial_values,
 		target_language: options["-t"],
-		outgen_optimizations: options["-og"].toLowerCase() !== "false",
-		outgen_code_sinking: options["-os"].toLowerCase() !== "false",
-		outgen_code_hoisting: options["-oh"].toLowerCase() !== "false",
+		outgen_optimizations: options["-og"] === "true",
+		outgen_code_sinking: options["-os"] === "true",
+		outgen_code_hoisting: options["-oh"] === "true",
 		debug_mode: debug,
 		debug_output_dir: debug ? path.join(options["-o"], "_debug") : "",
 		debug_last_step: options["-dl"],

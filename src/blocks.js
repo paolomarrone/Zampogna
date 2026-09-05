@@ -1080,7 +1080,7 @@
 				const csext = this.connections.filter(c => c.out == p);
 				const csint = this.connections.filter(c => c.in == np);
 				if (csext.length != 1)
-					throw new Error("Found invalid number of connectrions toward input");
+					throw new Error("Found invalid number of connections toward input");
 				this.connections.splice(this.connections.indexOf(csext[0]), 1);
 				csint.forEach(c => c.in = csext[0].in );
 			});
@@ -1090,7 +1090,7 @@
 				const csext = this.connections.filter(c => c.in == p); 
 				const csint = this.connections.filter(c => c.out == np);
 				if (csint.length != 1)
-					throw new Error("Found invalid number of connectrions toward output");
+					throw new Error("Found invalid number of connections toward output");
 				this.connections.splice(this.connections.indexOf(csint[0]), 1);
 				csext.forEach(c => c.in = csint[0].in);
 				this.blocks.forEach(bb_ => {

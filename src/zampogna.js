@@ -30,10 +30,10 @@
 	const steps = ["preprocess", "parse", "syntax", "ast_to_graph", "flatten", "optimize", "schedule", "outgen", "all"];
 
 	const options_descr = `
-		initial_block_id: unspaced string
+		initial_block_id: string without spaces
 		initial_block_inputs_n: number
 		control_inputs: array of strings
-		initial_values: array of { id: string, value: string } objects
+		initial_values: object mapping input IDs to initial values
 		target_language: C/bw/MATLAB
 		optimizations: object of properties
 			{
@@ -96,7 +96,7 @@
 			options[p] = options_[p];
 		}
 		if (!steps.includes(options.debug_last_step))
-			throw new Error("Invalid debug_last_step: " + s);
+			throw new Error("Invalid debug_last_step: " + options.debug_last_step);
 
 		function shouldStop (step) {
 			if (options.debug_last_step == "all")
@@ -150,21 +150,24 @@
 		const g = graph.ASTToGraph(AST, options, jsons);
 		ret.graph = g;
 		debug.log("graph build complete");
-		debug.writeFile("02_graph_initial.dot", dbg.graphToGraphviz(g));
+		if (debug.enabled && debug.outdir)
+			debug.writeFile("02_graph_initial.dot", dbg.graphToGraphviz(g));
 		if (shouldStop("ast_to_graph"))
 			return maybeReturnAt("ast_to_graph");
 
 		/***** GRAPH FLATTEN *****/
 		graph.flatten(g, options);
 		debug.log("graph flatten complete");
-		debug.writeFile("03_graph_flattened.dot", dbg.graphToGraphviz(g));
+		if (debug.enabled && debug.outdir)
+			debug.writeFile("03_graph_flattened.dot", dbg.graphToGraphviz(g));
 		if (shouldStop("flatten"))
 			return maybeReturnAt("flatten");
 
 		/***** GRAPH OPTIMIZE *****/
 		graph.optimize(g, options);
 		debug.log("graph optimize complete");
-		debug.writeFile("04_graph_optimized.dot", dbg.graphToGraphviz(g));
+		if (debug.enabled && debug.outdir)
+			debug.writeFile("04_graph_optimized.dot", dbg.graphToGraphviz(g));
 		if (shouldStop("optimize"))
 			return maybeReturnAt("optimize");
 

@@ -15,8 +15,8 @@
 
 /**
  * TODO:
- * - We're delcaring/assigning only on VARs. So we might check if other blocks fork their output. Should not happen with the implemented opts, might better to be sure anyways
- * - For the future: Control grouping system should be trated in the same way of user IFs. In the graph itself
+ * - We're declaring/assigning only on VARs. So we might check if other blocks fork their output. Should not happen with the implemented opts, but better to be sure anyway.
+ * - For the future: Control grouping should be treated in the same way as user IFs, in the graph itself.
  * 
  * - Check memory updates order. Might be better to save reads in vars.
  * 
@@ -720,7 +720,7 @@
 			];
 		}
 
-		throw new Error("Not recognized target language");
+		throw new Error("Unrecognized target language: " + t);
 
 		function build_optimized_loop_body () {
 			const loop_body = new funcs.Statements();

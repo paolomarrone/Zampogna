@@ -173,7 +173,7 @@
 		statements.filter(s => s.name == 'ASSIGNMENT').forEach((s) => {
 			switch (s.type) {
 			case 'ANONYMOUS_BLOCK': {
-				throw new Error("Not imeplemented yet");
+				throw new Error("Anonymous blocks are not implemented yet");
 			}
 			case 'IF_THEN_ELSES': {
 				const expr_ports = convert_if_then_elses(s.expr, s.outputs, bdef);
@@ -207,7 +207,7 @@
 					case 'PROPERTY': {
 						const r = convert_property_left(o, bdef);
 						if (bdef.connections.find(c => c.out == r.p.i_ports[0]))
-							throw new Error("Property assiged multiple times");
+							throw new Error("Property assigned multiple times");
 						const c = Object.create(bs.CompositeBlock.Connection);
 						c.in = expr_ports[1][oi];
 						c.out = r.p.i_ports[0];
@@ -405,7 +405,7 @@
 			return [[], b.o_ports];
 		}
 		case 'INLINE_IF_THEN_ELSE': {
-			throw new Error("Not imeplemented yet");
+			throw new Error("Inline if-then-else expressions are not implemented yet");
 		}
 		}
 
@@ -463,7 +463,7 @@
 				else if (expr_node.type == 'TYPE_BOOL')
 					return Object.create(bs.CastBoolBlock);
 				else 
-					throw new Error("Unexpect cast type: " + expr_node.type);
+					throw new Error("Unexpected cast type: " + expr_node.type);
 			default:
 				throw new Error("Unexpected AST expr node");
 			}
@@ -586,7 +586,7 @@
 			mems.forEach(m => {
 				const p = bdef.properties.find(p => p.of == m && p.type == 'init');
 				if (!p)
-					throw new Error("Memory init not assiged");
+					throw new Error("Memory init not assigned");
 			});
 			bdef.properties.forEach(p => {
 				if (bdef.properties.filter(pp => pp.of == p.of && pp.type == p.type).length > 1)
@@ -696,7 +696,7 @@
 
 			const p = bdef.properties.find(p => p.block == b);
 			if (!p)
-				throw new Error("No propery found..." + b.toString());
+				throw new Error("No property found: " + b.toString());
 
 			if (p.type == "fs")
 				infer_fs(p);
