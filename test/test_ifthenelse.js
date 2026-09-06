@@ -10,25 +10,10 @@
 	const z = require("../src/zampogna");
 	const util = require("../src/util");
 
-	const outputDir = path.join(__dirname, "output");
+	const outputDir = process.env.ZAMPOGNA_TEST_OUTPUT || path.join(__dirname, "output");
 	fs.mkdirSync(outputDir, { recursive: true });
 
-	function hasOctave () {
-		try {
-			cp.execFileSync("octave", ["--version"], { stdio: "ignore" });
-			return true;
-		}
-		catch (_e) {
-			if (_e && _e.code == "EPERM")
-				return true; // present but blocked from node child_process in sandbox
-			return false;
-		}
-	}
-
-	function isSandboxOctaveEperm (e) {
-		return !!(e && e.code == "EPERM" && (e.path == "octave" || e.syscall == "spawnSync octave"));
-	}
-
+	const { available } = require("./support/process");
 
 	const Tests = [
 		{
@@ -179,6 +164,8 @@
 			const out = cp.execFileSync("octave", [scriptPath], {
 				stdio: "pipe",
 				encoding: "utf8",
+				timeout: 30000,
+				killSignal: 'SIGKILL',
 			});
 			if (out && out.trim().length > 0) {
 				console.log("--- Octave stdout ---");
@@ -208,9 +195,13 @@
 	}
 
 	const results = [];
-	const octaveAvailable = hasOctave();
+	const octaveAvailable = available("octave");
+	if (!octaveAvailable && process.env.ZAMPOGNA_REQUIRE_OCTAVE === "1")
+		throw new Error("required tool not found: octave");
+	let compiled = 0;
+	let executed = 0;
 	if (!octaveAvailable)
-		console.log("Skipping Octave execution checks: octave not found");
+		console.log("SKIP " + Tests.length + " Octave execution checks: octave not installed");
 
 	for (let i = 0; i < Tests.length; i++) {
 		let ok = true;
@@ -241,18 +232,11 @@
 				fs.mkdirSync(outsub, { recursive: true });
 				fs.writeFileSync(path.join(outsub, f.name), f.str);
 			});
+			compiled++;
 
 			if (octaveAvailable && t.matlabScript) {
-				try {
-					runOctaveCheck(matlabDir, t.matlabScript);
-				}
-				catch (e) {
-					if (isSandboxOctaveEperm(e)) {
-						console.log("Skipping Octave execution for test " + i + " (sandbox blocks spawning octave from node)");
-					}
-					else
-						throw e;
-				}
+				runOctaveCheck(matlabDir, t.matlabScript);
+				executed++;
 			}
 		}
 		catch (e) {
@@ -271,7 +255,8 @@
 	}
 
 	const passed = results.filter(r => r.ok).length;
-	console.log("IfThenElse tests passed: " + passed + " / " + Tests.length);
+	console.log("IfThenElse compilation checks passed: " + compiled + " / " + Tests.length);
+	console.log("IfThenElse Octave execution checks passed: " + executed + " / " + Tests.length);
 	if (passed != Tests.length)
 		process.exitCode = 1;
 

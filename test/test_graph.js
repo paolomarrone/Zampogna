@@ -308,7 +308,7 @@
 		},
 	];
 
-	const outputDir = './output';
+	const outputDir = process.env.ZAMPOGNA_TEST_OUTPUT || './output';
 	if (!fs.existsSync(outputDir))
 		fs.mkdirSync(outputDir);
 	const filereader = util.get_filereader([

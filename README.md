@@ -75,7 +75,7 @@ Four small graph optimizations are enabled by default: `remove_dead_graph`, `neg
 
 The other graph rewrite and output optimization options are ignored, including the CLI flags `-og`, `-os`, and `-oh`. Sample-rate and control expressions retain their setup phases; branch computations execute per selected sample.
 
-Run `node test/test_semantics.js` for execution checks of generated C and MATLAB code (requires `cc` and GNU Octave).
+Run `node test/run.js` for the complete test suite. Native checks compile generated C and Brickworks C, process raw float32 streams, and compare results across buffer sizes and instance lifecycles. A C compiler is required; GNU Octave checks run when installed. Use `--require-octave` to require them, including in CI. See [the testing guide](test/README.md) for cases, build configurations and failure artifacts.
 Run `node test/test_phases.js` for stored metadata, per-instance phases, explicit reanalysis, lifecycle diagnostics and shared-dependency scaling checks.
 
 
