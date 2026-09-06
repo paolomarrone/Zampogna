@@ -15,7 +15,58 @@ const delay = `float y = delay(float x) {
 }`;
 const clock = [0, 1, 0, 1, 1, 0, 0, 1];
 const samples = [1, 2, 3, 4, 5, 6, 7, 8];
+const sampleRates = [48000, 96000, 48000, 144000, 96000, 48000, 96000, 48000];
+const lifecycle = {
+    'lifecycle.json': JSON.stringify({
+        block_name: 'lifecycle',
+        header: `static void lifecycle_init(float *out) { *out = 7.0f; }
+            static float lifecycle_fs(float fs) { return fs / 48000.0f; }
+            static float lifecycle_reset(void) { return 10.0f; }
+            static float lifecycle_process(float x) { return x; }`,
+        block_inputs: [{ type: 'float32' }, { type: 'float32' }],
+        block_outputs: Array.from({ length: 4 }, () => ({ type: 'float32' })),
+        init: { f_name: 'lifecycle_init', f_inputs: ['o0'], f_outputs: [] },
+        set_sample_rate: { f_name: 'lifecycle_fs', f_inputs: ['i0'], f_outputs: ['o1'] },
+        reset_state: { f_name: 'lifecycle_reset', f_inputs: [], f_outputs: ['o2'] },
+        process1: { f_name: 'lifecycle_process', f_inputs: ['i1'], f_outputs: ['o3'] },
+    }),
+};
 const tests = [
+    { name: 'reset values combined with changing controls', cOnly: true,
+      prefix: 'include lifecycle\n', files: lifecycle,
+      code: `a, b = probe(x, gain) {
+        boot, frequency, seed, tick = lifecycle(fs, x);
+        a = seed + gain; b = boot * 2.0 + frequency + tick;
+      }`, controls: { gain: samples }, inputs: [samples],
+      expected: [[11, 12, 13, 14, 15, 16, 17, 18], [16, 17, 18, 19, 20, 21, 22, 23]] },
+    { name: 'setup results available on first branch activation', cOnly: true,
+      prefix: 'include lifecycle\n', files: lifecycle,
+      code: `y = probe(x, c) {
+        y = if(c > 0.5) {
+          boot, frequency, seed, tick = lifecycle(fs, x);
+          y = boot * 2.0 + frequency + seed + tick;
+        } else { y = -1.0; };
+      }`, inputs: [samples, clock], expected: [[-1, 27, -1, 29, 30, -1, -1, 33]] },
+    { name: 'reset values combined with changing sample rate', cOnly: true,
+      prefix: 'include lifecycle\n', files: lifecycle, sampleRates,
+      code: `y = probe(x) {
+        boot, frequency, seed, tick = lifecycle(fs, x);
+        y = seed + frequency + boot + tick;
+      }`, inputs: [samples], expected: [[19, 21, 21, 24, 24, 24, 26, 26]] },
+    { name: 'reset initializer snapshots mixed setup phases', cOnly: true,
+      prefix: 'include seeded\n', sampleRates,
+      files: { 'seeded.json': JSON.stringify({
+        block_name: 'seeded', state: 'seeded_state',
+        header: `typedef struct { float n; } seeded_state;
+          static float seeded_reset(seeded_state *s) { return s->n = 10.0f; }
+          static float seeded_process(seeded_state *s, float x) { return s->n += x; }`,
+        block_inputs: [{ type: 'float32' }],
+        block_outputs: [{ type: 'float32' }, { type: 'float32' }],
+        reset_state: { f_name: 'seeded_reset', f_inputs: ['state'], f_outputs: ['o0'] },
+        process1: { f_name: 'seeded_process', f_inputs: ['state', 'i0'], f_outputs: ['o1'] },
+        wrapper: ['y = seeded_wrapper(x) { y.init, y = seeded(x); }'],
+      }) }, code: `y = probe(x) { t = seeded_wrapper(x); y = delay(t + fs / 48000.0); }`,
+      inputs: [samples], expected: [[11, 12, 15, 17, 23, 27, 32, 40]] },
     { name: 'typed overloads with different output counts in branches',
       code: `y = choose(float v) { y = v + 100.0; }
       a, b = choose(int v) { a = float(v); b = float(v) + 10.0; }
@@ -291,7 +342,11 @@ for (const [i, t] of tests.entries()) {
                 `if (!(fabsf(y${j}[${k}] - (${literal(e)})) < 0.0001f)${e === 0 ? ` || !!signbit(y${j}[${k}]) != ${Object.is(e, -0) ? 1 : 0}` : ''}) { fprintf(stderr, "output ${j} sample ${k}: %g, expected ${literal(e)}\\n", y${j}[${k}]); return 1; }`).join('\n')).join('\n');
             const setters = k => controls.map(([name, value]) =>
                 `probe_set_parameter(&instance, p_${name}, ${Array.isArray(value) ? `control_${name}[${k}]` : value});`).join('\n');
-            const step = `for (int k = 0; k < ${n}; k++) { ${setters('k')} run(&instance, ${args('k')}, 1); }`;
+            const step = `for (int k = 0; k < ${n}; k++) {
+                ${setters('k')}
+                ${t.sampleRates ? 'probe_set_sample_rate(&instance, sample_rates[k]);' : ''}
+                run(&instance, ${args('k')}, 1);
+            }`;
             // Check a full buffer, then reset and repeat across process calls.
             fs.writeFileSync(path.join(dir, 'main.c'), `#include <math.h>
 #include <stdio.h>
@@ -309,10 +364,11 @@ static void run(probe *instance, ${t.inputs.map((_, j) => `const float *x${j}`).
 int main(void) {
     probe instance = {0}; probe_init(&instance); probe_set_sample_rate(&instance, 48000);
     ${inputs}\n${outputs}
+    ${t.sampleRates ? `float sample_rates[] = {${t.sampleRates.join(',')}};` : ''}
     ${controls.filter(([, v]) => Array.isArray(v)).map(([name, v]) => `float control_${name}[] = {${v.join(',')}};`).join('\n')}
     ${setters(0)}
     probe_reset(&instance);
-    ${controls.some(([, v]) => Array.isArray(v)) ? step : `run(&instance, ${args(0)}, ${n});`}
+    ${t.sampleRates || controls.some(([, v]) => Array.isArray(v)) ? step : `run(&instance, ${args(0)}, ${n});`}
     ${checks}
     probe_reset(&instance);
     ${step}

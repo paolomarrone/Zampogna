@@ -19,49 +19,54 @@
 
 	const bs = require("./blocks").BlockTypes;
 	
-	function schedule (bdef, options) {
+	function schedule (bdef) {
+		const incoming = new Map();
+		for (const c of bdef.connections) {
+			if (incoming.has(c.out))
+				throw new Error("Multiple sources for input: " + c.out);
+			incoming.set(c.out, c.in);
+		}
+		function source(port) {
+			const p = incoming.get(port);
+			if (!p) throw new Error("Unconnected input: " + port);
+			return p.block;
+		}
+		const writers = new Map();
+		for (const b of bdef.blocks) {
+			if (!bs.MemoryWriterBlock.isPrototypeOf(b)) continue;
+			if (!writers.has(b.memoryblock)) writers.set(b.memoryblock, []);
+			writers.get(b.memoryblock).push(b);
+		}
 
-		const iconns = bdef.o_ports.map(p => bdef.connections.find(c => c.out == p));
-		const roots = iconns.map(c => c.in.block);
-		const scheduled_blocks = [];
-		
+		const roots = bdef.o_ports.map(source);
+		const scheduled = [];
+		const visited = new Set();
+		const visiting = new Set();
 		for (let i = 0; i < roots.length; i++) {
-			schedule_block (roots[i], []);
-		}
-
-		bdef.blocks.forEach(b => delete b.__visited__);
-
-		function schedule_block (b, stack) {
-			if (b == bdef)
-				return;
-
-			if (stack.includes(b))
-				throw new Error("Found loop while scheduling. Stack: " + stack.join(', ') + ". + " + b);
-			const nstack = stack.concat(b);
-
-			if (b.__visited__)
-				return;
-			b.__visited__ = true;
-
-			if (bs.MemoryReaderBlock.isPrototypeOf(b)) {
-				roots.push(b.memoryblock);
+			const stack = [{ block: roots[i], exit: false }];
+			while (stack.length) {
+				const { block: b, exit } = stack.pop();
+				if (b == bdef || visited.has(b)) continue;
+				if (exit) {
+					visiting.delete(b);
+					visited.add(b);
+					scheduled.push(b);
+					continue;
+				}
+				if (visiting.has(b))
+					throw new Error("Found loop while scheduling: " + [...visiting, b].join(', '));
+				visiting.add(b);
+				// Previous-state reads break temporal feedback. Storage initialization
+				// and writes are additional roots, not dependencies of the read value.
+				if (bs.MemoryReaderBlock.isPrototypeOf(b)) roots.push(b.memoryblock);
+				if (bs.MemoryBlock.isPrototypeOf(b)) roots.push(...(writers.get(b) || []));
+				stack.push({ block: b, exit: true });
+				const inputs = b.inputs();
+				for (let j = inputs.length - 1; j >= 0; j--)
+					stack.push({ block: source(inputs[j]), exit: false });
 			}
-
-			if (bs.MemoryBlock.isPrototypeOf(b)) {
-				const mwriters = bdef.blocks.filter(bb => bs.MemoryWriterBlock.isPrototypeOf(bb) && bb.memoryblock == b);
-				mwriters.forEach(mw => roots.push(mw));
-			}
-
-			b.inputs().forEach(p => {
-				const bb = bdef.connections.find(c => c.out == p).in.block;
-				schedule_block(bb, nstack);
-			});
-
-			scheduled_blocks.push(b);
 		}
-
-		return scheduled_blocks;
-
+		return scheduled;
 	}
 	exports["schedule"] = schedule;
 }());

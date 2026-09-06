@@ -37,7 +37,7 @@
 	};
 	const bs = require("./blocks").BlockTypes;
 	const TYPES = require("./types");
-	const RATES = require("./uprates");
+	const PHASES = require("./phases");
 
 	
 	function prependTabs (s, tabLevel) {
@@ -391,6 +391,11 @@
 
 			output_updates: new funcs.Statements(),
 		};
+		const phase_statements = new Map([
+			[PHASES.Constant, program.init], [PHASES.Init, program.init],
+			[PHASES.Fs, program.fs_update], [PHASES.Control, program.control_coeffs_update],
+			[PHASES.Reset, program.reset], [PHASES.Audio, program.audio_update],
+		]);
 
 		(function init_strings () {
 			bdef.blocks.forEach(b => {
@@ -411,7 +416,7 @@
 			if (b.ref.coeffs)
 				program.identifiers.add(b.ref.coeffs);
 		});
-		bdef.i_ports.filter(p => p.updaterate() == RATES.Control).forEach(p => {
+		bdef.i_ports.filter(p => p.phase == PHASES.Control).forEach(p => {
 			const id = program.identifiers.add(p.id);
 			const code = funcs.getObjectPrefix() + id;
 			program.parameters.push(id);
@@ -433,13 +438,13 @@
 		});
 		program.name = program.identifiers.add(bdef.id);
 		program.identifiers.add('_' + bdef.id);
-		bdef.i_ports.filter(p => p.updaterate() == RATES.Audio).forEach(p => {
+		bdef.i_ports.filter(p => p.phase == PHASES.Audio).forEach(p => {
 			const id = program.identifiers.add(p.id + '0');
 			const code = new LazyString(id, funcs.getArrayIndexer('i'));
 			program.audio_inputs.push(id);
 			p.code = code;
 		});
-		bdef.i_ports.filter(p => p.updaterate() == RATES.Fs).forEach(p => {
+		bdef.i_ports.filter(p => p.phase == PHASES.Fs).forEach(p => {
 			const id = program.identifiers.add(p.id);
 			const code = funcs.getObjectPrefix() + id;
 			p.code = code;
@@ -519,14 +524,12 @@
 
 		throw new Error("Unrecognized target language: " + t);
 
-		function dispatch (b, rate) {
+		function dispatch (b, phase) {
+			const whereAss = phase_statements.get(phase);
+			if (!whereAss) throw new Error("Missing or unknown execution phase: " + b);
 			// Values needed by another phase live in the instance. Avoid guessing
 			// their lifetime from consumers or regrouping the dependency schedule.
-			const locality = rate == RATES.Audio ? 2 : rate == RATES.Constant ? 0 : 1;
-			const whereAss = rate == RATES.Audio ? program.audio_update
-				: rate == RATES.Control ? program.control_coeffs_update
-				: rate == RATES.Reset ? program.reset
-				: rate == RATES.Fs ? program.fs_update : program.init;
+			const locality = phase == PHASES.Audio ? 2 : phase == PHASES.Constant ? 0 : 1;
 			const whereDec = locality == 2 ? program.audio_update
 				: locality == 1 ? program.coefficients : program.constants;
 			return { locality, whereDec, whereAss: guarded(whereAss, b) };
@@ -549,8 +552,8 @@
 			} };
 		}
 
-		function value_name(block, type, rate, preferred) {
-			const where = dispatch(block, rate);
+		function value_name(block, type, phase, preferred) {
+			const where = dispatch(block, phase);
 			const id = program.identifiers.add(preferred || block.id || 'v');
 			where.whereDec.add(new funcs.Declaration(false, false, type, false, id, true));
 			return { name: where.locality == 1 ? funcs.getObjectPrefix() + id : id, where };
@@ -558,12 +561,12 @@
 
 		function emit_value(block, expression) {
 			const port = block.o_ports[0];
-			const rate = port.updaterate();
-			if (rate == RATES.Constant) {
+			const phase = port.phase;
+			if (phase == PHASES.Constant) {
 				port.code = expression;
 				return;
 			}
-			const value = value_name(block, port.datatype(), rate);
+			const value = value_name(block, port.datatype, phase);
 			value.where.whereAss.add(new funcs.Assignment(value.name, expression, null));
 			port.code = new LazyString(value.name);
 		}
@@ -584,7 +587,7 @@
 				if (!b.static_size)
 					throw new Error("Memory size must be constant: " + b.id);
 				const id = program.identifiers.add(b.id);
-				const d = new funcs.MemoryDeclaration(b.datatype(), id, input_codes[0]);
+				const d = new funcs.MemoryDeclaration(b.datatype, id, input_codes[0]);
 				b.code.s = [funcs.getObjectPrefix(), id];
 
 				program.memory_declarations.add(d);
@@ -603,8 +606,8 @@
 			if (bs.MemoryWriterBlock.isPrototypeOf(b)) {
 				// Snapshot the destination index and next value before committing any
 				// memory writes, including writes to another element of this memory.
-				const index = value_name(b, TYPES.Int32, RATES.Audio, 'index');
-				const next = value_name(b, b.memoryblock.datatype(), RATES.Audio, 'next');
+				const index = value_name(b, TYPES.Int32, PHASES.Audio, 'index');
+				const next = value_name(b, b.memoryblock.datatype, PHASES.Audio, 'next');
 				index.where.whereAss.add(new funcs.Assignment(index.name, input_codes[0], null));
 				next.where.whereAss.add(new funcs.Assignment(next.name, input_codes[1], null));
 				const destination = new LazyString(b.memoryblock.code, funcs.getMemoryArrayIndexer(index.name));
@@ -612,7 +615,7 @@
 				return;
 			}
 			if (bs.ConstantBlock.isPrototypeOf(b)) {
-				op0.code.add(funcs.getConstant(b.value, b.datatype()));
+				op0.code.add(funcs.getConstant(b.value, b.datatype));
 				return;
 			}
 			if (bs.MaxBlock.isPrototypeOf(b)) {
@@ -657,7 +660,7 @@
 						const port = b.o_ports[index];
 						if (!port.code.toString()) {
 							const id = program.identifiers.add('result');
-							declarations.add(new funcs.Declaration(false, false, port.datatype(), false, id, true));
+							declarations.add(new funcs.Declaration(false, false, port.datatype, false, id, true));
 							port.code.add(persistent ? funcs.getObjectPrefix() + id : id);
 						}
 						return port.code;
@@ -670,8 +673,6 @@
 						throw new Error('Unknown C function argument: ' + arg);
 					});
 					const statement = new LazyString();
-					if (f.f_outputs.length > 1)
-						throw new Error('A C function can return only one value: ' + f.f_name);
 					if (f.f_outputs.length)
 						statement.add(output(Number(f.f_outputs[0].slice(1))), ' = ');
 					statement.add(f.f_name, '(');
@@ -680,22 +681,17 @@
 					statements.add(statement);
 				}
 
-				emit_call(cdef.funcs.init, program.coefficients, program.init, true);
-				emit_call(cdef.funcs.set_sample_rate, program.coefficients, program.fs_update, true);
-				emit_call(cdef.funcs.reset_coeffs, program.coefficients, program.reset, true);
-				emit_call(cdef.funcs.reset_state, program.coefficients, program.reset, true);
-
 				if (cdef.funcs.mem_req)
 					program.mem_reqs.push(cdef.funcs.mem_req.f_name + '(' + coeffs + ')');
 				if (cdef.funcs.mem_set)
 					program.mem_sets.push(cdef.funcs.mem_set.f_name + '(' + coeffs + ', ' + state + ', m)');
 
-				if (!cdef.funcs.process1)
-					throw new Error('process1 is required');
 				const runtime = guarded(program.audio_update, b);
-				for (const f of [...cdef.funcs.setters, cdef.funcs.update_coeffs_ctrl,
-					cdef.funcs.update_coeffs_audio, cdef.funcs.process1])
-					emit_call(f, program.audio_update, runtime, false);
+				for (const { func, phase } of b.callbacks) {
+					const persistent = phase != PHASES.Audio;
+					emit_call(func, persistent ? program.coefficients : program.audio_update,
+						persistent ? phase_statements.get(phase) : runtime, persistent);
+				}
 
 				return;
 			}
@@ -773,7 +769,7 @@
 				op0.code.add(w0, ' * ', w1);
 			}
 			else if (bs.DivisionBlock.isPrototypeOf(b)) {
-				if (t == 'MATLAB' && op0.datatype() == TYPES.Int32)
+				if (t == 'MATLAB' && op0.datatype == TYPES.Int32)
 					op0.code.add('int32(fix(double(', w0, ') / double(', w1, ')))');
 				else
 					op0.code.add(w0, ' / ', w1);
@@ -806,11 +802,11 @@
 					op0.code.add('(', w0, ' != 0)');
 			}
 			else if (bs.SelectBlock.isPrototypeOf(b)) {
-				if (t != 'MATLAB' && op0.updaterate() == RATES.Constant) {
+				if (t != 'MATLAB' && op0.phase == PHASES.Constant) {
 					op0.code.add('(', w0, ' ? ', w1, ' : ', w2, ')');
 					return;
 				}
-				const value = value_name(b, op0.datatype(), op0.updaterate());
+				const value = value_name(b, op0.datatype, op0.phase);
 				const branch = new funcs.IfElseBlock();
 				branch.condition.add(input_codes[0]);
 				branch.then_body.add(new funcs.Assignment(value.name, input_codes[1], null));

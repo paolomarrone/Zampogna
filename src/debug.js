@@ -50,15 +50,9 @@
 			b.inputs().forEach(p => p.__gvizid__ = u);
 			b.o_ports.forEach(p => p.__gvizid__ = u);
 
-			const ur = b.i_ports.concat(b.o_ports).map(x =>  {
-				try {
-					return x.updaterate();
-				}
-				catch (e) {
-					return { level: undefined };
-				}
-			}).reduce((a, b) => b.level > a.level ? b : a);
-			const urc = ur.level == undefined ? "red" : (ur.level == 0 ? "green" : (ur.level == 1 ? "yellow" : (ur.level == 2 ? "orange" : "blue")));
+			const colors = { constant: 'green', init: 'green', 'sample-rate': 'yellow',
+				control: 'orange', reset: 'purple', audio: 'blue' };
+			const urc = colors[b.phase] || 'red';
 			s += u + "[" + "label = \"" + (b.id || (b.value != undefined ? " " + b.value : null ) || b.operation || ".") + "\"" + "color=" + urc + "]; \n";
 			return s;
 		}

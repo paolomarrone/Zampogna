@@ -22,6 +22,7 @@
 	const syntax = require("../src/syntax");
 	const graph  = require("../src/graph");
 	const schdlr = require("../src/scheduler");
+	const phases = require("../src/phases");
 	const outgen = require("../src/outgen");
 	const dbg    = require("../src/debug");
 	const path   = require("path");
@@ -145,17 +146,19 @@
 
 		/***** SCHEDULE *****/
 		const s = schdlr.schedule(g, options);
-		ret.schedule = s;
 		debug.log("schedule complete");
-		debug.writeFile("05_schedule.txt",
-			s.map((b, i) => {
+		phases.analyze(g, s, options);
+		ret.schedule = s;
+		debug.log("execution phase analysis complete");
+		if (debug.enabled && debug.outdir) {
+			debug.writeFile("05_schedule.txt", s.map((b, i) => {
 				const id = b.id || b.operation || b.type || "block";
-				const ref = b.ref && b.ref.id ? b.ref.id : "";
-				const ur = b.o_ports && b.o_ports.length > 0
-					? b.o_ports[0].updaterate().toString()
-					: (b.i_ports && b.i_ports.length > 0 ? b.i_ports[0].updaterate().toString() : "N/A");
-				return (i + "").padStart(4, "0") + " | " + id + (ref ? (" (" + ref + ")") : "") + " | " + ur;
+				const ref = b.ref && b.ref.id ? " (" + b.ref.id + ")" : "";
+				const outputs = b.o_ports.map(p => p.phase).join(', ');
+				return String(i).padStart(4, "0") + " | " + id + ref + " | " + (outputs || b.phase);
 			}).join("\n") + "\n");
+			debug.writeFile("05_graph_scheduled.dot", dbg.graphToGraphviz(g));
+		}
 		if (shouldStop("schedule"))
 			return maybeReturnAt("schedule");
 

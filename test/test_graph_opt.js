@@ -33,10 +33,10 @@ const constants = compileGraph(`a, b, c, d, e = probe(x) {
 }`);
 const zeros = constants.blocks.filter(b => bs.ConstantBlock.isPrototypeOf(b));
 assert.strictEqual(zeros.length, 4);
-assert(zeros.some(b => b.datatype() === TYPES.Float32 && Object.is(b.value, 0)));
-assert(zeros.some(b => b.datatype() === TYPES.Float32 && Object.is(b.value, -0)));
-assert(zeros.some(b => b.datatype() === TYPES.Int32 && b.value === 0));
-assert(zeros.some(b => b.datatype() === TYPES.Bool && b.value === false));
+assert(zeros.some(b => b.datatype === TYPES.Float32 && Object.is(b.value, 0)));
+assert(zeros.some(b => b.datatype === TYPES.Float32 && Object.is(b.value, -0)));
+assert(zeros.some(b => b.datatype === TYPES.Int32 && b.value === 0));
+assert(zeros.some(b => b.datatype === TYPES.Bool && b.value === false));
 
 // A graph producer can have several consumers. Removing -(-x) must preserve
 // the shared -x for the other output, even when blocks are in reverse order.
@@ -84,8 +84,8 @@ for (const remove_dead_graph of [false, true]) {
             const source = edges[0].in.block;
             assert(source === g || (schedule.indexOf(source) >= 0 && schedule.indexOf(source) < i));
         }
-        for (const guard of b.guard_ports) assert.strictEqual(guard.datatype(), TYPES.Bool);
-        for (const p of b.o_ports) assert.notStrictEqual(p.datatype(), TYPES.Generic);
+        for (const guard of b.guard_ports) assert.strictEqual(guard.datatype, TYPES.Bool);
+        for (const p of b.o_ports) assert.notStrictEqual(p.datatype, TYPES.Generic);
     }
 }
 console.log('Local optimizations, reachability and scheduling invariants: passed');

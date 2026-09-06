@@ -19,7 +19,6 @@
 
 	const TYPES = require("./types");
 	const bs = require("./blocks").BlockTypes;
-	const RATES = require("./uprates");
 	const util = require("./util");
 
 	function ASTToGraph (root, options) {
@@ -33,7 +32,7 @@
 			return found;
 		}
 		function set_output_types(block, types) {
-			types.forEach((type, i) => block.o_ports[i].datatype = () => type);
+			types.forEach((type, i) => block.o_ports[i].datatype = type);
 		}
 
 		const bdef = Object.create(bs.CompositeBlock);
@@ -42,14 +41,13 @@
 		bdef.inputs_N = 1; // fs
 		bdef.outputs_N = 0;
 		bdef.init();
-		bdef.i_ports[0].datatype = () => TYPES.Float32;
-		bdef.i_ports[0].updaterate = () => RATES.Fs;
+		bdef.i_ports[0].datatype = TYPES.Float32;
 		bdef.i_ports[0].id = "fs";
 
 		(function create_fs (bdef) {
 			const fs = Object.create(bs.VarBlock);
 			fs.id = "fs";
-			fs.datatype = () => TYPES.Float32;
+			fs.datatype = TYPES.Float32;
 			fs.init();
 			const c = Object.create(bs.CompositeBlock.Connection);
 			c.in = bdef.i_ports[0];
@@ -70,7 +68,7 @@
 
 		convert_statements(root.statements, bdef);
 
-		bdef.propagateDataTypes();
+		bdef.connectTypes();
 
 		// Resolution has already selected a symbol. Linking waits until every
 		// definition has a graph, so forward and captured calls use the same path.
@@ -96,11 +94,11 @@
 			bdef.init();
 			bdef_node.inputs.forEach((input, i) => {
 				const t = input.symbol.datatype;
-				bdef.i_ports[i].datatype = () => t;
+				bdef.i_ports[i].datatype = t;
 			});
 			bdef_node.outputs.forEach((output, i) => {
 				const t = output.symbol.datatype;
-				bdef.o_ports[i].datatype = () => t;
+				bdef.o_ports[i].datatype = t;
 			});
 
 			// Adding input/outputs
@@ -109,7 +107,7 @@
 				v.id = p.symbol.id;
 				bindings.set(p.symbol, { r: v, bd: bdef });
 				const t = p.symbol.datatype;
-				v.datatype = () => t;
+				v.datatype = t;
 				v.init();
 
 				const c = Object.create(bs.CompositeBlock.Connection);
@@ -125,7 +123,7 @@
 				v.id = p.symbol.id;
 				bindings.set(p.symbol, { r: v, bd: bdef });
 				const t = p.symbol.datatype;
-				v.datatype = () => t;
+				v.datatype = t;
 				v.init();
 
 				const c = Object.create(bs.CompositeBlock.Connection);
@@ -152,7 +150,7 @@
 					v.id = o.symbol.id;
 					bindings.set(o.symbol, { r: v, bd: bdef });
 					const t = o.symbol.datatype;
-					v.datatype = () => t;
+					v.datatype = t;
 					v.init();
 					bdef.blocks.push(v);
 				});
@@ -164,9 +162,8 @@
 				m.id = s.symbol.id;
 				bindings.set(s.symbol, { r: m, bd: bdef });
 				const t = s.symbol.datatype;
+				m.datatype = t;
 				m.init();
-				m.datatype = () => t;
-				//m.i_ports[1].datatype = () => t;
 				bdef.blocks.push(m);
 			});
 
@@ -275,6 +272,7 @@
 					else_branch.init();
 					const values = lower(index + 1, else_branch)[1];
 					values.forEach((value, i) => {
+						else_branch.o_ports[i].datatype = value.datatype;
 						const c = Object.create(bs.CompositeBlock.Connection);
 						c.in = value;
 						c.out = else_branch.o_ports[i];
@@ -295,7 +293,6 @@
 			ib.then_branch = then_branch_bdef;
 			ib.else_branch = else_branch_bdef;
 			ib.init();
-			ib.setOutputDatatype();
 			bdef.blocks.push(ib);
 
 			const cc = Object.create(bs.CompositeBlock.Connection);
@@ -353,9 +350,8 @@
 			case 'CONSTANT': {
 				const b = Object.create(bs.ConstantBlock);
 				b.value = expr_node.val;
+				b.datatype = expr_node.result_types[0];
 				b.init();
-				const type = expr_node.result_types[0];
-				b.datatype = () => type;
 				bdef.blocks.push(b);
 				return [[], b.o_ports];
 			}
@@ -399,6 +395,7 @@
 					branch.outputs_N = 1;
 					branch.init();
 					const value = convert_expr(expr, branch)[1][0];
+					branch.o_ports[0].datatype = value.datatype;
 					const edge = Object.create(bs.CompositeBlock.Connection);
 					edge.in = value;
 					edge.out = branch.o_ports[0];
@@ -492,20 +489,9 @@
 		if (props.length == 0) {
 			const v = Object.create(bs.VarBlock);
 			v.id = (block.id || block.value || block.operation) + "." + property;
+			v.datatype = property == 'fs' ? TYPES.Float32 : (block.o_ports[0] || block).datatype;
+			v.initialization = property == 'init';
 			v.init();
-			if (property == 'fs') {
-				v.datatype = () => TYPES.Float32;
-				v.i_ports[0].datatype = () => TYPES.Float32; // Check this
-			}
-			else {
-				const dto = (block.o_ports[0] || block);
-				v.datatype = function () {
-					return dto.datatype();
-				};
-				v.i_ports[0].datatype = function () {
-					return this.block.datatype();
-				};
-			}
 			const p = Object.create(bs.CompositeBlock.Property);
 			p.of = block;
 			p.type = property;
@@ -533,8 +519,8 @@
 	function find_initial_bdef (bdef, options) {
 		let bds = bdef.bdefs
 			.filter(bd => bd.id == options.initial_block_id)
-			.filter(bd => bd.i_ports.map(p => p.datatype()).every(d => d == TYPES.Float32))
-			.filter(bd => bd.o_ports.map(p => p.datatype()).every(d => d == TYPES.Float32));
+			.filter(bd => bd.i_ports.map(p => p.datatype).every(d => d == TYPES.Float32))
+			.filter(bd => bd.o_ports.map(p => p.datatype).every(d => d == TYPES.Float32));
 		if (bds.length == 1)
 			return bds[0];
 		bds = bds.filter(bd => bd.inputs_N == options.initial_block_inputs_n);
@@ -552,8 +538,8 @@
 		const pfs = bdef.i_ports[0];
 		bdef.createPorts(bdef.inputs_N + 1, bdef.outputs_N);
 		bdef.i_ports[0] = pfs;
-		bdef.i_ports.forEach(p => p.datatype = () => TYPES.Float32);
-		bdef.o_ports.forEach(p => p.datatype = () => TYPES.Float32);
+		bdef.i_ports.forEach(p => p.datatype = TYPES.Float32);
+		bdef.o_ports.forEach(p => p.datatype = TYPES.Float32);
 		bdef.i_ports.forEach((p, i) => {
 			if (i == 0)
 				return;
@@ -625,7 +611,7 @@
 			block.guard_ports = [];
 		}
 
-		bdef.propagateDataTypes();
+		bdef.connectTypes();
 		normalize_properties(bdef);
 
 		(function validate (bdef) {
@@ -652,10 +638,7 @@
 			});
 		})(bdef);
 
-		bdef.propagateDataTypes();
-
-		// It's important to call this after flattening/cloning
-		setUpdateRate(bdef, options);
+		bdef.connectTypes();
 
 	}
 
@@ -709,7 +692,7 @@
 
 		const b0 = Object.create(bs.ConstantBlock);
 		b0.value = 0;
-		b0.datatype = () => TYPES.Float32;
+		b0.datatype = TYPES.Float32;
 		b0.init();
 		bdef.blocks.push(b0);
 
@@ -769,7 +752,7 @@
 					return b0;
 				
 				const max = Object.create(bs.MaxBlock);
-				max.datatype = () => TYPES.Float32;
+				max.datatype = TYPES.Float32;
 				max.createPorts(b.i_ports.length, 1);
 				max.init();
 				for (let i = 0; i < b.i_ports.length; i++) {
@@ -826,6 +809,7 @@
 				b.setToBeCloned();
 				const bb = b.clone();
 				bb.guard_ports = []; // Initialization does not run on the branch clock.
+				bb.initialization = true;
 
 				b.i_ports.forEach((pp, i) => {
 					const c = bdef.connections.find(c => c.out == pp);
@@ -853,40 +837,6 @@
 			}
 
 		}
-	}
-
-	function setUpdateRate (bdef, options) {
-		options.control_inputs.forEach(c => {
-			const p = bdef.i_ports.find(p => p.id == c);
-			if (!p)
-				throw new Error("No input with such id. " + bdef.i_ports.join());
-			p.updaterate = () => RATES.Control;
-		});
-		bdef.i_ports.forEach(p => {
-			if (!options.control_inputs.includes(p.id))
-				p.updaterate = () => RATES.Audio;
-		});
-		bdef.i_ports[0].updaterate = () => RATES.Fs;
-
-		// Every memory read is a snapshot of this sample's old state. Guarded
-		// computations run in the sample loop, including their first activation.
-		for (const block of bdef.blocks) {
-			if (bs.MemoryReaderBlock.isPrototypeOf(block) || block.guard_ports.length > 0
-				|| (bs.CallBlock.isPrototypeOf(block) && block.type == 'cdef'))
-				block.o_ports.forEach(p => p.updaterate = () => RATES.Audio);
-		}
-		// C outputs belong to the phase that produces them. In particular, reset
-		// results must be available to memory initializers before the sample loop.
-		for (const b of bdef.blocks.filter(b => bs.CallBlock.isPrototypeOf(b) && b.type == 'cdef')) {
-			for (const [name, rate] of [['init', RATES.Constant], ['set_sample_rate', RATES.Fs],
-				['reset_coeffs', RATES.Reset], ['reset_state', RATES.Reset]]) {
-				const f = b.ref.funcs[name];
-				if (!f) continue;
-				for (const arg of [...f.f_outputs, ...f.f_inputs.filter(arg => /^o[0-9]+$/.test(arg))])
-					b.o_ports[Number(arg.slice(1))].updaterate = () => rate;
-			}
-		}
-		bdef.propagateUpdateRates();
 	}
 
 	// Assuming bdef flattened
@@ -921,20 +871,20 @@
 				if (options.optimizations.negative_negative
 					&& Object.getPrototypeOf(b) == Object.getPrototypeOf(source.block)
 					&& same_guards(b, source.block)
-					&& (bs.LogicalNotBlock.isPrototypeOf(b) || b.o_ports[0].datatype() == TYPES.Float32)) {
+					&& (bs.LogicalNotBlock.isPrototypeOf(b) || b.o_ports[0].datatype == TYPES.Float32)) {
 					// Signed integer negation can overflow at INT_MIN. Keep it explicit.
 					replace(b, input(source.block.i_ports[0]));
 					changed = true;
 				} else if (options.optimizations.negative_consts && bs.UminusBlock.isPrototypeOf(b)
 					&& bs.ConstantBlock.isPrototypeOf(source.block)) {
 					const value = source.block.value;
-					const type = source.block.datatype();
+					const type = source.block.datatype;
 					if (!Number.isFinite(value) || (type == TYPES.Int32
 						&& (!Number.isInteger(value) || value <= -2147483648 || value > 2147483647)))
 						continue;
 					const constant = Object.create(bs.ConstantBlock);
 					constant.value = type == TYPES.Int32 && value == 0 ? 0 : -value;
-					constant.datatype = () => type;
+					constant.datatype = type;
 					constant.init();
 					bdef.blocks.push(constant);
 					replace(b, constant.o_ports[0]);
@@ -948,7 +898,7 @@
 			for (const b of bdef.blocks.slice()) {
 				if (!bs.ConstantBlock.isPrototypeOf(b)) continue;
 				// Object.is keeps +0 and -0 distinct, and types never share a node.
-				const same = constants.find(c => c.datatype() == b.datatype() && Object.is(c.value, b.value));
+				const same = constants.find(c => c.datatype == b.datatype && Object.is(c.value, b.value));
 				if (same) replace(b, same.o_ports[0]);
 				else constants.push(b);
 			}
@@ -974,8 +924,7 @@
 			bdef.connections = bdef.connections.filter(c => (c.in.block == bdef || live.has(c.in.block)) && (c.out.block == bdef || live.has(c.out.block)));
 			bdef.properties = bdef.properties.filter(p => live.has(p.block) && live.has(p.of));
 		}
-		bdef.propagateDataTypes();
-		setUpdateRate(bdef, options);
+		bdef.connectTypes();
 	}
 
 	// Hierarchly find bdef that contains block
