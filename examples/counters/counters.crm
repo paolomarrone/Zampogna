@@ -12,11 +12,11 @@ A, T, F = counters(x) {
 		ca = delay(ca) + 1.0
 		ca.init = 0.0
 		T = ca
-		F = delay(F)
+		F = 0.0
 	} else {
 		cb = delay(cb) + 1.0
 		cb.init = 0.0
-		T = delay(T)
+		T = 0.0
 		F = cb
 	}
 	A.init = 0.0

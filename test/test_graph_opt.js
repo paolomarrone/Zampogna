@@ -1,289 +1,91 @@
-#!/bin/node
+#!/usr/bin/env node
+'use strict';
 
-(function() {
+const assert = require('assert');
+const z = require('../src/zampogna');
+const bs = require('../src/blocks').BlockTypes;
+const TYPES = require('../src/types');
+const graph = require('../src/graph');
 
-	console.log("--- GRAPH OPT TESTS --- START");
+function compileGraph(code, optimizations, stage = 'optimize') {
+    const options = { initial_block_id: 'probe', debug_last_step: stage, debug_return_intermediates: true };
+    if (optimizations !== undefined) options.optimizations = optimizations;
+    return z.compile(code, null, options).graph;
+}
+const count = (g, type) => g.blocks.filter(b => type.isPrototypeOf(b)).length;
 
-	const path = require("path");
-	const fs = require("fs");
-	const z = require("../src/zampogna");
-	const util = require("../src/util");
-	const bs = require("../src/blocks").BlockTypes;
-	const TYPES = require("../src/types");
+const doubleNegative = 'y = probe(x) { y = -(-(-(-x))); }';
+assert.strictEqual(count(compileGraph(doubleNegative, {}), bs.UminusBlock), 4);
+assert.strictEqual(count(compileGraph(doubleNegative), bs.UminusBlock), 0);
+assert.strictEqual(count(compileGraph('y = probe(x) { y = float(!(!(x > 0.0))); }'), bs.LogicalNotBlock), 0);
+// Removing signed integer negations could hide overflow for INT_MIN.
+assert.strictEqual(count(compileGraph('y = probe(x) { y = float(-(-int(x))); }'), bs.UminusBlock), 2);
 
-	const filereader = util.get_filereader([
-		path.join(__dirname, "crm"),
-		path.join(__dirname, "c")
-	]);
+const negativeConstants = 'y = probe(x) { y = x + -(-(-3.0)); }';
+assert.strictEqual(count(compileGraph(negativeConstants, { remove_dead_graph: true, negative_consts: true }), bs.UminusBlock), 0);
+for (const expr of ['-(-2147483647 - 1)', '-2147483648']) {
+    const g = compileGraph(`y = probe(x) { y = x + float(${expr}); }`, { negative_consts: true });
+    assert.strictEqual(count(g, bs.UminusBlock), 1);
+}
 
-	const all_off = {
-		remove_dead_graph: false,
-		negative_negative: false,
-		negative_consts: false,
-		unify_consts: false,
-		remove_useless_vars: false,
-		merge_equal_pure_blocks: false,
-		merge_vars: false,
-		merge_max_blocks: false,
-		simplifly_max_blocks1: false,
-		simplifly_max_blocks2: false,
-		lazyfy_subexpressions_rates: false,
-		lazyfy_subexpressions_controls: false,
-	};
-	function onlyOpt(name) {
-		const o = Object.assign({}, all_off);
-		o[name] = true;
-		return o;
-	}
-	function optsWithPrereq(name, prereqs = []) {
-		const o = Object.assign({}, all_off);
-		prereqs.forEach(p => o[p] = true);
-		o[name] = true;
-		return o;
-	}
+const constants = compileGraph(`a, b, c, d, e = probe(x) {
+    a = 0.0; b = -0.0; c = float(0); d = float(false); e = 0.0;
+}`);
+const zeros = constants.blocks.filter(b => bs.ConstantBlock.isPrototypeOf(b));
+assert.strictEqual(zeros.length, 4);
+assert(zeros.some(b => b.datatype() === TYPES.Float32 && Object.is(b.value, 0)));
+assert(zeros.some(b => b.datatype() === TYPES.Float32 && Object.is(b.value, -0)));
+assert(zeros.some(b => b.datatype() === TYPES.Int32 && b.value === 0));
+assert(zeros.some(b => b.datatype() === TYPES.Bool && b.value === false));
 
-	const Tests = [
-		{
-			name: "remove_dead_graph removes unused branch",
-			code: `
-				y = asd (x) {
-					u = x + 1.0
-					t = x * 2.0
-					y = t
-				}
-			`,
-			optimizations: onlyOpt("remove_dead_graph"),
-			check: (g) => !g.blocks.some(b => bs.VarBlock.isPrototypeOf(b) && b.id == "u")
-		},
-		{
-			name: "negative_negative simplifies -(-x)",
-			code: `
-				y = asd (x) {
-					y = -(-x)
-				}
-			`,
-			optimizations: onlyOpt("negative_negative"),
-			check: (g) => g.blocks.filter(b => bs.UminusBlock.isPrototypeOf(b)).length == 0
-		},
-		{
-			name: "negative_consts folds unary minus constant",
-			code: `
-				y = asd () {
-					y = -5.0
-				}
-			`,
-			optimizations: onlyOpt("negative_consts"),
-			check: (g) =>
-				g.blocks.filter(b => bs.UminusBlock.isPrototypeOf(b)).length == 0 &&
-				g.blocks.some(b => bs.ConstantBlock.isPrototypeOf(b) && b.datatype() == TYPES.Float32 && b.value == -5.0)
-		},
-		{
-			name: "unify_consts merges equal constants",
-			code: `
-				y = asd (x) {
-					a = x + 1.0
-					y = a + 1.0
-				}
-			`,
-			optimizations: onlyOpt("unify_consts"),
-			check: (g) => g.blocks.filter(b => bs.ConstantBlock.isPrototypeOf(b) && b.datatype() == TYPES.Float32 && b.value == 1.0).length == 1
-		},
-		{
-			name: "remove_useless_vars removes compiler temp pass-through var",
-			code: `
-				y = asd (x) {
-					x__tmp = x
-					y = x__tmp
-				}
-			`,
-			optimizations: onlyOpt("remove_useless_vars"),
-			check: (g) => !g.blocks.some(b => bs.VarBlock.isPrototypeOf(b) && b.id == "x__tmp")
-		},
-		{
-			name: "merge_equal_pure_blocks merges duplicated arithmetic blocks",
-			code: `
-				y = asd (x, v) {
-					a = x * v
-					b = x * v
-					y = a + b
-				}
-			`,
-			optimizations: onlyOpt("merge_equal_pure_blocks"),
-			check: (g) => g.blocks.filter(b => bs.MulBlock.isPrototypeOf(b)).length == 1
-		},
-		{
-			name: "merge duplicate vars with same source",
-			code: `
-				y = asd (x) {
-					a = x
-					b = x
-					y = a + b
-				}
-			`,
-			optimizations: onlyOpt("merge_vars"),
-			check: (g) => countVarsByIds(g, ["a", "b"]) == 1
-		},
-		{
-			name: "merge_vars may merge property-owner vars (rewires property.of)",
-			code: `
-				y = asd (x) {
-					a = x
-					b = x
-					a.init = 0.0
-					y = a + b
-				}
-			`,
-			optimizations: onlyOpt("merge_vars"),
-			check: (g) => countVarsByIds(g, ["a", "b"]) == 1
-		},
-		{
-			name: "merge_vars does not merge property carrier vars",
-			code: `
-				y = asd (x) {
-					a = x
-					b = x
-					a.init = 0.0
-					y = a.init + b.init
-				}
-			`,
-			optimizations: onlyOpt("merge_vars"),
-			check: (g) => {
-				const propVars = g.blocks.filter(b =>
-					bs.VarBlock.isPrototypeOf(b) &&
-					g.properties.some(p => p.block == b)
-				);
-				return propVars.length >= 2;
-			}
-		},
-		{
-			name: "merge_max_blocks flattens nested max",
-			code: `
-				y = asd (x, v) {
-					t = x * (v + 1.0)
-					y = t
-					fs_t = t.fs
-				}
-			`,
-			optimizations: optsWithPrereq("merge_max_blocks", ["remove_useless_vars"]),
-			check: (g) => {
-				const ms = g.blocks.filter(b => bs.MaxBlock.isPrototypeOf(b));
-				if (ms.length == 0)
-					return false;
-				const hasNestedMax = g.connections.some(c =>
-					bs.MaxBlock.isPrototypeOf(c.out.block) &&
-					bs.MaxBlock.isPrototypeOf(c.in.block)
-				);
-				return !hasNestedMax;
-			}
-		},
-		{
-			name: "simplifly_max_blocks1 removes zero input",
-			code: `
-				y = asd (x) {
-					t = x + 1.0
-					y = t
-					fs_t = t.fs
-				}
-			`,
-			optimizations: optsWithPrereq("simplifly_max_blocks1", ["remove_useless_vars"]),
-			check: (g) => {
-				const ms = g.blocks.filter(b => bs.MaxBlock.isPrototypeOf(b));
-				if (ms.length == 0)
-					return false;
-				const hasZeroConstInput = g.connections.some(c =>
-					bs.MaxBlock.isPrototypeOf(c.out.block) &&
-					bs.ConstantBlock.isPrototypeOf(c.in.block) &&
-					c.in.block.value == 0
-				);
-				return !hasZeroConstInput;
-			}
-		},
-		{
-			name: "simplifly_max_blocks2 bypasses single-input max",
-			code: `
-				y = asd (x) {
-					t = x
-					y = t
-					fs_t = t.fs
-				}
-			`,
-			optimizations: onlyOpt("simplifly_max_blocks2"),
-			check: (g) => g.blocks.filter(b => bs.MaxBlock.isPrototypeOf(b)).length == 0
-		},
-		{
-			name: "lazyfy_subexpressions_rates inserts temp var for rate mismatch",
-			code: `
-				y = asd (x, v, w) {
-					y = x * (v + w)
-				}
-			`,
-			control_inputs: ["v", "w"],
-			optimizations: onlyOpt("lazyfy_subexpressions_rates"),
-			check: (g) => g.blocks.some(b => bs.VarBlock.isPrototypeOf(b) && (b.id || "").startsWith("x__"))
-		},
-		{
-			name: "lazyfy_subexpressions_controls no-op placeholder does not crash",
-			code: `
-				y = asd (x, v) {
-					t = x + v
-					y = t
-				}
-			`,
-			control_inputs: ["v"],
-			optimizations: onlyOpt("lazyfy_subexpressions_controls"),
-			check: (_g) => true
-		}
-	];
+// A graph producer can have several consumers. Removing -(-x) must preserve
+// the shared -x for the other output, even when blocks are in reverse order.
+const shared = compileGraph('a, b = probe(x) { a = x; b = -(-x); }', {}, 'flatten');
+const minuses = shared.blocks.filter(b => bs.UminusBlock.isPrototypeOf(b));
+const inner = minuses.find(b => !bs.UminusBlock.isPrototypeOf(shared.connections.find(c => c.out === b.i_ports[0]).in.block));
+const a = shared.blocks.find(b => b.id === 'a');
+shared.connections.find(c => c.out === a.i_ports[0]).in = inner.o_ports[0];
+shared.blocks.reverse();
+graph.optimize(shared, { control_inputs: [], optimizations: { remove_dead_graph: true, negative_negative: true } });
+assert.strictEqual(count(shared, bs.UminusBlock), 1);
+assert(shared.blocks.includes(inner));
+assert.strictEqual(shared.connections.find(c => c.out === a.i_ports[0]).in, inner.o_ports[0]);
 
-	const outputDir = './output';
-	if (!fs.existsSync(outputDir))
-		fs.mkdirSync(outputDir);
+const code = `float y = delay(float x) {
+    mem[1] float s; s.init = x; y = s[0]; s[0] = x;
+}
+a, b = probe(x, c) {
+    unused = x * 123.0;
+    bool gate = c > 0.5;
+    a = delay(x);
+    b = if(gate) { b = delay(x); } else { b = -1.0; };
+}`;
 
-	function countVarsByIds (g, ids) {
-		return g.blocks.filter(b => bs.VarBlock.isPrototypeOf(b) && ids.includes(b.id)).length;
-	}
+for (const remove_dead_graph of [false, true]) {
+    const { graph: g, schedule } = z.compile(code, null, {
+        initial_block_id: 'probe', optimizations: { remove_dead_graph },
+        debug_last_step: 'schedule', debug_return_intermediates: true,
+    });
+    assert.strictEqual(g.blocks.some(b => b.id === 'unused'), !remove_dead_graph);
+    assert.strictEqual(g.blocks.filter(b => bs.MemoryBlock.isPrototypeOf(b)).length, 2);
+    const writers = g.blocks.filter(b => bs.MemoryWriterBlock.isPrototypeOf(b));
+    assert.deepStrictEqual(writers.map(b => b.guard_ports.length).sort(), [0, 1]);
 
-	const Results = [];
-
-	for (let i = 0; i < Tests.length; i++) {
-		let ok = true;
-		let err = "";
-		try {
-			const r = z.compile(Tests[i].code, filereader, {
-				initial_block_id: "asd",
-				control_inputs: Tests[i].control_inputs || [],
-				optimizations: Tests[i].optimizations,
-				debug_mode: true,
-				debug_output_dir: path.join(outputDir, "GO" + i + "_debug"),
-				debug_last_step: "optimize",
-				debug_return_intermediates: true,
-			});
-			if (!r || !r.graph)
-				throw new Error("Missing graph in compile return");
-			if (!Tests[i].check(r.graph))
-				throw new Error("Assertion failed");
-		}
-		catch (e) {
-			ok = false;
-			err = e;
-		}
-		Results.push({ i, ok, err });
-	}
-
-	for (let r of Results) {
-		if (!r.ok) {
-			console.log("Graph opt test n. " + r.i + " failed: " + Tests[r.i].name);
-			console.log("Code:\n" + Tests[r.i].code);
-			console.log("Error:");
-			console.log(r.err);
-		}
-	}
-
-	const passed = Results.filter(r => r.ok).length;
-	console.log("Graph opt tests passed: " + passed + " / " + Tests.length);
-	if (passed != Tests.length)
-		process.exitCode = 1;
-
-	console.log("--- GRAPH OPT TESTS --- END");
-
-}());
+    // Every guard is an ordinary, typed dependency whose value precedes its use.
+    const blocks = new Set([g, ...g.blocks]);
+    for (const c of g.connections) {
+        assert(blocks.has(c.in.block) && blocks.has(c.out.block), 'dangling connection');
+        assert([...c.out.block.inputs(), ...c.out.block.o_ports].includes(c.out));
+    }
+    for (const [i, b] of schedule.entries()) {
+        for (const p of b.inputs()) {
+            const edges = g.connections.filter(c => c.out === p);
+            assert.strictEqual(edges.length, 1, 'each input has one source');
+            const source = edges[0].in.block;
+            assert(source === g || (schedule.indexOf(source) >= 0 && schedule.indexOf(source) < i));
+        }
+        for (const guard of b.guard_ports) assert.strictEqual(guard.datatype(), TYPES.Bool);
+        for (const p of b.o_ports) assert.notStrictEqual(p.datatype(), TYPES.Generic);
+    }
+}
+console.log('Local optimizations, reachability and scheduling invariants: passed');

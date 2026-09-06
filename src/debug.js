@@ -47,7 +47,7 @@
 		function convertBlock (b) {
 			let s = "";
 			let u = (b.o_ports[0] || b.i_ports[0]).__gvizid__;
-			b.i_ports.forEach(p => p.__gvizid__ = u);
+			b.inputs().forEach(p => p.__gvizid__ = u);
 			b.o_ports.forEach(p => p.__gvizid__ = u);
 
 			const ur = b.i_ports.concat(b.o_ports).map(x =>  {
@@ -67,7 +67,7 @@
 			bdef.i_ports.forEach(p => p.__gvizid__ = getUID());
 			bdef.o_ports.forEach(p => p.__gvizid__ = getUID());
 			bdef.blocks.forEach(b => {
-				b.i_ports.forEach(p => p.__gvizid__ = getUID());
+				b.inputs().forEach(p => p.__gvizid__ = getUID());
 				b.o_ports.forEach(p => p.__gvizid__ = getUID());
 			});
 			bdef.bdefs.forEach(bd => bdefsetUID(bd));
@@ -76,7 +76,7 @@
 			bdef.i_ports.forEach(p => delete p.__gvizid__);
 			bdef.o_ports.forEach(p => delete p.__gvizid__);
 			bdef.blocks.forEach(b => {
-				b.i_ports.forEach(p => delete p.__gvizid__);
+				b.inputs().forEach(p => delete p.__gvizid__);
 				b.o_ports.forEach(p => delete p.__gvizid__);
 			});
 			bdef.bdefs.forEach(bd => bdefremUID(bd));

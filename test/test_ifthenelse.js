@@ -29,20 +29,6 @@
 		return !!(e && e.code == "EPERM" && (e.path == "octave" || e.syscall == "spawnSync octave"));
 	}
 
-	const default_optimizations = {
-		remove_dead_graph: true,
-		negative_negative: true,
-		negative_consts: true,
-		unify_consts: true,
-		remove_useless_vars: true,
-		merge_equal_pure_blocks: true,
-		merge_vars: true,
-		merge_max_blocks: true,
-		simplifly_max_blocks1: true,
-		simplifly_max_blocks2: true,
-		lazyfy_subexpressions_rates: true,
-		lazyfy_subexpressions_controls: true,
-	};
 
 	const Tests = [
 		{
@@ -93,7 +79,7 @@
 			initial_block_id: "counter",
 			matlabScript: [
 				"x  = [0 0 0 1 1 0 0 1 1 0 0 1 1];",
-				"Ey = [0 0 0 1 2 0 0 1 2 0 0 1 2];",
+				"Ey = [0 0 0 1 2 0 0 3 4 0 0 5 6];",
 				"[y] = counter(x, 48000);",
 				"assert(isequal(y, Ey));",
 			]
@@ -171,54 +157,7 @@
 		},
 		{
 			name: "lp1_bypass example behavior (Octave/MATLAB)",
-			code: `
-				float y = delay (float x) {
-					mem[1] float s
-					y = s[0]
-					s[0] = x
-					s.init = x
-				}
-
-				pi = 3.141592653589793
-				pi2 = pi * 2.0
-
-				# Backward Euler method
-				y = lp1(x, s) {
-					fc = 1000.0
-					B0 = (pi2 * fc) / (fs + pi2 * fc)
-					A1 = -fs / (fs + pi2 * fc)
-					y = B0 * x - A1 * s
-				}
-
-				y = lp1_bypass(x, bypass) {
-
-					# We use x_z1A to avoid delay updates when it won't be needed in the next execution.
-					# This is a program logic info and cannot be known by the compiler.
-
-					x_z1A = x_z1
-					bypass_z1 = delay(bypass)
-
-					y, x_z1 = if (bypass > 0.5) {
-						y = x
-						x_z1 = delay(x)
-					}
-					else {
-						s = if (bypass_z1 > 0.5) {
-							s = x_z1A
-						}
-						else {
-							s = t_z1
-						}
-						t = lp1(x, s)
-						t.init = 0.0
-						t_z1 = delay(t)
-						y = t
-						x_z1 = delay(x_z1)
-					}
-					x_z1.init = 0.0
-				}
-
-			`,
+			inputFile: path.join(__dirname, "..", "examples", "lp1_bypass", "lp1_bypass.crm"),
 			initial_block_id: "lp1_bypass",
 			matlabScript: [
 				"x = [1 2 3 4 5 6 7 8 9 10];",
@@ -291,7 +230,6 @@
 			const files = z.compile(code, filereader, {
 				initial_block_id: t.initial_block_id,
 				target_language: "MATLAB",
-				optimizations: default_optimizations,
 				debug_mode: true,
 				debug_output_dir: path.join(outdir, "_debug"),
 			});

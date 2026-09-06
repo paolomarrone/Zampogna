@@ -242,8 +242,6 @@
 	function convert_if_then_elses (if_node, outputs, bdef) {
 		if (!if_node.branches || if_node.branches.length < 2)
 			throw new Error("IF_THEN_ELSES requires at least if and else branches");
-		if (if_node.branches.length != 2)
-			throw new Error("ELSE IF not implemented in graph conversion yet");
 
 		const outputsTemplate = outputs.map(o => ({
 			name: 'VARIABLE',
@@ -253,12 +251,24 @@
 
 		const cond_expr_ports = convert_expr(if_node.branches[0].condition, bdef);
 		const then_branch_bdef = convert_if_branch_bdef(if_node.branches[0], outputsTemplate, bdef);
-		const else_branch_bdef = convert_if_branch_bdef(if_node.branches[1], outputsTemplate, bdef);
+		// Else-if is a nested conditional, so later conditions also run only
+		// when the preceding conditions were false.
+		const otherwise = if_node.branches.length == 2 ? if_node.branches[1] : {
+			block: { statements: [{ name: 'ASSIGNMENT', type: 'IF_THEN_ELSES',
+				outputs: outputsTemplate,
+				expr: { branches: if_node.branches.slice(1) }
+			}] }
+		};
+		const else_branch_bdef = convert_if_branch_bdef(otherwise, outputsTemplate, bdef);
+		return connect_conditional(cond_expr_ports[1][0], then_branch_bdef, else_branch_bdef, bdef);
+	}
+
+	function connect_conditional(condition, then_branch_bdef, else_branch_bdef, bdef) {
 		bdef.bdefs.push(then_branch_bdef);
 		bdef.bdefs.push(else_branch_bdef);
 
 		const ib = Object.create(bs.IfthenelseBlock);
-		ib.nOutputs = outputs.length;
+		ib.nOutputs = then_branch_bdef.o_ports.length;
 		ib.then_branch = then_branch_bdef;
 		ib.else_branch = else_branch_bdef;
 		ib.init();
@@ -266,7 +276,7 @@
 		bdef.blocks.push(ib);
 
 		const cc = Object.create(bs.CompositeBlock.Connection);
-		cc.in = cond_expr_ports[1][0];
+		cc.in = condition;
 		cc.out = ib.i_ports[0];
 		bdef.connections.push(cc);
 
@@ -286,7 +296,12 @@
 			statements: branch.block.statements
 		};
 
-		return convert_block_definition(bdef_node, bdef);
+		const branch_block = convert_block_definition(bdef_node, bdef);
+		for (const output of outputsTemplate) {
+			const local = findVarById(output.id, branch_block).r;
+			local.init_parent = findVarById(output.id, bdef).r;
+		}
+		return branch_block;
 	}
 
 	function convert_property_left (property_node, bdef) {
@@ -405,7 +420,21 @@
 			return [[], b.o_ports];
 		}
 		case 'INLINE_IF_THEN_ELSE': {
-			throw new Error("Inline if-then-else expressions are not implemented yet");
+			const condition = convert_expr(expr_node.args[0], bdef)[1][0];
+			const branches = expr_node.args.slice(1).map(expr => {
+				const branch = Object.create(bs.CompositeBlock);
+				branch.id = 'if_expr__' + (ifthenelse_branch_counter++);
+				branch.bdef_father = bdef;
+				branch.outputs_N = 1;
+				branch.init();
+				const value = convert_expr(expr, branch)[1][0];
+				const edge = Object.create(bs.CompositeBlock.Connection);
+				edge.in = value;
+				edge.out = branch.o_ports[0];
+				branch.connections.push(edge);
+				return branch;
+			});
+			return connect_conditional(condition, branches[0], branches[1], bdef);
 		}
 		}
 
@@ -579,6 +608,34 @@
 
 		bdef.id = i_bdef.id;
 
+		// Storage sizes are compile-time expressions, even when the storage is
+		// declared inside a branch. Their constants can be shared with runtime code.
+		const static_blocks = new Set();
+		function constant_size(b, visiting = new Set()) {
+			if (static_blocks.has(b)) return true;
+			if (visiting.has(b) || b == bdef || bs.MemoryReaderBlock.isPrototypeOf(b)
+				|| bs.CallBlock.isPrototypeOf(b)) return false;
+			visiting.add(b);
+			const constant = bs.ConstantBlock.isPrototypeOf(b) || (b.i_ports.length > 0
+				&& b.i_ports.every(p => {
+					const c = bdef.connections.find(c => c.out == p);
+					return c && constant_size(c.in.block, visiting);
+				}));
+			visiting.delete(b);
+			if (constant) static_blocks.add(b);
+			return constant;
+		}
+		for (const memory of bdef.blocks.filter(b => bs.MemoryBlock.isPrototypeOf(b))) {
+			const size = bdef.connections.find(c => c.out == memory.i_ports[0]);
+			memory.static_size = constant_size(size.in.block);
+		}
+		for (const block of static_blocks) {
+			const guards = block.guard_ports;
+			bdef.connections = bdef.connections.filter(c => !guards.includes(c.out));
+			block.guard_ports = [];
+		}
+
+		bdef.propagateDataTypes();
 		normalize_properties(bdef);
 
 		(function validate (bdef) {
@@ -605,25 +662,25 @@
 			});
 		})(bdef);
 
+		bdef.propagateDataTypes();
+
 		// It's important to call this after flattening/cloning
 		setUpdateRate(bdef, options);
 
-		propagateControlDependencies(bdef);
 	}
 
 	// replace properties with blocks/connections
 	// Assuming bdef flattened
 	function normalize_properties (bdef) {
 
-		// I propose to remove this blasfemy
-		// This is also a bad place for this
+		// Initializers use initial signal values, not the first active sample.
 		(function explicitize_init (bdef) {
 			// y.init = expr -> y.init = (expr).init
 			bdef.properties.filter(p => p.type == 'init').forEach(p => {
 				const c = bdef.connections.find(c => c.out == p.block.i_ports[0]);
 				if (!c)
 					return;
-				// This is a not nice cheating too:
+				// C wrappers explicitly connect outputs produced by reset callbacks.
 				if (bs.CallBlock.isPrototypeOf(c.in.block) && c.in.block.type == 'cdef')
 					return;
 				const v = convert_property(c.in.block, "init", bdef);
@@ -767,22 +824,23 @@
 					return b;
 				if (bs.MemoryReaderBlock.isPrototypeOf(b))
 					return convert_property(b.memoryblock, 'init', bdef);
-				if (bs.VarBlock.isPrototypeOf(b) && b.__if_branch_output_alias__) {
-					const be = find_same_id_var_with_explicit_init(b);
-					if (be)
-						return convert_property(be, 'init', bdef);
-				}
 				if (has_explicit_init_assignment(b))
 					return convert_property(b, 'init', bdef);
+				// Branch outputs inherit an explicit initializer from their lexical
+				// parent, never from an unrelated variable with the same spelling.
+				for (let parent = b.init_parent; parent; parent = parent.init_parent) {
+					if (has_explicit_init_assignment(parent))
+						return convert_property(parent, 'init', bdef);
+				}
 
 				b.setToBeCloned();
 				const bb = b.clone();
+				bb.guard_ports = []; // Initialization does not run on the branch clock.
 
-				const args = [];
 				b.i_ports.forEach((pp, i) => {
 					const c = bdef.connections.find(c => c.out == pp);
 					let vv;
-					if (can_alias_init_to_value(c.in.block))
+					if (bs.ConstantBlock.isPrototypeOf(c.in.block))
 						vv = c.in.block;
 					else {
 						vv = convert_property(c.in.block, "init", bdef);
@@ -804,64 +862,6 @@
 				return !!bdef.connections.find(c => c.out == p.block.i_ports[0]);
 			}
 
-			function find_same_id_var_with_explicit_init (b) {
-				if (!bs.VarBlock.isPrototypeOf(b))
-					return undefined;
-				if (!b.id)
-					return undefined;
-				return bdef.blocks.find(bb =>
-					bb != b &&
-					bs.VarBlock.isPrototypeOf(bb) &&
-					bb.id == b.id &&
-					has_explicit_init_assignment(bb)
-				);
-			}
-
-			function can_alias_init_to_value (b, visiting = new Set()) {
-				if (!b || visiting.has(b))
-					return false;
-				if (has_explicit_init_assignment(b))
-					return false;
-				if (bs.ConstantBlock.isPrototypeOf(b))
-					return true;
-				if (b == bdef || b == fs)
-					return false;
-				if (bs.MemoryBlock.isPrototypeOf(b))
-					return false;
-				if (bs.MemoryReaderBlock.isPrototypeOf(b))
-					return false;
-				if (bs.MemoryWriterBlock.isPrototypeOf(b))
-					return false;
-				if (bs.CallBlock.isPrototypeOf(b))
-					return false;
-				if (bs.CBlock.isPrototypeOf(b))
-					return false;
-				if (bs.CompositeBlock.isPrototypeOf(b))
-					return false;
-				if (bs.IfthenelseBlock && bs.IfthenelseBlock.isPrototypeOf && bs.IfthenelseBlock.isPrototypeOf(b))
-					return false;
-
-				visiting.add(b);
-				try {
-					if (bs.VarBlock.isPrototypeOf(b)) {
-						const c = bdef.connections.find(c => c.out == b.i_ports[0]);
-						if (!c)
-							return false;
-						return can_alias_init_to_value(c.in.block, visiting);
-					}
-					if (!b.i_ports || b.i_ports.length == 0 || !b.o_ports || b.o_ports.length != 1)
-						return false;
-					for (let i = 0; i < b.i_ports.length; i++) {
-						const c = bdef.connections.find(c => c.out == b.i_ports[i]);
-						if (!c || !can_alias_init_to_value(c.in.block, visiting))
-							return false;
-					}
-					return true;
-				}
-				finally {
-					visiting.delete(b);
-				}
-			}
 		}
 	}
 
@@ -878,761 +878,115 @@
 		});
 		bdef.i_ports[0].updaterate = () => RATES.Fs;
 
-		bdef.blocks.filter(b => bs.CallBlock.isPrototypeOf(b) && b.type == 'cdef').forEach(b => {
-			b.o_ports.forEach((p, i) => {
-				const u = b.ref.o_ports[i].updaterate;
-				p.updaterate = u;
-			});
-		});
-
-		// Detecting memory loops and setting updaterate to Audio for now
-		const mems = bdef.blocks.filter(b => bs.MemoryReaderBlock.isPrototypeOf(b)).map(b => b.memoryblock);
-		mems.forEach(m => {
-			m.updaterate = function () {
-				if (this.__computing_updaterate__)
-					return RATES.Audio; // Conservative fallback for memory feedback loops
-				this.__computing_updaterate__ = true;
-				try {
-					const urs = [];
-					if (this.i_ports[1])
-						urs.push(this.i_ports[1].updaterate());
-					bdef.blocks
-						.filter(bb => bs.MemoryWriterBlock.isPrototypeOf(bb) && bb.memoryblock == this)
-						.forEach(w => {
-							if (w.i_ports[1])
-								urs.push(w.i_ports[1].updaterate());
-						});
-					if (urs.length == 0)
-						return RATES.Constant;
-					return RATES.max.apply(null, urs);
-				}
-				finally {
-					this.__computing_updaterate__ = false;
-				}
-			};
-		});
-		mems.forEach(m => {
-			const ws = bdef.blocks.filter(b => bs.MemoryWriterBlock.isPrototypeOf(b) && b.memoryblock == m);
-			ws.forEach(w => f(w));
-
-			bdef.blocks.forEach(b => delete b.__visited__);
-			function f (b) {
-				if (b.__visited__)
-					return;
-				b.__visited__ = true;
-				if (bs.MemoryReaderBlock.isPrototypeOf(b) && b.memoryblock == m) {
-					b.o_ports[0].updaterate = () => RATES.Audio;
-				}
-				bdef.connections.filter(c => c.out.block == b).forEach(c => {
-					f (c.in.block);
-				});
-			};
-		});
-
+		// Every memory read is a snapshot of this sample's old state. Guarded
+		// computations run in the sample loop, including their first activation.
+		for (const block of bdef.blocks) {
+			if (bs.MemoryReaderBlock.isPrototypeOf(block) || block.guard_ports.length > 0
+				|| (bs.CallBlock.isPrototypeOf(block) && block.type == 'cdef'))
+				block.o_ports.forEach(p => p.updaterate = () => RATES.Audio);
+		}
+		// C outputs belong to the phase that produces them. In particular, reset
+		// results must be available to memory initializers before the sample loop.
+		for (const b of bdef.blocks.filter(b => bs.CallBlock.isPrototypeOf(b) && b.type == 'cdef')) {
+			for (const [name, rate] of [['init', RATES.Constant], ['set_sample_rate', RATES.Fs],
+				['reset_coeffs', RATES.Reset], ['reset_state', RATES.Reset]]) {
+				const f = b.ref.funcs[name];
+				if (!f) continue;
+				for (const arg of [...f.f_outputs, ...f.f_inputs.filter(arg => /^o[0-9]+$/.test(arg))])
+					b.o_ports[Number(arg.slice(1))].updaterate = () => rate;
+			}
+		}
 		bdef.propagateUpdateRates();
-
-		// TODO: think about memory update rate. Readings should be up-bounded to writings...?
-	}
-
-	function collect_memory_preferred_ids (bdef) {
-		bdef.blocks
-			.filter(b => bs.MemoryBlock.isPrototypeOf(b))
-			.forEach(m => m.__preferred_ids__ = []);
-
-		bdef.blocks
-			.filter(b => bs.VarBlock.isPrototypeOf(b))
-			.forEach(v => {
-				const lc = bdef.connections.find(c => c.out == v.i_ports[0]);
-				if (!lc || !lc.in || !lc.in.block)
-					return;
-				if (!bs.MemoryReaderBlock.isPrototypeOf(lc.in.block))
-					return;
-				const m = lc.in.block.memoryblock;
-				if (!m.__preferred_ids__)
-					m.__preferred_ids__ = [];
-				if (!m.__preferred_ids__.includes(v.id))
-					m.__preferred_ids__.push(v.id);
-			});
 	}
 
 	// Assuming bdef flattened
-	function propagateControlDependencies (bdef) {
 
-		// Better to reset
-		bdef.blocks.forEach(b => b.control_dependencies = new Set());
-
-		bdef.i_ports.filter(p => p.updaterate() == RATES.Control).forEach(p => {
-			const cs = bdef.connections.filter(c => c.in == p);
-			cs.forEach(c => f (c.out.block, p.id));
-			bdef.blocks.forEach(b => delete b.__visited__);
-		});
-
-		function f (b, ctrd) {
-			if (b == bdef)
-				return;
-			if (b.__visited__)
-				return;
-			b.__visited__ = true;
-
-			b.control_dependencies.add(ctrd);
-
-			b.o_ports.forEach(p => {
-				const cs = bdef.connections.filter(c => c.in == p)
-				cs.forEach(c => f (c.out.block, ctrd));
-			});
-		}
-	}
-
-	// Assuming bdef flattened
+	// Local expression rewrites and reachability. Never merge state or move a
+	// computation across branch clocks. Properties have already become edges.
 	function optimize (bdef, options) {
-
-		var _x_counter = 0;
-
-		collect_memory_preferred_ids(bdef);
-
-		function add_memory_preferred_id (memoryblock, id) {
-			if (!memoryblock || typeof id != "string" || id.length == 0)
-				return;
-			if (!Array.isArray(memoryblock.__preferred_ids__))
-				memoryblock.__preferred_ids__ = [];
-			if (!memoryblock.__preferred_ids__.includes(id))
-				memoryblock.__preferred_ids__.push(id);
+		const incoming = new Map(bdef.connections.map(c => [c.out, c]));
+		const input = port => incoming.get(port).in;
+		function replace(block, source) {
+			for (const edge of bdef.connections)
+				if (edge.in == block.o_ports[0]) edge.in = source;
+			bdef.connections = bdef.connections.filter(c => c.out.block != block);
+			bdef.blocks = bdef.blocks.filter(b => b != block);
+			bdef.properties = bdef.properties.filter(p => p.of != block && p.block != block);
+		}
+		function same_guards(a, b) {
+			return a.guard_ports.length == b.guard_ports.length && a.guard_ports.every((p, i) =>
+				p.negated == b.guard_ports[i].negated && input(p) == input(b.guard_ports[i]));
 		}
 
-		if (options.optimizations["remove_dead_graph"])
-			remove_dead_graph();
+		// Each rewrite removes a negation, so chains simplify regardless of
+		// block order after flattening. A shared inner negation remains available
+		// to its other consumers; reachability removes it when it becomes unused.
+		let changed;
+		do {
+			changed = false;
+			for (const b of bdef.blocks.slice()) {
+				if (!bs.UminusBlock.isPrototypeOf(b) && !bs.LogicalNotBlock.isPrototypeOf(b))
+					continue;
+				const source = input(b.i_ports[0]);
+				if (options.optimizations.negative_negative
+					&& Object.getPrototypeOf(b) == Object.getPrototypeOf(source.block)
+					&& same_guards(b, source.block)
+					&& (bs.LogicalNotBlock.isPrototypeOf(b) || b.o_ports[0].datatype() == TYPES.Float32)) {
+					// Signed integer negation can overflow at INT_MIN. Keep it explicit.
+					replace(b, input(source.block.i_ports[0]));
+					changed = true;
+				} else if (options.optimizations.negative_consts && bs.UminusBlock.isPrototypeOf(b)
+					&& bs.ConstantBlock.isPrototypeOf(source.block)) {
+					const value = source.block.value;
+					const type = source.block.datatype();
+					if (!Number.isFinite(value) || (type == TYPES.Int32
+						&& (!Number.isInteger(value) || value <= -2147483648 || value > 2147483647)))
+						continue;
+					const constant = Object.create(bs.ConstantBlock);
+					constant.value = type == TYPES.Int32 && value == 0 ? 0 : -value;
+					constant.datatype = () => type;
+					constant.init();
+					bdef.blocks.push(constant);
+					replace(b, constant.o_ports[0]);
+					changed = true;
+				}
+			}
+		} while (changed);
 
-		if (options.optimizations["negative_negative"])
-			negative_negative();
+		if (options.optimizations.unify_consts) {
+			const constants = [];
+			for (const b of bdef.blocks.slice()) {
+				if (!bs.ConstantBlock.isPrototypeOf(b)) continue;
+				// Object.is keeps +0 and -0 distinct, and types never share a node.
+				const same = constants.find(c => c.datatype() == b.datatype() && Object.is(c.value, b.value));
+				if (same) replace(b, same.o_ports[0]);
+				else constants.push(b);
+			}
+		}
 
-		if (options.optimizations["negative_consts"])
-			negative_consts();
-
-		if (options.optimizations["unify_consts"])
-			unify_consts();
-	
-		if (options.optimizations["remove_useless_vars"])
-			remove_useless_vars();
-
-		if (options.optimizations["merge_vars"])
-			merge_vars();
-
-		if (options.optimizations["merge_equal_pure_blocks"])
-			merge_equal_pure_blocks();
-
-		if (options.optimizations["merge_vars"])
-			merge_vars();
-
-		if (options.optimizations["merge_max_blocks"])
-			merge_max_blocks();
-
-		if (options.optimizations["simplifly_max_blocks1"])
-			simplifly_max_blocks1();
-
-		if (options.optimizations["simplifly_max_blocks2"])
-			simplifly_max_blocks2();
-
-		// Sad that we need this
+		if (options.optimizations.remove_dead_graph) {
+			const live = new Set();
+			function visit(block) {
+				if (block == bdef || live.has(block))
+					return;
+				live.add(block);
+				if (bs.MemoryReaderBlock.isPrototypeOf(block))
+					visit(block.memoryblock);
+				if (bs.MemoryBlock.isPrototypeOf(block))
+					bdef.blocks.filter(b => bs.MemoryWriterBlock.isPrototypeOf(b) && b.memoryblock == block).forEach(visit);
+				for (const port of block.inputs()) {
+					const edge = bdef.connections.find(c => c.out == port);
+					if (edge) visit(edge.in.block);
+				}
+			}
+			bdef.o_ports.forEach(p => visit(bdef.connections.find(c => c.out == p).in.block));
+			bdef.blocks = bdef.blocks.filter(b => live.has(b));
+			bdef.connections = bdef.connections.filter(c => (c.in.block == bdef || live.has(c.in.block)) && (c.out.block == bdef || live.has(c.out.block)));
+			bdef.properties = bdef.properties.filter(p => live.has(p.block) && live.has(p.of));
+		}
+		bdef.propagateDataTypes();
 		setUpdateRate(bdef, options);
-
-		if (options.optimizations["lazyfy_subexpressions_rates"])
-			lazyfy_subexpressions_rates();
-
-		if (options.optimizations["lazyfy_subexpressions_controls"])
-			lazyfy_subexpressions_controls();
-
-		if (options.optimizations["merge_vars"])
-			merge_vars();
-
-		if (options.optimizations["remove_useless_vars"])
-			remove_useless_vars();
-
-		// Needed cuz we eventually created new blocks... Anything better?
-		propagateControlDependencies (bdef);
-
-
-		function safely_remove_blocks (blocks) {
-			blocks.forEach(b => {
-				const i = bdef.blocks.indexOf(b);
-				bdef.blocks.splice(i, 1);
-			});
-		}
-
-		function safely_remove_connections (conns) {
-			conns.forEach(c => {
-				const i = bdef.connections.indexOf(c);
-				bdef.connections.splice(i, 1);
-			});
-		}
-
-		// Remove blocks/connections that do not contribute to top-level outputs.
-		// Very similar to the scheduling...
-		function remove_dead_graph () {
-			
-			var blocks = [];
-			var conns = [];
-			
-			const iconns = bdef.o_ports.map(p => bdef.connections.find(c => c.out == p));
-			const roots = iconns.map(c => c.in.block);
-
-			for (let i = 0; i < roots.length; i++) {
-				f (roots[i]);
-			}
-
-			conns = conns.concat(iconns);
-
-			bdef.blocks = blocks;
-			bdef.connections = conns;
-			
-			bdef.blocks.forEach(b => delete b.__visited__);
-
-			function f (b) {
-				if (b == bdef)
-					return;
-
-				if (b.__visited__)
-					return;
-				b.__visited__ = true;
-
-				if (bs.MemoryReaderBlock.isPrototypeOf(b)) {
-					roots.push(b.memoryblock);
-				}
-
-				if (bs.MemoryBlock.isPrototypeOf(b)) {
-					bdef.blocks.filter(bb => bs.MemoryWriterBlock.isPrototypeOf(bb) && bb.memoryblock == b).forEach(bb => {
-						roots.push(bb);
-					});
-				}
-
-				b.i_ports.forEach(p => {
-					const cc = bdef.connections.find(c => c.out == p);
-					const bb = cc.in.block;
-					conns.push(cc);
-					f (bb);
-				});
-				
-				blocks.push(b);
-			}
-		}
-
-		// Simplify double negation: y = -(-x) -> y = x
-		function negative_negative () {
-
-			bdef.connections.forEach(c => {
-				if (!bdef.connections.includes(c))
-					return;
-
-				const l = c.in.block;
-				const r = c.out.block;
-
-				if (!(bs.UminusBlock.isPrototypeOf(l) && bs.UminusBlock.isPrototypeOf(r)))
-					return;
-
-				const rem_blocks = [];
-				const rem_conns = [];
-
-				const llc  = bdef.connections.find(c => c.out == l.i_ports[0]);
-				const lrcs = bdef.connections.filter(c => c.in == l.o_ports[0]);
-				const rlc  = c;
-				const rrcs = bdef.connections.filter(c => c.in == r.o_ports[0]);
-
-				rrcs.forEach(cc => {
-					cc.in = llc.in;
-				});
-
-				if (lrcs.length == 1) {
-					rem_blocks.push(l);
-					rem_blocks.push(r);
-					rem_conns.push(llc);
-					rem_conns.push(rlc);
-				}
-				else {
-					rem_blocks.push(r);
-					rem_conns.push(rlc);
-				}
-
-				safely_remove_blocks(rem_blocks);
-				safely_remove_connections(rem_conns);
-			});
-		}
-
-		// Fold unary minus on constants: y = -(5) -> y = -5
-		function negative_consts () {
-			
-			bdef.connections.forEach(c => {
-
-				const l = c.in.block;
-				const r = c.out.block;
-
-				if (!(bs.ConstantBlock.isPrototypeOf(l) && bs.UminusBlock.isPrototypeOf(r)))
-					return;
-
-				const rem_blocks = [];
-				const rem_conns = [];
-
-				const lrcs = bdef.connections.filter(c => c.in == l.o_ports[0]);
-				const rlc  = c;
-				const rrcs = bdef.connections.filter(c => c.in == r.o_ports[0]);
-
-				const nc = Object.create(bs.ConstantBlock);
-				nc.value = -l.value;
-				nc.datatype = l.datatype;
-				nc.init();
-				bdef.blocks.push(nc);
-
-				rrcs.forEach(cc => {
-					cc.in = nc.o_ports[0];
-				});
-
-				if (lrcs.length == 1) {
-					rem_blocks.push(l);
-					rem_blocks.push(r);
-					rem_conns.push(rlc);
-				}
-				else {
-					rem_blocks.push(r);
-					rem_conns.push(rlc);
-				}
-				
-				safely_remove_blocks(rem_blocks);
-				safely_remove_connections(rem_conns);
-			});
-		}
-
-		// Reuse a single constant block for equal constants with same datatype.
-		function unify_consts () {
-
-			const rem_blocks = [];
-			const rem_conns = [];
-
-			const CBlocks = bdef.blocks.filter(b => bs.ConstantBlock.isPrototypeOf(b));
-
-			const values = [
-				Array.from(new Set(CBlocks.filter(b => b.datatype() == TYPES.Float32).map(b => b.value))).map(v => [TYPES.Float32, v]),
-				Array.from(new Set(CBlocks.filter(b => b.datatype() == TYPES.Int32).map(b => b.value))).map(v => [TYPES.Int32, v]),
-				Array.from(new Set(CBlocks.filter(b => b.datatype() == TYPES.Bool).map(b => b.value))).map(v => [TYPES.Bool, v])
-			].flat(1);
-
-			values.forEach(v => {
-				const VBlocks = CBlocks.filter(b => b.datatype() == v[0] && b.value == v[1]);
-				const VB0 = VBlocks[0];
-				for (let i = 1; i < VBlocks.length; i++) {
-					const vb = VBlocks[i];
-					const cs = bdef.connections.filter(c => c.in == vb.o_ports[0]);
-					cs.forEach(c => {
-						c.in = VB0.o_ports[0];
-					});
-					rem_blocks.push(vb);
-				}
-			});
-
-			safely_remove_blocks(rem_blocks);
-		}
-
-		// Bypass vars with a single consumer: a = x; y = a -> y = x
-		function remove_useless_vars () {
-			function maybe_set_preferred_id (port, id) {
-				if (!port || typeof id != "string" || id.length == 0)
-					return;
-				// Prefer human names over compiler-generated temporaries.
-				const is_generated = id.startsWith("x__") || id.endsWith(".init") || id.endsWith(".fs");
-				if (is_generated && port.preferred_id)
-					return;
-				if (!port.preferred_id || !is_generated)
-					port.preferred_id = id;
-			}
-
-			const VBlocks = bdef.blocks.filter(b => bs.VarBlock.isPrototypeOf(b));
-
-			VBlocks.forEach(b => {
-				const rem_blocks = [];
-				const rem_conns = [];
-
-				const lc  = bdef.connections.find(c => c.out == b.i_ports[0]);
-				const rcs = bdef.connections.filter(c => c.in  == b.o_ports[0]);
-				const carrier_props = bdef.properties.filter(p => p.block == b);
-				const src_is_const = lc && bs.ConstantBlock.isPrototypeOf(lc.in.block);
-
-				if (!lc)
-					return;
-				if (rcs.length == 0)
-					return;
-				if (rcs.length != 1 && !src_is_const)
-					return;
-				if (rcs.some(c => {
-					const consumer_rate =
-						c.out.block && c.out.block.o_ports && c.out.block.o_ports.length > 0
-							? c.out.block.o_ports[0].updaterate()
-							: c.out.updaterate();
-					return !RATES.equal(consumer_rate, b.o_ports[0].updaterate());
-				}))
-					return; // Keep rate-cache vars inserted to avoid recomputing at a faster/slower rate
-				if (rcs.some(c => c.out.block == bdef))
-					return;
-				if (carrier_props.length > 0 && !bs.VarBlock.isPrototypeOf(lc.in.block) && !src_is_const)
-					return;
-
-				if (bs.MemoryReaderBlock.isPrototypeOf(lc.in.block))
-					add_memory_preferred_id(lc.in.block.memoryblock, b.id);
-				maybe_set_preferred_id(lc.in, b.id);
-				bdef.properties.filter(p => p.of == b).forEach(p => p.of = lc.in.block);
-				carrier_props.forEach(p => p.block = lc.in.block);
-
-				rcs.forEach(c => c.in = lc.in);
-				rem_blocks.push(b)
-				rem_conns.push(lc);
-
-				safely_remove_blocks(rem_blocks); // Check this position in the ohter opts
-				safely_remove_connections(rem_conns);
-			});
-		}
-
-		// Merge duplicated pure combinational blocks: a=x*v; b=x*v -> reuse one mul block
-		function merge_equal_pure_blocks () {
-			const rem_blocks = [];
-			const rem_conns = [];
-
-			function same_control_dependencies (a, b) {
-				return util.setsEqual(a.control_dependencies || new Set(), b.control_dependencies || new Set());
-			}
-
-			function is_mergeable_pure_block (b) {
-				if (!b || b == bdef)
-					return false;
-				if (b.o_ports.length != 1)
-					return false;
-				if (bs.VarBlock.isPrototypeOf(b))
-					return false;
-				if (bs.ConstantBlock.isPrototypeOf(b))
-					return false;
-				if (bs.MemoryBlock.isPrototypeOf(b))
-					return false;
-				if (bs.MemoryReaderBlock.isPrototypeOf(b))
-					return false;
-				if (bs.MemoryWriterBlock.isPrototypeOf(b))
-					return false;
-				if (bs.CallBlock.isPrototypeOf(b))
-					return false;
-				if (bs.CBlock.isPrototypeOf && bs.CBlock.isPrototypeOf(b))
-					return false;
-				if (bs.CompositeBlock.isPrototypeOf(b))
-					return false;
-				return true;
-			}
-
-			function in_conn_by_port (p) {
-				return bdef.connections.find(c => c.out == p);
-			}
-
-			function same_inputs (a, b) {
-				if (a.i_ports.length != b.i_ports.length)
-					return false;
-				for (let i = 0; i < a.i_ports.length; i++) {
-					const ca = in_conn_by_port(a.i_ports[i]);
-					const cb = in_conn_by_port(b.i_ports[i]);
-					if (!ca || !cb)
-						return false;
-					if (ca.in != cb.in)
-						return false;
-				}
-				return true;
-			}
-
-			function same_kind (a, b) {
-				if (Object.getPrototypeOf(a) != Object.getPrototypeOf(b))
-					return false;
-				if (a.operation != b.operation)
-					return false;
-				if (a.i_ports.length != b.i_ports.length)
-					return false;
-				if (a.datatype && b.datatype && a.datatype() != b.datatype())
-					return false;
-				return true;
-			}
-
-			const groups = [];
-			bdef.blocks.forEach(b => {
-				if (!is_mergeable_pure_block(b))
-					return;
-				const g = groups.find(x =>
-					same_kind(x.rep, b) &&
-					same_control_dependencies(x.rep, b) &&
-					same_inputs(x.rep, b)
-				);
-				if (g)
-					g.blocks.push(b);
-				else
-					groups.push({ rep: b, blocks: [b] });
-			});
-
-			groups.forEach(g => {
-				const rep = g.rep;
-				for (let i = 1; i < g.blocks.length; i++) {
-					const b = g.blocks[i];
-					const rcs = bdef.connections.filter(c => c.in == b.o_ports[0]);
-					const lcs = bdef.connections.filter(c => c.out.block == b);
-					bdef.properties.forEach(p => {
-						if (p.of == b)
-							p.of = rep;
-					});
-					rcs.forEach(c => {
-						c.in = rep.o_ports[0];
-					});
-					lcs.forEach(c => rem_conns.push(c));
-					rem_blocks.push(b);
-				}
-			});
-
-			safely_remove_blocks(rem_blocks);
-			safely_remove_connections(rem_conns);
-		}
-
-		// Merge duplicate vars fed by the same source: a = x; b = x -> reuse one var
-		function merge_vars () {
-			const rem_blocks = [];
-			const rem_conns = [];
-			const VBlocks = bdef.blocks.filter(b => bs.VarBlock.isPrototypeOf(b));
-
-			function is_property_block_var (b) {
-				return bdef.properties.some(p => p.block == b);
-			}
-
-			function same_control_dependencies (a, b) {
-				return util.setsEqual(a.control_dependencies || new Set(), b.control_dependencies || new Set());
-			}
-
-			const groups = [];
-			VBlocks.forEach(v => {
-				if (is_property_block_var(v))
-					return;
-				const lc = bdef.connections.find(c => c.out == v.i_ports[0]);
-				if (!lc)
-					return;
-				const g = groups.find(x =>
-					x.src == lc.in &&
-					x.datatype == v.datatype() &&
-					same_control_dependencies(x.rep, v)
-				);
-				if (g) {
-					g.vars.push(v);
-				}
-				else {
-					groups.push({
-						src: lc.in,
-						datatype: v.datatype(),
-						rep: v,
-						vars: [v]
-					});
-				}
-			});
-
-			groups.forEach(g => {
-				const rep = g.rep;
-				for (let i = 1; i < g.vars.length; i++) {
-					const v = g.vars[i];
-					const lc = bdef.connections.find(c => c.out == v.i_ports[0]);
-					const rcs = bdef.connections.filter(c => c.in == v.o_ports[0]);
-					bdef.properties.forEach(p => {
-						if (p.of == v)
-							p.of = rep;
-					});
-					rcs.forEach(c => {
-						c.in = rep.o_ports[0];
-					});
-					if (lc)
-						rem_conns.push(lc);
-					rem_blocks.push(v);
-				}
-			});
-
-			safely_remove_blocks(rem_blocks);
-			safely_remove_connections(rem_conns);
-		}
-
-		// Flatten nested max blocks: max(max(a,b),c) -> max(a,b,c)
-		function merge_max_blocks () {
-
-			const rem_blocks = [];
-			const rem_conns = [];
-
-			const MBlocks = bdef.blocks.filter(b => bs.MaxBlock.isPrototypeOf(b));
-
-			MBlocks.forEach(b => f(b));
-
-			function f (b) {
-				if (b.__handling__)
-					return;
-				b.__handling__ = true;
-
-				const incs = bdef.connections.filter(c => c.out.block == b);
-				
-				const newports = [];
-				incs.forEach(c => {
-					const bb = c.in.block;
-					if (bs.MaxBlock.isPrototypeOf(bb)) {
-						f(bb);
-						bb.i_ports.forEach(p => newports.push(p));
-						rem_blocks.push(bb);
-						rem_conns.push(c);
-					}
-					else {
-						newports.push(c.out);
-					}
-				});
-				newports.forEach(p => p.block = b);
-				b.i_ports = newports;
-			}
-
-			MBlocks.forEach(b => delete b.__handling__);
-			safely_remove_blocks(rem_blocks);
-			safely_remove_connections(rem_conns);
-		}
-
-		// Remove zero inputs from max blocks when other inputs exist.
-		function simplifly_max_blocks1 () {
-
-			const rem_conns = [];
-
-			const MBlocks = bdef.blocks.filter(b => bs.MaxBlock.isPrototypeOf(b));
-
-			MBlocks.forEach((b, i) => {
-				const lcs = bdef.connections.filter(c => c.out.block == b);
-				const rcs = bdef.connections.filter(c => c.in  == b.o_ports[0]);
-				
-				const lps = Array.from(new Set(lcs.map(c => c.in)));
-				const newlps = [];
-				var c0 = undefined;
-				for (let i = 0; i < lps.length; i++) {
-					if (bs.ConstantBlock.isPrototypeOf(lps[i].block) && lps[i].block.value == 0)
-						c0 = lps[i];
-					else
-						newlps.push(lps[i]);
-				}
-				if (newlps.length == 0) {
-					if (!c0)
-						throw new Error("Invalid max block found");
-					newlps.push(c0);
-				}
-
-				b.createPorts(newlps.length, 1);
-				b.init();
-				newlps.forEach((p, ii) => {
-					const c = Object.create(bs.CompositeBlock.Connection);
-					c.in = p;
-					c.out = b.i_ports[ii];
-					bdef.connections.push(c);
-				});
-				rcs.forEach(c => {
-					c.in = b.o_ports[0];
-				});
-				lcs.forEach(c => {
-					rem_conns.push(c);
-				});
-			});
-
-			safely_remove_connections(rem_conns);
-		}
-
-		// Bypass degenerate max blocks with one input: max(x) -> x
-		function simplifly_max_blocks2 () {
-
-			const rem_blocks = [];
-			const rem_conns = [];
-
-			const MBlocks = bdef.blocks.filter(b => bs.MaxBlock.isPrototypeOf(b));
-
-			MBlocks.forEach(b => {
-				if (b.i_ports.length != 1)
-					return;
-
-				const lc  = bdef.connections.find(c => c.out == b.i_ports[0]);
-				const rcs = bdef.connections.filter(c => c.in  == b.o_ports[0]);
-
-				rcs.forEach(c => {
-					c.in = lc.in;
-				});
-
-				rem_blocks.push(b)
-				rem_conns.push(lc);
-			});
-
-			safely_remove_blocks(rem_blocks);
-			safely_remove_connections(rem_conns);
-		}
-
-		// Insert vars to cache values when producer/consumer update rates differ.
-		// Assuming blocks with only 1 output
-		function lazyfy_subexpressions_rates () {
-
-			bdef.blocks.forEach(b => {
-				if (b.o_ports.length == 0)
-					return; // Uhm, what to do in this case?
-				const our = b.o_ports[0].updaterate();
-				b.i_ports.forEach(p => {
-					const c = bdef.connections.find(c => c.out == p);
-					const iur = c.in.updaterate();
-					if (RATES.equal(our, iur))
-						return;
-					if (bs.VarBlock.isPrototypeOf(c.in.block))
-						return;
-					if (bs.ConstantBlock.isPrototypeOf(c.in.block))
-						return;
-					const v = Object.create(bs.VarBlock);
-					v.id = c.in.preferred_id || ("x__" + _x_counter++);
-					const d = c.in.datatype();
-					v.datatype = () => d;
-					v.init();
-					v.i_ports[0].datatype = () => d;
-					v.i_ports[0].updaterate = () => iur;
-					v.o_ports[0].updaterate = () => iur;
-					const cc = Object.create(bs.CompositeBlock.Connection);
-					cc.in = v.o_ports[0];
-					cc.out = c.out;
-					c.out = v.i_ports[0];
-					if (c.in.preferred_id)
-						v.o_ports[0].preferred_id = c.in.preferred_id;
-					bdef.blocks.push(v);
-					bdef.connections.push(cc);
-				});
-			});
-		}
-
-		// Placeholder (currently disabled): cache control expressions across control-dependency boundaries.
-		function lazyfy_subexpressions_controls () {
-			return; // Something is wrong here
-			// Here too
-			bdef.blocks.filter(b => b.o_ports.length != 0 && b.o_ports[0].updaterate() == RATES.Control).forEach(b => {
-
-				b.i_ports.forEach(p => {
-					const c = bdef.connections.find(c => c.out == p);
-					const iur = c.in.updaterate();
-					const bb = c.in.block;
-
-					if (bb == bdef)
-						return;
-					if (util.setsEqual(b.control_dependencies, bb.control_dependencies))
-						return;
-					if (bs.VarBlock.isPrototypeOf(bb))
-						return;
-
-					const v = Object.create(bs.VarBlock);
-					v.id = "x__" + _x_counter++;
-					const d = c.in.datatype();
-					v.datatype = () => d;
-					v.init();
-					v.i_ports[0].datatype = () => d;
-					v.i_ports[0].updaterate = () => iur;
-					v.o_ports[0].updaterate = () => iur;
-					const cc = Object.create(bs.CompositeBlock.Connection);
-					cc.in = v.o_ports[0];
-					cc.out = c.out;
-					c.out = v.i_ports[0];
-					bdef.blocks.push(v);
-					bdef.connections.push(cc);
-				});
-			});
-		}
-	};
+	}
 
 	function findVarById (id, bdef) {
 		let bd = bdef;

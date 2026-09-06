@@ -35,24 +35,7 @@
 		control_inputs: array of strings
 		initial_values: object mapping input IDs to initial values
 		target_language: C/bw/MATLAB
-		optimizations: object of properties
-			{
-				remove_dead_graph: true,
-				negative_negative: true,
-				negative_consts: true,
-				unify_consts: true,
-				remove_useless_vars: true,
-				merge_equal_pure_blocks: true,
-				merge_vars: true,
-				merge_max_blocks: true,
-				simplifly_max_blocks1: true,
-				simplifly_max_blocks2: true,
-				lazyfy_subexpressions_rates: true,
-				lazyfy_subexpressions_controls: true,
-			}
-		outgen_optimizations: true/false
-		outgen_code_sinking: true/false
-		outgen_code_hoisting: true/false
+		optimizations: { remove_dead_graph, negative_negative, negative_consts, unify_consts }
 		debug_mode: true/false
 		debug_output_dir: optional path where debug artifacts are written
 		debug_emit_outputs: true/false (write generated target files into debug artifacts)
@@ -74,18 +57,7 @@
 				negative_negative: true,
 				negative_consts: true,
 				unify_consts: true,
-				remove_useless_vars: true,
-				merge_equal_pure_blocks: true,
-				merge_vars: true,
-				merge_max_blocks: true,
-				simplifly_max_blocks1: true,
-				simplifly_max_blocks2: true,
-				lazyfy_subexpressions_rates: true,
-				lazyfy_subexpressions_controls: true,
 			},
-			outgen_optimizations: true,
-			outgen_code_sinking: true,
-			outgen_code_hoisting: true,
 			debug_output_dir: "",
 			debug_emit_outputs: true,
 			debug_return_intermediates: false,

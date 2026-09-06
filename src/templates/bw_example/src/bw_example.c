@@ -7,6 +7,9 @@
 {{=it.constants.toString(0)}}
 
 void {{=it.name}}_init({{=it.name}} *instance) {
+	instance->firstRun = 1;
+	{{~it.parameters:c}}
+	instance->{{=c}} = {{=it.parameters_initialValues[c]}};{{~}}
 {{=it.init.toString(1)}}
 }
 
@@ -45,28 +48,16 @@ void {{=it.name}}_process({{=it.name}} *instance, const float** x, float** y, in
 	{{~it.audio_outputs:a:i}}
 	float* {{=a}} = y[{{=i}}];{{~}}
 
-	if (instance->firstRun) {{{~it.parameters:c}}
-		instance->{{=c}}_CHANGED = 1;{{~}}
-	}
-	else {{{~it.parameters:c}}
-		instance->{{=c}}_CHANGED = instance->{{=c}} != instance->{{=c}}_z1;{{~}}
-	}
-	
 {{=it.control_coeffs_update.toString(1)}}
 
-
-	{{~it.parameters:c}}
-	instance->{{=c}}_CHANGED = 0;{{~}}
 
 	if (instance->firstRun) {
 {{=it.reset.toString(2)}}
 	}
 
-{{=it.update_coeffs_ctrl.toString(1)}}
 
 	for (int i = 0; i < n_samples; i++) {
 
-{{=it.update_coeffs_audio.toString(2)}}
 
 {{=it.audio_update.toString(2)}}
 		
@@ -76,8 +67,6 @@ void {{=it.name}}_process({{=it.name}} *instance, const float** x, float** y, in
 
 	}
 
-	{{~it.parameters:c}}
-	instance->{{=c}}_z1 = instance->{{=c}};{{~}}
 	instance->firstRun = 0;
 }
 
@@ -96,4 +85,5 @@ float {{=it.name}}_get_parameter({{=it.name}} *instance, int index) {
 			return instance->{{=c}};
 		{{~}}
 	}
+	return 0.0f;
 }

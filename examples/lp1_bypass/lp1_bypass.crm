@@ -17,29 +17,23 @@ y = lp1(x, s) {
 }
 
 y = lp1_bypass(x, bypass) {
+	# These delays run every sample, including bypassed samples.
+	previous_x = delay(x)
+	previous_bypass = delay(bypass)
 
-	# We use x_z1A to avoid delay updates when it won't be needed in the next execution.
-	# This is a program logic info and cannot be known by the compiler.
-
-	x_z1A = x_z1
-	bypass_z1 = delay(bypass)
-
-	y, x_z1 = if (bypass > 0.5) {
+	y = if (bypass > 0.5) {
 		y = x
-		x_z1 = delay(x)
-	}
-	else {
-		s = if (bypass_z1 > 0.5) {
-			s = x_z1A
-		}
-		else {
-			s = t_z1
+	} else {
+		# Filter history advances only while the filter is selected.
+		previous_t = delay(t)
+		s = if (previous_bypass > 0.5) {
+			# On leaving bypass, start from the previous input sample.
+			s = previous_x
+		} else {
+			s = previous_t
 		}
 		t = lp1(x, s)
 		t.init = 0.0
-		t_z1 = delay(t)
 		y = t
-		x_z1 = delay(x_z1)
 	}
-	x_z1.init = 0.0
 }

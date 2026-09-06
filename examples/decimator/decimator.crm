@@ -14,18 +14,17 @@ bool y = delay (bool x) {
 
 y = decimator(x, bypass) {
 	y = if (bypass < 0.5) {
-		y, bool s = if (delay(s)) {
+		bool take = !delay(take)
+		take.init = false
+		# Run on the outer branch clock, so the inner else can hold the last output.
+		previous_y = delay(y)
+		y = if (take) {
 			y = x
-			s = false
 		} else {
-			y = delay(t)
-			s = true
+			y = previous_y
 		}
-		t = y
-		s.init = true
 		y.init = 0.0
-	}
-	else {
+	} else {
 		y = x
 	}
 }

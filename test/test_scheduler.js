@@ -120,6 +120,7 @@
 					mem[1] float V
 					V[0] = V[0] + 0.01 * y
 					V.init = y #implicit y.init
+					y.init = 0.0 # Break the initialization cycle through V[0].
 					t = x * 5.5
 					u = t.fs
 					u.init = t
@@ -141,6 +142,7 @@
 					V[1] = x * 2.0 / V[33]
 					V[int(x)] = 0.5 * t
 					t = x * 5.5 + uff(delay(t) / 2.2)
+					t.init = 0.0 # Feedback needs an explicit starting value.
 					y = x * 2.0 + float(A) / (V[44] + V[55])
 					u = float(int(t) - A % int(U[3]))
 				}
@@ -168,6 +170,10 @@
 	];
 
 	const BadTests = [
+		{
+			code: `y = A(x) { mem[1] float s; y = s[0] + x; s.init = y; }`,
+			options: { initial_block_id: "A", control_inputs: [] }
+		},
 		{
 			code: `
 				y = A () {

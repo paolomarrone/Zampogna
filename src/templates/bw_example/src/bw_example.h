@@ -32,7 +32,7 @@ struct _{{=it.name}} {
 	// Coefficients
 {{=it.coefficients.toString(1)}}
 
-	// Sun-moculdes
+	// Submodules
 {{=it.submodules.toString(1)}}
 
 	float fs;

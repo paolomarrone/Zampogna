@@ -159,10 +159,10 @@
 					if (p.expr.name == 'VARIABLE') {
 						if (reserved_variables.includes(p.expr.id))
 							err("Cannot set properties of reserved variables");
-						let elements = scope.findGlobally(p.expr.id);
+						let elements = scope.findLocally(p.expr.id);
 						if (elements.length == 0)
 							err("Property of undefined");
-						const e = elements[0]; // nearest scope first
+						const e = elements[0];
 						if (!['VARIABLE', 'MEMORY_DECLARATION'].includes(e.name))
 							err("You can assign properties only to VARIABLEs and MEMORY_DECLARATIONs");
 						if (e.is_input)

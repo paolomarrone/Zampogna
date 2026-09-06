@@ -13,15 +13,6 @@
 	Author: Paolo Marrone
 */
 
-/**
- * TODO:
- * - We're declaring/assigning only on VARs. So we might check if other blocks fork their output. Should not happen with the implemented opts, but better to be sure anyway.
- * - For the future: Control grouping should be treated in the same way as user IFs, in the graph itself.
- * 
- * - Check memory updates order. Might be better to save reads in vars.
- * 
- */
-
 (function() {
 
 	'use strict';
@@ -47,7 +38,6 @@
 	const bs = require("./blocks").BlockTypes;
 	const TYPES = require("./types");
 	const RATES = require("./uprates");
-	const ut = require("./util");
 
 	
 	function prependTabs (s, tabLevel) {
@@ -62,15 +52,10 @@
 
 	function LazyString (...init) {
 		this.s = [];
-		this.read_memory_ids = new Set();
 		this.add = function (...x) {
 			for (let k of x) {
 				if (k == undefined)
 					throw new Error(k);
-				if (k && k.read_memory_ids) {
-					for (let id of k.read_memory_ids)
-						this.read_memory_ids.add(id);
-				}
 				this.s.push(k);
 			}
 			return this;
@@ -133,54 +118,15 @@
 
 		const funcs = {};
 		funcs["getArrayIndexer"] = (i) => new LazyString(keys.array_indexer_l, i, keys.array_indexer_r);
-		function stripOuterParens(s) {
-			s = s.trim();
-			while (s[0] == '(' && s[s.length - 1] == ')') {
-				let depth = 0;
-				let ok = true;
-				for (let i = 0; i < s.length; i++) {
-					if (s[i] == '(') depth++;
-					else if (s[i] == ')') depth--;
-					if (depth == 0 && i < s.length - 1) {
-						ok = false;
-						break;
-					}
-				}
-				if (!ok)
-					break;
-				s = s.slice(1, -1).trim();
-			}
-			return s;
-		}
-		function simplifyMatlabIndexExpr (expr) {
-			let s = stripOuterParens(expr);
-			let m;
-			if ((m = s.match(/^\(?\s*(.+?)\s*\)?\s*\+\s*0(?:\.0+)?\s*$/)))
-				return stripOuterParens(m[1]);
-			if ((m = s.match(/^0(?:\.0+)?\s*\+\s*\(?\s*(.+?)\s*\)?\s*$/)))
-				return stripOuterParens(m[1]);
-			if ((m = s.match(/^\(?\s*(.+?)\s*\)?\s*-\s*0(?:\.0+)?\s*$/)))
-				return stripOuterParens(m[1]);
-			return s;
-		}
-		funcs["getMemoryArrayIndexer"] = (i) => {
-			if (target_language == "MATLAB") {
-				const idx = simplifyMatlabIndexExpr(i.toString());
-				const intm = idx.match(/^[+-]?[0-9]+$/);
-				if (intm) {
-					const n = parseInt(intm[0], 10) + 1;
-					return new LazyString(keys.array_indexer_l, n + "", keys.array_indexer_r);
-				}
-				return new LazyString(keys.array_indexer_l, idx, " + 1", keys.array_indexer_r);
-			}
-			return funcs.getArrayIndexer(i);
-		};
+		funcs["getMemoryArrayIndexer"] = (i) => target_language == "MATLAB"
+			? new LazyString('(', i, ' + 1)')
+			: funcs.getArrayIndexer(i);
 		funcs["getFloat"] = keys.float_f_postfix
 			? (n) =>  {
-				n = n + "";
+				n = Object.is(Number(n), -0) ? '-0' : n + "";
 				return n + ((n.includes('.') || n.toLowerCase().includes('e')) ? 'f' : '.0f')
 			}
-			: (n) => n + "";
+			: (n) => Object.is(Number(n), -0) ? '-0.0' : n + "";
 		funcs["getInt"] = (n) => n;
 		funcs["getBool"] = (n) => n ? keys.type_true : keys.type_false;
 		funcs["getConstant"] = (n, datatype) => {
@@ -322,9 +268,7 @@
 			this.l = l;
 			this.r = r;
 			this.declaration = declaration;
-			this.defined_id = declaration && declaration.id
-				? declaration.id
-				: (typeof l == "string" && l.match(/^[A-Za-z_][A-Za-z0-9_]*$/) ? l : undefined);
+
 			if (declaration) {
 				this.s = declaration.s;
 				this.s.add(' = ', r, ';');
@@ -338,22 +282,9 @@
 				return this.s.toString();
 			};
 		};
-		funcs.ParWrapper = function (s, parLevelOp, parLevelB) {
-			this.s = new LazyString();
-			const raw = s.toString().trim();
-			const core = stripOuterParens(raw);
-			const atomic =
-				/^[A-Za-z_][A-Za-z0-9_]*$/.test(core) ||
-				/^[A-Za-z_][A-Za-z0-9_]*\s*[\(\[].*[\)\]]$/.test(core) ||
-				/^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?f?$/.test(core) ||
-				/^(true|false)$/.test(core);
-			if (parLevelB <= parLevelOp && !atomic)
-				this.s.add('(', s, ')');
-			else
-				this.s.add(s);
-			this.toString = function () {
-				return this.s.toString();
-			};
+		// Parentheses preserve the expression tree; formatting never rewrites it.
+		funcs.ParWrapper = function (s) {
+			this.toString = () => '(' + s.toString() + ')';
 		};
 		funcs.Statements = function () {
 			this.items = [];
@@ -373,71 +304,6 @@
 				return prependTabs(r, tabLevel);
 			};
 		};
-		function count_uses_in_items_local (items, id) {
-			let n = 0;
-			for (let s of items || []) {
-				if (!s)
-					continue;
-				if (s.kind == "assignment") {
-					const rx = new RegExp('(^|[^A-Za-z0-9_])' + id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^A-Za-z0-9_]|$)', 'g');
-					const expr = s.r ? s.r.toString() : "";
-					while (rx.exec(expr))
-						n++;
-					continue;
-				}
-				if (s.kind == "if") {
-					const rx = new RegExp('(^|[^A-Za-z0-9_])' + id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^A-Za-z0-9_]|$)', 'g');
-					const cond = s.condition ? s.condition.toString() : "";
-					while (rx.exec(cond))
-						n++;
-					n += count_uses_in_items_local(s.body && s.body.items, id);
-					continue;
-				}
-				if (s.kind == "ifelse") {
-					const rx = new RegExp('(^|[^A-Za-z0-9_])' + id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^A-Za-z0-9_]|$)', 'g');
-					const cond = s.condition ? s.condition.toString() : "";
-					while (rx.exec(cond))
-						n++;
-					n += count_uses_in_items_local(s.then_body && s.then_body.items, id);
-					n += count_uses_in_items_local(s.else_body && s.else_body.items, id);
-				}
-			}
-			return n;
-		}
-		function compactImmediateMemoryAliases (statements) {
-			if (!statements || !statements.items)
-				return;
-			for (let s of statements.items) {
-				if (s && s.kind == "if")
-					compactImmediateMemoryAliases(s.body);
-				if (s && s.kind == "ifelse") {
-					compactImmediateMemoryAliases(s.then_body);
-					compactImmediateMemoryAliases(s.else_body);
-				}
-			}
-			for (let i = 0; i < statements.items.length - 1; i++) {
-				const a = statements.items[i];
-				const b = statements.items[i + 1];
-				if (!(a && b && a.kind == "assignment" && a.defined_id))
-					continue;
-				if (!(b.kind == "assignment"))
-					continue;
-				const lhs = ((b.l || "") + "").trim();
-				if (!/^\s*[A-Za-z_][A-Za-z0-9_]*\s*[\(\[]/.test(lhs))
-					continue;
-				const rhs = ((b.r || "") + "").trim();
-				const rr = rhs.replace(/^\(+\s*|\s*\)+$/g, '');
-				if (rr != a.defined_id)
-					continue;
-				if (count_uses_in_items_local(statements.items.slice(i + 2), a.defined_id) > 0)
-					continue;
-				b.r = new LazyString(a.r.toString());
-				b.s = new LazyString();
-				b.s.add(b.l, ' = ', b.r, ';');
-				statements.items.splice(i, 1);
-				i--;
-			}
-		}
 		funcs.IfBlock = function () {
 			this.kind = "if";
 			this.condition = new LazyString();
@@ -452,7 +318,6 @@
 				this.end = new LazyString('\n} \n');
 
 			this.toString = function (tabLevel = 0) {
-				compactImmediateMemoryAliases(this.body);
 				const r = this.start.toString() + this.body.toString(1) + this.end.toString();
 				return prependTabs(r, tabLevel);
 			};
@@ -472,56 +337,13 @@
 			}
 			this.then_body = new funcs.Statements();
 			this.else_body = new funcs.Statements();
-			this.defined_id = undefined;
 			this.toString = function (tabLevel = 0) {
-				compactImmediateMemoryAliases(this.then_body);
-				compactImmediateMemoryAliases(this.else_body);
 				const r = this.start.toString() +
 					this.then_body.toString(1) +
 					this.mid.toString() +
 					this.else_body.toString(1) +
 					this.end.toString();
 				return prependTabs(r, tabLevel);
-			};
-		};
-		funcs.ControlCoeffsGroup = function (control_dependencies) {
-			this.control_dependencies = control_dependencies;
-			this.equals = (s) => ut.setsEqual(this.control_dependencies, s);
-			
-			if (target_language == "MATLAB") {
-				this.s = new funcs.Statements();
-			}
-			else {
-				this.s = new funcs.IfBlock();
-				this.s.condition.add(Array.from(control_dependencies).map(x => funcs.getObjectPrefix() + x + '_CHANGED').join(' | '));
-			}
-
-			this.add = function (...x) {
-				if (target_language == "MATLAB")
-					this.s.add.apply(this.s, x);
-				else
-					this.s.body.add.apply(this.s.body, x);
-			};
-			this.toString = function (tabLevel = 0) {
-				return this.s.toString(tabLevel);
-			};
-		};
-		funcs.ControlCoeffs = function () {
-			this.groups = [];
-			this.getOrAddGroup = function (control_dependencies) {
-				var g = this.groups.find(g => g.equals(control_dependencies));
-				if (g == undefined) {
-					g = new funcs.ControlCoeffsGroup(control_dependencies);
-					this.groups.push(g);
-				}
-				return g;
-			};
-			this.add = function (s, control_dependencies) {
-				const g = this.getOrAddGroup(control_dependencies);
-				g.add(s);
-			};
-			this.toString = function (tabLevel = 0) {
-				return this.groups.map(g => g.toString(tabLevel)).join('\n');
 			};
 		};
 
@@ -548,7 +370,7 @@
 			parameters_initialValues: {},
 
 			// Instance properties // Declarations
-			parameter_states: new funcs.Statements(), // p, p_z1, p_CHANGED
+			parameter_states: new funcs.Statements(),
 			memory_declarations: new funcs.Statements(),
 			states: new funcs.Statements(),
 			coefficients: new funcs.Statements(),
@@ -563,9 +385,7 @@
 			reset: new funcs.Statements(),
 			constants: new funcs.Statements(),
 			fs_update: new funcs.Statements(),
-			control_coeffs_update: new funcs.ControlCoeffs(),
-			update_coeffs_ctrl: new funcs.Statements(),
-			update_coeffs_audio: new funcs.Statements(),
+			control_coeffs_update: new funcs.Statements(),
 			audio_update: new funcs.Statements(),
 			memory_updates: new funcs.Statements(),
 
@@ -596,24 +416,10 @@
 			const code = funcs.getObjectPrefix() + id;
 			program.parameters.push(id);
 			p.code = code;
-			program.parameters_initialValues[id] = initial_values[p.id]
+			program.parameters_initialValues[id] = Object.prototype.hasOwnProperty.call(initial_values, p.id)
 				? funcs.getFloat(initial_values[p.id])
 				: funcs.getFloat(0.5);
 		});
-		program.parameters.forEach(p => {
-			if (t != "MATLAB") {
-				const id = program.identifiers.add(p + '_z1');
-				const d = new funcs.Declaration(false, false, TYPES.Float32, false, id, true);
-				program.parameter_states.add(d);
-			}
-		});
-		program.parameters.forEach(p => {
-			if (t != "MATLAB") {
-				const id = program.identifiers.add(p + '_CHANGED');
-				const d = new funcs.Declaration(false, false, TYPES.Bool, false, id, true);
-				program.parameter_states.add(d);
-			}
-		});	
 		program.parameters.forEach(p => {
 			if (t != "MATLAB")
 				program.identifiers.add('p_' + p);
@@ -644,23 +450,14 @@
 			program.audio_outputs.push(id);
 			p.code = code;
 		});
-		// Propagate output ids backwards so upstream temporaries (e.g. SELECT results)
-		// can reuse semantic names instead of generic x__ names.
-		bdef.o_ports.forEach(p => {
-			const c = bdef.connections.find(c => c.out == p);
-			if (c && p.id && !c.in.preferred_id)
-				c.in.preferred_id = p.id;
-		});
-		
 
-		schedule.forEach(b => ensure_block_converted(b));
+
+		schedule.forEach(convert_block);
 
 		bdef.o_ports.forEach(p => {
 			const c = bdef.connections.find(c => c.out == p);
 			program.output_updates.add(new funcs.Assignment(c.out.code, c.in.code, false));
 		});
-		if (options.outgen_optimizations !== false)
-			program.loop_body = build_optimized_loop_body();
 
 
 		doT.templateSettings.strip = false;
@@ -722,1074 +519,56 @@
 
 		throw new Error("Unrecognized target language: " + t);
 
-		function build_optimized_loop_body () {
-			const loop_body = new funcs.Statements();
-			program.update_coeffs_audio.items.forEach(s => loop_body.add(s));
-			program.audio_update.items.forEach(s => loop_body.add(s));
-			program.memory_updates.items.forEach(s => loop_body.add(s));
-			program.output_updates.items.forEach(s => loop_body.add(s));
-				let changed = true;
-				while (changed) {
-				changed = false;
-				if (merge_adjacent_conditionals(loop_body))
-					changed = true;
-				if (options.outgen_code_sinking !== false && sink_branch_local_statements(loop_body))
-					changed = true;
-				if (simplify_known_conditions(loop_body, new Set(), new Set()))
-					changed = true;
-				if (substitute_single_use_assignments(loop_body))
-					changed = true;
-				if (collapse_assignment_into_single_memory_write(loop_body))
-					changed = true;
-				if (remove_noop_assignments(loop_body))
-					changed = true;
-				if (collapse_trivial_aliases(loop_body))
-					changed = true;
-				if (options.outgen_code_hoisting !== false && distribute_following_statements_into_ifelse(loop_body))
-					changed = true;
-					if (options.outgen_code_hoisting !== false && cleanup_branch_local_scopes(loop_body, new Set()))
-						changed = true;
-				}
-				prune_dead_memories(loop_body);
-				return loop_body;
-			}
-
-			function merge_adjacent_conditionals (statements) {
-				let changed = false;
-				for (let s of statements.items) {
-				if (s && s.kind == "if" && merge_adjacent_conditionals(s.body))
-					changed = true;
-				if (s && s.kind == "ifelse") {
-					if (merge_adjacent_conditionals(s.then_body))
-						changed = true;
-					if (merge_adjacent_conditionals(s.else_body))
-						changed = true;
-				}
-			}
-			for (let i = 0; i < statements.items.length - 1; i++) {
-				const a = statements.items[i];
-				const b = statements.items[i + 1];
-				if (!a || !b)
-					continue;
-				if (a.kind == "ifelse" && b.kind == "ifelse"
-						&& canonical_condition(a.condition.toString()) == canonical_condition(b.condition.toString())) {
-					b.then_body.items.forEach(x => a.then_body.items.push(x));
-					b.else_body.items.forEach(x => a.else_body.items.push(x));
-					statements.items.splice(i + 1, 1);
-					changed = true;
-					i--;
-					continue;
-				}
-				if (a.kind == "if" && b.kind == "if"
-						&& canonical_condition(a.condition.toString()) == canonical_condition(b.condition.toString())) {
-					b.body.items.forEach(x => a.body.items.push(x));
-					statements.items.splice(i + 1, 1);
-					changed = true;
-					i--;
-					continue;
-				}
-				if (a.kind == "ifelse" && b.kind == "if") {
-					const branch = get_matching_ifelse_branch(a, b.condition.toString());
-					if (branch) {
-						b.body.items.forEach(x => branch.items.push(x));
-						statements.items.splice(i + 1, 1);
-						changed = true;
-						i--;
-						}
-					}
-				}
-				for (let i = 0; i < statements.items.length - 2; i++) {
-					const a = statements.items[i];
-					if (!a)
-						continue;
-					for (let j = i + 2; j < statements.items.length; j++) {
-						const b = statements.items[j];
-						if (!b)
-							continue;
-						let canMoveAcross = true;
-						for (let k = i + 1; k < j; k++) {
-							if (!can_reorder_statement_pair(statements.items[k], b)) {
-								canMoveAcross = false;
-								break;
-							}
-						}
-						if (!canMoveAcross)
-							continue;
-						if (a.kind == "ifelse" && b.kind == "ifelse"
-								&& canonical_condition(a.condition.toString()) == canonical_condition(b.condition.toString())) {
-							b.then_body.items.forEach(x => a.then_body.items.push(x));
-							b.else_body.items.forEach(x => a.else_body.items.push(x));
-							statements.items.splice(j, 1);
-							changed = true;
-							i--;
-							break;
-						}
-						if (a.kind == "if" && b.kind == "if"
-								&& canonical_condition(a.condition.toString()) == canonical_condition(b.condition.toString())) {
-							b.body.items.forEach(x => a.body.items.push(x));
-							statements.items.splice(j, 1);
-							changed = true;
-							i--;
-							break;
-						}
-						if (a.kind == "ifelse" && b.kind == "if") {
-							const branch = get_matching_ifelse_branch(a, b.condition.toString());
-							if (branch) {
-								b.body.items.forEach(x => branch.items.push(x));
-								statements.items.splice(j, 1);
-								changed = true;
-								i--;
-								break;
-							}
-						}
-					}
-				}
-				return changed;
-			}
-
-		function can_reorder_statement_pair (a, b) {
-			const a_defs = collect_defs_in_statement_set(a);
-			const b_defs = collect_defs_in_statement_set(b);
-			const a_uses = collect_uses_in_statement_set(a);
-			const b_uses = collect_uses_in_statement_set(b);
-			if (sets_intersect(a_defs, b_uses))
-				return false;
-			if (sets_intersect(b_defs, a_uses))
-				return false;
-			if (sets_intersect(a_defs, b_defs))
-				return false;
-			return true;
+		function dispatch (b, rate) {
+			// Values needed by another phase live in the instance. Avoid guessing
+			// their lifetime from consumers or regrouping the dependency schedule.
+			const locality = rate == RATES.Audio ? 2 : rate == RATES.Constant ? 0 : 1;
+			const whereAss = rate == RATES.Audio ? program.audio_update
+				: rate == RATES.Control ? program.control_coeffs_update
+				: rate == RATES.Reset ? program.reset
+				: rate == RATES.Fs ? program.fs_update : program.init;
+			const whereDec = locality == 2 ? program.audio_update
+				: locality == 1 ? program.coefficients : program.constants;
+			return { locality, whereDec, whereAss: guarded(whereAss, b) };
 		}
 
-			function distribute_following_statements_into_ifelse (statements) {
-				let changed = false;
-				for (let i = 0; i < statements.items.length - 1; i++) {
-					const a = statements.items[i];
-					if (!(a && a.kind == "ifelse"))
-						continue;
-					const def = get_defined_id(a);
-					if (!def)
-						continue;
-					for (let j = i + 1; j < statements.items.length; j++) {
-						const b = statements.items[j];
-						if (!b)
-							continue;
-						if (!is_cloneable_statement(b))
-							continue;
-						if (count_uses_in_statement(b, def) == 0)
-							continue;
-						if (count_uses_in_items(statements.items.slice(i + 1, j), def) > 0)
-							break;
-						if (count_uses_in_items(statements.items.slice(j + 1), def) > 0)
-							break;
-						let canMoveAcross = true;
-						for (let k = i + 1; k < j; k++) {
-							if (!can_reorder_statement_pair(statements.items[k], b)) {
-								canMoveAcross = false;
-								break;
-							}
-						}
-						if (!canMoveAcross)
-							continue;
-						a.then_body.items.push(clone_statement(b));
-						a.else_body.items.push(clone_statement(b));
-						statements.items.splice(j, 1);
-						changed = true;
-						i--;
-						break;
-					}
-				}
-				return changed;
-			}
 
-		function sink_branch_local_statements (statements) {
-			let changed = true;
-			let any_changed = false;
-			while (changed) {
-				changed = false;
-				for (let i = 0; i < statements.items.length - 1; i++) {
-					const cur = statements.items[i];
-					const nxt = statements.items[i + 1];
-					if (!(cur && cur.kind == "ifelse" && nxt && nxt.kind == "if"))
-						continue;
-					const branch = get_matching_ifelse_branch(cur, nxt.condition.toString());
-					if (!branch)
-						continue;
-					nxt.body.items.forEach(x => branch.items.push(x));
-					statements.items.splice(i + 1, 1);
-					changed = any_changed = true;
-					break;
+		function guarded(destination, block) {
+			if (!block.guard_ports.length)
+				return destination;
+			return { add(...statements) {
+				let body = destination;
+				for (const guard of block.guard_ports) {
+					const branch = new funcs.IfBlock();
+					const source = bdef.connections.find(c => c.out == guard).in;
+					branch.condition.add(guard.negated ? (t == 'MATLAB' ? '~(' : '!(') : '(', source.code, ')');
+					body.add(branch);
+					body = branch.body;
 				}
-				for (let i = 0; i < statements.items.length - 1; i++) {
-					const cur = statements.items[i];
-					const nxt = statements.items[i + 1];
-					if (!is_sinkable_statement(cur))
-						continue;
-					const def = get_defined_id(cur);
-					if (!def)
-						continue;
-					const rest_items = statements.items.slice(i + 2);
-					if (nxt && nxt.kind == "ifelse") {
-						if (count_uses_in_expr(nxt.condition.toString(), def) > 0)
-							continue;
-						const then_uses = count_uses_in_statements(nxt.then_body, def);
-						const else_uses = count_uses_in_statements(nxt.else_body, def);
-						const rest_uses = count_uses_in_items(rest_items, def);
-						if (rest_uses > 0)
-							continue;
-						if (then_uses > 0 && else_uses == 0) {
-							nxt.then_body.items.unshift(cur);
-							statements.items.splice(i, 1);
-							changed = any_changed = true;
-							break;
-						}
-						if (else_uses > 0 && then_uses == 0) {
-							nxt.else_body.items.unshift(cur);
-							statements.items.splice(i, 1);
-							changed = any_changed = true;
-							break;
-						}
-						continue;
-					}
-					if (nxt && nxt.kind == "if") {
-						if (count_uses_in_expr(nxt.condition.toString(), def) > 0)
-							continue;
-						const body_uses = count_uses_in_statements(nxt.body, def);
-						const rest_uses = count_uses_in_items(rest_items, def);
-						if (body_uses > 0 && rest_uses == 0) {
-							nxt.body.items.unshift(cur);
-							statements.items.splice(i, 1);
-							changed = any_changed = true;
-							break;
-						}
-					}
-				}
-			}
-			return any_changed;
+				body.add(...statements);
+			} };
 		}
 
-		function get_matching_ifelse_branch (ifelseStmt, conditionExpr) {
-			const base = canonical_condition(ifelseStmt.condition.toString());
-			const cond = canonical_condition(conditionExpr);
-			if (cond == base)
-				return ifelseStmt.then_body;
-			if (cond == negate_condition(base))
-				return ifelseStmt.else_body;
-			return undefined;
+		function value_name(block, type, rate, preferred) {
+			const where = dispatch(block, rate);
+			const id = program.identifiers.add(preferred || block.id || 'v');
+			where.whereDec.add(new funcs.Declaration(false, false, type, false, id, true));
+			return { name: where.locality == 1 ? funcs.getObjectPrefix() + id : id, where };
 		}
 
-		function simplify_known_conditions (statements, known_true, known_false) {
-			let changed = false;
-			for (let i = 0; i < statements.items.length; i++) {
-				const s = statements.items[i];
-				if (!s)
-					continue;
-				if (s.kind == "if") {
-					const cond = canonical_condition(s.condition.toString());
-					if (known_true.has(cond)) {
-						statements.items.splice(i, 1, ...s.body.items);
-						changed = true;
-						i--;
-						continue;
-					}
-					if (known_false.has(cond)) {
-						statements.items.splice(i, 1);
-						changed = true;
-						i--;
-						continue;
-					}
-					const child_true = new Set(known_true);
-					const child_false = new Set(known_false);
-					child_true.add(cond);
-					child_false.add(negate_condition(cond));
-					if (simplify_known_conditions(s.body, child_true, child_false))
-						changed = true;
-					continue;
-				}
-				if (s.kind == "ifelse") {
-					const cond = canonical_condition(s.condition.toString());
-					if (known_true.has(cond)) {
-						statements.items.splice(i, 1, ...s.then_body.items);
-						changed = true;
-						i--;
-						continue;
-					}
-					if (known_false.has(cond)) {
-						statements.items.splice(i, 1, ...s.else_body.items);
-						changed = true;
-						i--;
-						continue;
-					}
-					const then_true = new Set(known_true);
-					const then_false = new Set(known_false);
-					then_true.add(cond);
-					then_false.add(negate_condition(cond));
-					if (simplify_known_conditions(s.then_body, then_true, then_false))
-						changed = true;
-					const else_true = new Set(known_true);
-					const else_false = new Set(known_false);
-					else_false.add(cond);
-					else_true.add(negate_condition(cond));
-					if (simplify_known_conditions(s.else_body, else_true, else_false))
-						changed = true;
-				}
-			}
-			return changed;
-		}
-
-		function collapse_trivial_aliases (statements) {
-			let changed = false;
-			for (let i = 0; i < statements.items.length - 1; i++) {
-				const a = statements.items[i];
-				const b = statements.items[i + 1];
-				if (!(a && b && a.kind == "assignment" && b.kind == "assignment"))
-					continue;
-				const tmp = a.defined_id;
-				if (!tmp)
-					continue;
-				if (!is_simple_identifier_expr(b.r.toString(), tmp))
-					continue;
-				if (count_uses_in_items(statements.items.slice(i + 2), tmp) > 0)
-					continue;
-				b.r = a.r;
-				b.s = new LazyString();
-				if (b.declaration) {
-					b.s = b.declaration.s;
-					b.s.add(' = ', b.r, ';');
-				}
-				else {
-					b.s.add(b.l, ' = ', b.r, ';');
-				}
-				statements.items.splice(i, 1);
-				changed = true;
-				i--;
-			}
-			return changed;
-		}
-
-		function collapse_assignment_into_single_memory_write (statements) {
-			let changed = false;
-			for (let s of statements.items) {
-				if (s && s.kind == "if" && collapse_assignment_into_single_memory_write(s.body))
-					changed = true;
-				if (s && s.kind == "ifelse") {
-					if (collapse_assignment_into_single_memory_write(s.then_body))
-						changed = true;
-					if (collapse_assignment_into_single_memory_write(s.else_body))
-						changed = true;
-				}
-			}
-			for (let i = 0; i < statements.items.length - 1; i++) {
-				const a = statements.items[i];
-				const b = statements.items[i + 1];
-				if (!(a && b && a.kind == "assignment" && a.defined_id))
-					continue;
-				if (!(b.kind == "assignment"))
-					continue;
-				const lhs = ((b.l || "") + "").trim();
-				if (!(b.memory_write_id || /^\s*[A-Za-z_][A-Za-z0-9_]*\s*[\(\[]/.test(lhs)))
-					continue;
-				if (!is_simple_identifier_expr(b.r.toString(), a.defined_id))
-					continue;
-				if (count_uses_in_items(statements.items.slice(i + 2), a.defined_id) > 0)
-					continue;
-				b.r = new LazyString(a.r.toString());
-				b.s = new LazyString();
-				b.s.add(b.l, ' = ', b.r, ';');
-				statements.items.splice(i, 1);
-				changed = true;
-				i--;
-			}
-			return changed;
-		}
-
-		function substitute_single_use_assignments (statements) {
-			let changed = false;
-			for (let i = 0; i < statements.items.length - 1; i++) {
-				const a = statements.items[i];
-				const b = statements.items[i + 1];
-				if (!(a && b && a.kind == "assignment" && a.defined_id))
-					continue;
-				if (a.declaration)
-					continue;
-				if (b.defined_id == a.defined_id)
-					continue;
-				if (count_uses_in_statement(b, a.defined_id) == 0)
-					continue;
-				if (count_uses_in_items(statements.items.slice(i + 2), a.defined_id) > 0)
-					continue;
-				substitute_identifier_in_statement(b, a.defined_id, a.r.toString());
-				statements.items.splice(i, 1);
-				changed = true;
-				i--;
-			}
-			return changed;
-		}
-
-		function cleanup_branch_local_scopes (statements, live_out) {
-			let changed = false;
-			for (let i = 0; i < statements.items.length; i++) {
-				const s = statements.items[i];
-				if (!s)
-					continue;
-				const suffix_live = union_id_sets(live_out, collect_uses_in_items_set(statements.items.slice(i + 1)));
-				if (s.kind == "if") {
-					if (cleanup_branch_local_scopes(s.body, suffix_live))
-						changed = true;
-					continue;
-				}
-				if (s.kind == "ifelse") {
-					if (cleanup_branch_local_scopes(s.then_body, suffix_live))
-						changed = true;
-					if (cleanup_branch_local_scopes(s.else_body, suffix_live))
-						changed = true;
-				}
-			}
-			if (substitute_single_use_assignments_scoped(statements, live_out))
-				changed = true;
-			if (collapse_assignment_into_single_memory_write_scoped(statements, live_out))
-				changed = true;
-			if (forward_substitute_stable_assignments_scoped(statements, live_out))
-				changed = true;
-			if (collapse_trivial_aliases_scoped(statements, live_out))
-				changed = true;
-			if (remove_noop_assignments(statements))
-				changed = true;
-			return changed;
-		}
-
-		function substitute_single_use_assignments_scoped (statements, live_out) {
-			let changed = false;
-			for (let i = 0; i < statements.items.length - 1; i++) {
-				const a = statements.items[i];
-				const b = statements.items[i + 1];
-				if (!(a && b && a.kind == "assignment" && a.defined_id))
-					continue;
-				if (a.declaration)
-					continue;
-				if (live_out.has(a.defined_id))
-					continue;
-				if (b.defined_id == a.defined_id)
-					continue;
-				if (count_uses_in_statement(b, a.defined_id) == 0)
-					continue;
-				if (count_uses_in_items(statements.items.slice(i + 2), a.defined_id) > 0)
-					continue;
-				substitute_identifier_in_statement(b, a.defined_id, a.r.toString());
-				statements.items.splice(i, 1);
-				changed = true;
-				i--;
-			}
-			return changed;
-		}
-
-		function collapse_assignment_into_single_memory_write_scoped (statements, live_out) {
-			let changed = false;
-			for (let s of statements.items) {
-				if (s && s.kind == "if" && collapse_assignment_into_single_memory_write_scoped(s.body, live_out))
-					changed = true;
-				if (s && s.kind == "ifelse") {
-					if (collapse_assignment_into_single_memory_write_scoped(s.then_body, live_out))
-						changed = true;
-					if (collapse_assignment_into_single_memory_write_scoped(s.else_body, live_out))
-						changed = true;
-				}
-			}
-			for (let i = 0; i < statements.items.length - 1; i++) {
-				const a = statements.items[i];
-				const b = statements.items[i + 1];
-				if (!(a && b && a.kind == "assignment" && a.defined_id))
-					continue;
-				if (live_out.has(a.defined_id))
-					continue;
-				if (!(b.kind == "assignment"))
-					continue;
-				const lhs = ((b.l || "") + "").trim();
-				if (!(b.memory_write_id || /^\s*[A-Za-z_][A-Za-z0-9_]*\s*[\(\[]/.test(lhs)))
-					continue;
-				if (!is_simple_identifier_expr(b.r.toString(), a.defined_id))
-					continue;
-				if (count_uses_in_items(statements.items.slice(i + 2), a.defined_id) > 0)
-					continue;
-				b.r = new LazyString(a.r.toString());
-				b.s = new LazyString();
-				b.s.add(b.l, ' = ', b.r, ';');
-				statements.items.splice(i, 1);
-				changed = true;
-				i--;
-			}
-			return changed;
-		}
-
-		function collapse_trivial_aliases_scoped (statements, live_out) {
-			let changed = false;
-			for (let i = 0; i < statements.items.length - 1; i++) {
-				const a = statements.items[i];
-				const b = statements.items[i + 1];
-				if (!(a && b && a.kind == "assignment" && b.kind == "assignment"))
-					continue;
-				const tmp = a.defined_id;
-				if (!tmp)
-					continue;
-				if (live_out.has(tmp))
-					continue;
-				if (!is_simple_identifier_expr(b.r.toString(), tmp))
-					continue;
-				if (count_uses_in_items(statements.items.slice(i + 2), tmp) > 0)
-					continue;
-				b.r = a.r;
-				b.s = new LazyString();
-				if (b.declaration) {
-					b.s = b.declaration.s;
-					b.s.add(' = ', b.r, ';');
-				}
-				else {
-					b.s.add(b.l, ' = ', b.r, ';');
-				}
-				statements.items.splice(i, 1);
-				changed = true;
-				i--;
-			}
-			return changed;
-		}
-
-		function forward_substitute_stable_assignments_scoped (statements, live_out) {
-			let changed = false;
-			for (let i = 0; i < statements.items.length; i++) {
-				const a = statements.items[i];
-				if (!(a && a.kind == "assignment" && a.defined_id))
-					continue;
-				if (a.declaration)
-					continue;
-				if (live_out.has(a.defined_id))
-					continue;
-				const repl = a.r.toString();
-				const dep_ids = collect_uses_in_expr_set(repl);
-				let used = false;
-				for (let j = i + 1; j < statements.items.length; j++) {
-					const s = statements.items[j];
-					if (count_uses_in_statement(s, a.defined_id) > 0) {
-						substitute_identifier_in_statement(s, a.defined_id, repl);
-						used = true;
-						changed = true;
-					}
-					const writes = collect_defs_in_statement_set(s);
-					const hits_dep = sets_intersect(dep_ids, writes);
-					const hits_self = writes.has(a.defined_id);
-					if (hits_dep || hits_self)
-						break;
-				}
-				if (!used)
-					continue;
-				if (count_uses_in_items(statements.items.slice(i + 1), a.defined_id) > 0)
-					continue;
-				statements.items.splice(i, 1);
-				changed = true;
-				i--;
-			}
-			return changed;
-		}
-
-			function remove_noop_assignments (statements) {
-			let changed = false;
-			for (let s of statements.items) {
-				if (s && s.kind == "if" && remove_noop_assignments(s.body))
-					changed = true;
-				if (s && s.kind == "ifelse") {
-					if (remove_noop_assignments(s.then_body))
-						changed = true;
-					if (remove_noop_assignments(s.else_body))
-						changed = true;
-				}
-			}
-			for (let i = 0; i < statements.items.length; i++) {
-				const s = statements.items[i];
-				if (!(s && s.kind == "assignment"))
-					continue;
-				if (strip_outer_parens_local((s.l || "").toString()) != strip_outer_parens_local((s.r || "").toString()))
-					continue;
-				statements.items.splice(i, 1);
-				changed = true;
-				i--;
-			}
-				return changed;
-			}
-
-			function prune_dead_memories (loop_body) {
-				const memoryIds = program.memory_declarations.items
-					.filter(d => d && d.memory_id)
-					.map(d => d.memory_id);
-				if (memoryIds.length == 0)
-					return;
-
-				const readIds = new Set();
-				const writeIds = new Set();
-
-				function escapeRegExp (s) {
-					return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-				}
-
-				function collectMemoryRefsFromText (text, ownWriteId) {
-					for (let id of memoryIds) {
-						if (id == ownWriteId)
-							continue;
-						const rx = new RegExp('(^|[^A-Za-z0-9_])' + escapeRegExp(id) + '\\s*[\\(\\[]');
-						if (rx.test(text))
-							readIds.add(id);
-					}
-				}
-
-				function walkStatements (statements) {
-					if (!statements || !statements.items)
-						return;
-					for (let s of statements.items) {
-						if (!s)
-							continue;
-						if (s.kind == "assignment") {
-							if (s.memory_write_id)
-								writeIds.add(s.memory_write_id);
-							const rhs = s.r ? s.r.toString() : "";
-							collectMemoryRefsFromText(rhs, undefined);
-							if (!s.memory_write_id) {
-								const lhs = s.l ? s.l.toString() : "";
-								collectMemoryRefsFromText(lhs, undefined);
-							}
-							continue;
-						}
-						if (s.kind == "if") {
-							collectMemoryRefsFromText(s.condition ? s.condition.toString() : "", undefined);
-							walkStatements(s.body);
-							continue;
-						}
-						if (s.kind == "ifelse") {
-							collectMemoryRefsFromText(s.condition ? s.condition.toString() : "", undefined);
-							walkStatements(s.then_body);
-							walkStatements(s.else_body);
-							continue;
-						}
-						if (s.memory_id) {
-							writeIds.add(s.memory_id);
-							collectMemoryRefsFromText(s.toString(), s.memory_id);
-							continue;
-						}
-						if (typeof s.toString == "function")
-							collectMemoryRefsFromText(s.toString(), undefined);
-					}
-				}
-
-				walkStatements(program.constants);
-				walkStatements(program.fs_update);
-				walkStatements(program.update_coeffs_ctrl);
-				walkStatements(program.init);
-				walkStatements(program.reset);
-				if (loop_body)
-					walkStatements(loop_body);
-				else {
-					walkStatements(program.update_coeffs_audio);
-					walkStatements(program.audio_update);
-					walkStatements(program.memory_updates);
-					walkStatements(program.output_updates);
-				}
-
-				const deadIds = new Set();
-				program.memory_declarations.items = program.memory_declarations.items.filter(d => {
-					if (!d || !d.memory_id)
-						return true;
-					if (readIds.has(d.memory_id))
-						return true;
-					deadIds.add(d.memory_id);
-					return false;
-				});
-				if (deadIds.size == 0)
-					return;
-
-				program.reset.items = program.reset.items.filter(s => !(s && s.memory_id && deadIds.has(s.memory_id)));
-				if (t != "MATLAB")
-					program.init.items = program.init.items.filter(s => !(s && s.memory_id && deadIds.has(s.memory_id)));
-
-				function pruneWrites (statements) {
-					if (!statements || !statements.items)
-						return;
-					statements.items = statements.items.filter(s => {
-						if (!s)
-							return false;
-						if (s.kind == "if")
-							pruneWrites(s.body);
-						if (s.kind == "ifelse") {
-							pruneWrites(s.then_body);
-							pruneWrites(s.else_body);
-						}
-						if (s.memory_write_id && deadIds.has(s.memory_write_id))
-							return false;
-						if (s.memory_id && deadIds.has(s.memory_id))
-							return false;
-						return true;
-					});
-				}
-
-				pruneWrites(program.constants);
-				pruneWrites(program.fs_update);
-				pruneWrites(program.update_coeffs_ctrl);
-				if (loop_body)
-					pruneWrites(loop_body);
-				else {
-					pruneWrites(program.update_coeffs_audio);
-					pruneWrites(program.audio_update);
-					pruneWrites(program.memory_updates);
-					pruneWrites(program.output_updates);
-				}
-			}
-
-
-			function is_sinkable_statement (s) {
-			if (!s)
-				return false;
-			if (s.kind == "assignment")
-				return !!s.defined_id;
-			if ((s.kind == "ifelse" || s.kind == "if") && s.defined_id)
-				return true;
-			return false;
-		}
-
-		function is_cloneable_statement (s) {
-			if (!s)
-				return false;
-			if (s.kind == "assignment" && !s.declaration)
-				return true;
-			if (s.kind == "if" || s.kind == "ifelse")
-				return true;
-			return false;
-		}
-
-		function get_defined_id (s) {
-			return s && s.defined_id ? s.defined_id : undefined;
-		}
-
-		function count_uses_in_items (items, id) {
-			let n = 0;
-			for (let s of items)
-				n += count_uses_in_statement(s, id);
-			return n;
-		}
-
-		function count_uses_in_statements (stmts, id) {
-			return count_uses_in_items(stmts.items, id);
-		}
-
-		function count_uses_in_statement (s, id) {
-			if (!s)
-				return 0;
-			if (s.kind == "assignment")
-				return count_uses_in_expr(s.r.toString(), id);
-			if (s.kind == "declaration")
-				return 0;
-			if (s.kind == "if")
-				return count_uses_in_expr(s.condition.toString(), id) + count_uses_in_statements(s.body, id);
-			if (s.kind == "ifelse")
-				return count_uses_in_expr(s.condition.toString(), id)
-					+ count_uses_in_statements(s.then_body, id)
-					+ count_uses_in_statements(s.else_body, id);
-			return count_uses_in_expr(s.toString(), id);
-		}
-
-		function count_uses_in_expr (expr, id) {
-			const rx = new RegExp('(^|[^A-Za-z0-9_])' + escapeRegExp(id) + '([^A-Za-z0-9_]|$)', 'g');
-			let n = 0;
-			while (rx.exec(expr))
-				n++;
-			return n;
-		}
-
-		function collect_uses_in_items_set (items) {
-			const r = new Set();
-			for (let s of items) {
-				const rs = collect_uses_in_statement_set(s);
-				rs.forEach(x => r.add(x));
-			}
-			return r;
-		}
-
-		function collect_uses_in_statement_set (s) {
-			const r = new Set();
-			if (!s)
-				return r;
-			if (s.kind == "assignment") {
-				collect_uses_in_expr_set(s.r.toString()).forEach(x => r.add(x));
-				return r;
-			}
-			if (s.kind == "if") {
-				collect_uses_in_expr_set(s.condition.toString()).forEach(x => r.add(x));
-				collect_uses_in_items_set(s.body.items).forEach(x => r.add(x));
-				return r;
-			}
-			if (s.kind == "ifelse") {
-				collect_uses_in_expr_set(s.condition.toString()).forEach(x => r.add(x));
-				collect_uses_in_items_set(s.then_body.items).forEach(x => r.add(x));
-				collect_uses_in_items_set(s.else_body.items).forEach(x => r.add(x));
-			}
-			return r;
-		}
-
-		function collect_uses_in_expr_set (expr) {
-			const r = new Set();
-			const ms = (expr || "").match(/[A-Za-z_][A-Za-z0-9_]*/g) || [];
-			ms.forEach(x => r.add(x));
-			return r;
-		}
-
-		function collect_defs_in_statement_set (s) {
-			const r = new Set();
-			if (!s)
-				return r;
-			if (s.kind == "assignment") {
-				if (s.defined_id) {
-					r.add(s.defined_id);
-					return r;
-				}
-				const m = ((s.l || "") + "").match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
-				if (m)
-					r.add(m[1]);
-				return r;
-			}
-			if (s.kind == "if") {
-				s.body.items.forEach(x => collect_defs_in_statement_set(x).forEach(y => r.add(y)));
-				return r;
-			}
-			if (s.kind == "ifelse") {
-				s.then_body.items.forEach(x => collect_defs_in_statement_set(x).forEach(y => r.add(y)));
-				s.else_body.items.forEach(x => collect_defs_in_statement_set(x).forEach(y => r.add(y)));
-			}
-			return r;
-		}
-
-		function sets_intersect (a, b) {
-			for (let x of a) {
-				if (b.has(x))
-					return true;
-			}
-			return false;
-		}
-
-		function union_id_sets (a, b) {
-			const r = new Set();
-			(a || new Set()).forEach(x => r.add(x));
-			(b || new Set()).forEach(x => r.add(x));
-			return r;
-		}
-
-		function is_simple_identifier_expr (expr, id) {
-			const s = strip_outer_parens_local((expr || "").trim());
-			return s == id;
-		}
-
-		function clone_statement (s) {
-			if (s.kind == "assignment") {
-				const c = new funcs.Assignment(s.l, s.r, null);
-				c.defined_id = s.defined_id;
-				return c;
-			}
-			if (s.kind == "if") {
-				const c = new funcs.IfBlock();
-				c.condition = new LazyString(s.condition.toString());
-				if (t == "MATLAB")
-					c.start = new LazyString('if ', c.condition, '\n');
-				else
-					c.start = new LazyString('if ( ', c.condition, ' ) { \n');
-				s.body.items.forEach(x => c.body.items.push(clone_statement(x)));
-				return c;
-			}
-			if (s.kind == "ifelse") {
-				const c = new funcs.IfElseBlock();
-				c.defined_id = s.defined_id;
-				c.condition = new LazyString(s.condition.toString());
-				if (t == "MATLAB") {
-					c.start = new LazyString('if ', c.condition, '\n');
-					c.mid = new LazyString('\nelse\n');
-					c.end = new LazyString('\nend\n');
-				}
-				else {
-					c.start = new LazyString('if ( ', c.condition, ' ) { \n');
-					c.mid = new LazyString('\n} else { \n');
-					c.end = new LazyString('\n} \n');
-				}
-				s.then_body.items.forEach(x => c.then_body.items.push(clone_statement(x)));
-				s.else_body.items.forEach(x => c.else_body.items.push(clone_statement(x)));
-				return c;
-			}
-			throw new Error("Cannot clone statement");
-		}
-
-		function substitute_identifier_in_statement (s, id, replacement) {
-			if (!s)
-				return;
-			if (s.kind == "assignment") {
-				if (typeof s.l == "string")
-					s.l = replace_identifier_in_expr(s.l, id, replacement);
-				s.r = new LazyString(replace_identifier_in_expr(s.r.toString(), id, replacement));
-				s.s = new LazyString();
-				if (s.declaration) {
-					s.s = s.declaration.s;
-					s.s.add(' = ', s.r, ';');
-				}
-				else {
-					s.s.add(s.l, ' = ', s.r, ';');
-				}
+		function emit_value(block, expression) {
+			const port = block.o_ports[0];
+			const rate = port.updaterate();
+			if (rate == RATES.Constant) {
+				port.code = expression;
 				return;
 			}
-			if (s.kind == "if") {
-				s.condition = new LazyString(replace_identifier_in_expr(s.condition.toString(), id, replacement));
-				if (t == "MATLAB")
-					s.start = new LazyString('if ', s.condition, '\n');
-				else
-					s.start = new LazyString('if ( ', s.condition, ' ) { \n');
-				s.body.items.forEach(x => substitute_identifier_in_statement(x, id, replacement));
-				return;
-			}
-			if (s.kind == "ifelse") {
-				s.condition = new LazyString(replace_identifier_in_expr(s.condition.toString(), id, replacement));
-				if (t == "MATLAB") {
-					s.start = new LazyString('if ', s.condition, '\n');
-					s.mid = new LazyString('\nelse\n');
-					s.end = new LazyString('\nend\n');
-				}
-				else {
-					s.start = new LazyString('if ( ', s.condition, ' ) { \n');
-					s.mid = new LazyString('\n} else { \n');
-					s.end = new LazyString('\n} \n');
-				}
-				s.then_body.items.forEach(x => substitute_identifier_in_statement(x, id, replacement));
-				s.else_body.items.forEach(x => substitute_identifier_in_statement(x, id, replacement));
-			}
-		}
-
-		function replace_identifier_in_expr (expr, id, replacement) {
-			const rx = new RegExp('(^|[^A-Za-z0-9_])' + escapeRegExp(id) + '([^A-Za-z0-9_]|$)', 'g');
-			const core = strip_outer_parens_local((replacement || "").trim());
-			const atomic =
-				/^[A-Za-z_][A-Za-z0-9_]*$/.test(core) ||
-				/^[A-Za-z_][A-Za-z0-9_]*\s*[\(\[].*[\)\]]$/.test(core) ||
-				/^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?f?$/.test(core) ||
-				/^(true|false)$/.test(core);
-			const repl = atomic ? core : ("(" + core + ")");
-			return (expr || "").replace(rx, function (_m, a, b) {
-				return a + repl + b;
-			});
-		}
-
-		function canonical_condition (expr) {
-			return strip_outer_parens_local((expr || "").trim());
-		}
-
-		function negate_condition (expr) {
-			return "!(" + strip_outer_parens_local(expr) + ")";
-		}
-
-		function strip_outer_parens_local (s) {
-			s = (s || "").trim();
-			while (s.length > 1 && s[0] == '(' && s[s.length - 1] == ')') {
-				let depth = 0;
-				let ok = true;
-				for (let i = 0; i < s.length; i++) {
-					if (s[i] == '(')
-						depth++;
-					else if (s[i] == ')')
-						depth--;
-					if (depth == 0 && i < s.length - 1) {
-						ok = false;
-						break;
-					}
-				}
-				if (!ok)
-					break;
-				s = s.slice(1, -1).trim();
-			}
-			return s;
-		}
-
-		function escapeRegExp (s) {
-			return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-		}
-
-		function dispatch (b, ur, control_dependencies) {
-			const outblocks = bdef.connections.filter(c => c.in.block == b).map(c => c.out.block);
-			
-			let locality = undefined; // 0 = constant, 1 = object, 2 = local
-			let whereDec = undefined;
-			let whereAss = undefined;
-
-			const outblockurs = outblocks.map(bb =>
-				RATES.max.apply(null, bb.i_ports.concat(bb.o_ports).map(p => p.updaterate()))
-			);
-			const maxour = outblockurs.length > 0 ? RATES.max.apply(null, outblockurs) : ur;
-
-			locality = maxour.level <= ur.level ? 2 : 1;
-
-			if (ur == RATES.Constant) {
-				locality = 0;
-				whereDec = program.constants;
-				whereAss = program.init;
-			}
-			if (ur == RATES.Fs) {
-				if (locality == 2)
-					whereDec = program.fs_update;
-				else
-					whereDec = program.coefficients;
-				whereAss = program.fs_update;
-			}
-			if (ur == RATES.Control) {
-				const g = program.control_coeffs_update.getOrAddGroup(control_dependencies);
-				if (locality == 2) {
-					locality = outblocks.every(bb => ut.setsEqual(control_dependencies, bb.control_dependencies)) ? 2 : 1;
-				}
-				if (locality == 2) {
-					whereDec = g;
-				}
-				else {
-					whereDec = program.coefficients;
-				}
-				whereAss = g;
-			}
-			if (ur == RATES.Audio) {
-				locality = 2;
-				whereDec = program.audio_update;
-				whereAss = program.audio_update;
-			}
-
-			return {
-				locality: locality,
-				whereDec: whereDec,
-				whereAss: whereAss
-			};
-		}
-
-
-		function ensure_block_converted (b) {
-			if (b == bdef)
-				return;
-			if (b.__converted__)
-				return;
-			if (b.__converting__)
-				return;
-			b.__converting__ = true;
-			b.i_ports.forEach(p => {
-				const c = bdef.connections.find(cc => cc.out == p);
-				if (c)
-					ensure_block_converted(c.in.block);
-			});
-			if (b.predicate_terms) {
-				b.predicate_terms.forEach(t => {
-					if (t && t.port && t.port.block)
-						ensure_block_converted(t.port.block);
-				});
-			}
-			convert_block(b);
-			b.__converted__ = true;
-			delete b.__converting__;
+			const value = value_name(block, port.datatype(), rate);
+			value.where.whereAss.add(new funcs.Assignment(value.name, expression, null));
+			port.code = new LazyString(value.name);
 		}
 
 		function convert_block (b) {
-			if (b.__converted__)
-				return;
 			
 			const input_block_out_ports = b.i_ports.map(p => bdef.connections.find(c => c.out == p).in);
 			const input_blocks = input_block_out_ports.map(p => p.block);
@@ -1797,181 +576,39 @@
 			
 			const op0 = b.o_ports[0];
 
-			function pick_preferred_memory_id (memoryblock, fallback) {
-				if (!memoryblock || !Array.isArray(memoryblock.__preferred_ids__) || memoryblock.__preferred_ids__.length == 0)
-					return fallback;
-				return memoryblock.__preferred_ids__.reduce((best, cur) => {
-					if (typeof best != "string" || cur.length > best.length)
-						return cur;
-					return best;
-				}, fallback);
-			}
-
 			if (bs.VarBlock.isPrototypeOf(b)) {
-				const var_out_conns = bdef.connections.filter(c => c.in == op0);
-				if (var_out_conns.length == 1 && var_out_conns[0].out.block == bdef) {
-					op0.code = input_codes[0];
-					return;
-				}
-				if (var_out_conns.length == 1 && bs.MemoryWriterBlock.isPrototypeOf(var_out_conns[0].out.block)) {
-					op0.code = input_codes[0];
-					return;
-				}
-				let tracedSrcBlock = input_blocks[0];
-				while (bs.VarBlock.isPrototypeOf(tracedSrcBlock)) {
-					const cvin = bdef.connections.find(c => c.out == tracedSrcBlock.i_ports[0]);
-					if (!cvin)
-						break;
-					tracedSrcBlock = cvin.in.block;
-				}
-				if (bs.MemoryReaderBlock.isPrototypeOf(tracedSrcBlock)) {
-					const mr = tracedSrcBlock;
-					const mb = mr.memoryblock;
-					let sizeCode = mb && mb.__outgen_memory_size_code;
-					if (!sizeCode && mb) {
-						const csize = bdef.connections.find(c => c.out == mb.i_ports[0]);
-						if (csize && bs.ConstantBlock.isPrototypeOf(csize.in.block))
-							sizeCode = csize.in.block.value.toString();
-						else if (csize && csize.in && csize.in.code)
-							sizeCode = csize.in.code.toString().trim();
-					}
-					const scalarMem = mb && sizeCode == "1";
-					if (scalarMem) {
-						if (!mb.__scalar_alias_applied) {
-							const preferredId = pick_preferred_memory_id(mb, b.id);
-							const aliasId = mb.__pending_scalar_alias_id || program.identifiers.add(preferredId);
-							mb.__pending_scalar_alias_id = aliasId;
-							if (mb.__outgen_memory_decl__)
-								mb.__outgen_memory_decl__.id = aliasId;
-							mb.code.s = [funcs.getObjectPrefix(), aliasId];
-							mb.__scalar_alias_applied = true;
-						}
-						op0.code.add(input_codes[0]);
-						return;
-					}
-				}
-				
-				const ur = b.o_ports[0].updaterate();
-				const r = dispatch(b, ur, b.control_dependencies);
-				const locality = r.locality;
-				const whereDec = r.whereDec;
-				const whereAss = r.whereAss;
-
-				const id = program.identifiers.add(b.id);
-
-				if (locality == 0) {
-					op0.code.add(id);
-					const d = new funcs.Declaration(false, false, b.datatype(), false, id, true);
-					const a = new funcs.Assignment(id, input_codes[0], null);
-					if (t != "MATLAB")
-						whereDec.add(d);
-					whereAss.add(a);
-				}
-				else if (locality == 1) {
-					const refid = funcs.getObjectPrefix() + id;
-					op0.code.add(refid);
-					const d = new funcs.Declaration(false, false, b.datatype(), false, id, true);
-					const a = new funcs.Assignment(refid, input_codes[0], null);
-					if (t != "MATLAB")
-						whereDec.add(d);
-					whereAss.add(a);
-				}
-				else if (locality == 2) {
-					op0.code.add(id);
-					const d = new funcs.Declaration(false, true, b.datatype(), false, id, false);
-					const a = new funcs.Assignment(null, input_codes[0], d);
-					whereAss.add(a);	
-				}
+				emit_value(b, input_codes[0]);
 				return;
 			}
 			if (bs.MemoryBlock.isPrototypeOf(b)) {
-				function tracePreferredScalarBase (srcp, visitedPorts) {
-					if (!srcp || visitedPorts.has(srcp))
-						return undefined;
-					visitedPorts.add(srcp);
-					if (bs.VarBlock.isPrototypeOf(srcp.block)) {
-						const id = srcp.block.id;
-						const semantic = (typeof id == "string"
-							&& id.length > 0
-							&& !id.startsWith("x__")
-							&& !id.endsWith(".init")
-							&& !id.endsWith(".fs"))
-							? id
-							: undefined;
-						const cvin = bdef.connections.find(c => c.out == srcp.block.i_ports[0]);
-						const upstream = cvin ? tracePreferredScalarBase(cvin.in, visitedPorts) : undefined;
-						if (srcp.block.__is_bdef_input__)
-							return upstream || semantic;
-						return semantic || upstream;
-					}
-					if (bs.SelectBlock.isPrototypeOf(srcp.block)) {
-						const c1 = bdef.connections.find(c => c.out == srcp.block.i_ports[1]);
-						const c2 = bdef.connections.find(c => c.out == srcp.block.i_ports[2]);
-						return (c1 ? tracePreferredScalarBase(c1.in, visitedPorts) : undefined)
-							|| (c2 ? tracePreferredScalarBase(c2.in, visitedPorts) : undefined);
-					}
-					return undefined;
-				}
-
-					let id = b.__pending_scalar_alias_id;
-					if (!id)
-						id = program.identifiers.add(pick_preferred_memory_id(b, b.id));
+				if (!b.static_size)
+					throw new Error("Memory size must be constant: " + b.id);
+				const id = program.identifiers.add(b.id);
 				const d = new funcs.MemoryDeclaration(b.datatype(), id, input_codes[0]);
 				b.code.s = [funcs.getObjectPrefix(), id];
-				b.code.__memory_id = id;
-				b.__outgen_memory_id = id;
-				b.__outgen_memory_decl__ = d;
-				b.__outgen_memory_size_code = input_codes[0].toString().trim();
 
 				program.memory_declarations.add(d);
 
 				const i = new funcs.MemoryInit(b.code, input_codes[0], input_codes[1]);
-				if (t != "MATLAB")
-					program.init.add(i);
 				program.reset.add(i);
 
 				return;
 			}
 			if (bs.MemoryReaderBlock.isPrototypeOf(b)) {
-				const c = op0.code;
-				c.add(b.memoryblock.code);
-				c.add(funcs.getMemoryArrayIndexer(input_codes[0]));
-				if (b.memoryblock.__outgen_memory_id)
-					c.read_memory_ids.add(b.memoryblock.__outgen_memory_id);
+				// Read once, before any writes. Users of this value cannot observe
+				// state committed later in the sample.
+				emit_value(b, new LazyString(b.memoryblock.code, funcs.getMemoryArrayIndexer(input_codes[0])));
 				return;
 			}
 			if (bs.MemoryWriterBlock.isPrototypeOf(b)) {
-				const c = new LazyString();
-				c.add(b.memoryblock.code);
-				c.add(funcs.getMemoryArrayIndexer(input_codes[0]));
-				if (c.toString() == input_codes[1].toString())
-					return;
-				const a = new funcs.Assignment(c, input_codes[1], null);
-				a.memory_write_id = b.memoryblock.__outgen_memory_id;
-				if (b.predicate_terms && b.predicate_terms.length > 0) {
-					const i0 = new funcs.IfBlock();
-					if (b.predicate_terms[0].negated)
-						i0.condition.add("!(");
-					i0.condition.add(b.predicate_terms[0].port.code);
-					if (b.predicate_terms[0].negated)
-						i0.condition.add(")");
-					let cur = i0;
-					for (let i = 1; i < b.predicate_terms.length; i++) {
-						const ii = new funcs.IfBlock();
-						if (b.predicate_terms[i].negated)
-							ii.condition.add("!(");
-						ii.condition.add(b.predicate_terms[i].port.code);
-						if (b.predicate_terms[i].negated)
-							ii.condition.add(")");
-						cur.body.add(ii);
-						cur = ii;
-					}
-					cur.body.add(a);
-					program.memory_updates.add(i0);
-				}
-				else {
-					program.memory_updates.add(a); // TODO: Might not be always the case
-				}
+				// Snapshot the destination index and next value before committing any
+				// memory writes, including writes to another element of this memory.
+				const index = value_name(b, TYPES.Int32, RATES.Audio, 'index');
+				const next = value_name(b, b.memoryblock.datatype(), RATES.Audio, 'next');
+				index.where.whereAss.add(new funcs.Assignment(index.name, input_codes[0], null));
+				next.where.whereAss.add(new funcs.Assignment(next.name, input_codes[1], null));
+				const destination = new LazyString(b.memoryblock.code, funcs.getMemoryArrayIndexer(index.name));
+				guarded(program.memory_updates, b).add(new funcs.Assignment(destination, new LazyString(next.name), null));
 				return;
 			}
 			if (bs.ConstantBlock.isPrototypeOf(b)) {
@@ -1979,11 +616,12 @@
 				return;
 			}
 			if (bs.MaxBlock.isPrototypeOf(b)) {
-				op0.code.add("__max__(");
-				op0.code.add(input_codes[0]);
-				for (let i = 1; i < input_codes.length; i++)
-					op0.code.add(', ', input_codes[i]);
-				op0.code.add(')');
+				let expression = input_codes[0] || new LazyString('0');
+				for (const input of input_codes.slice(1))
+					expression = t == 'MATLAB'
+						? new LazyString('max(', expression, ', ', input, ')')
+						: new LazyString('(', expression, ' > ', input, ' ? ', expression, ' : ', input, ')');
+				emit_value(b, expression);
 				return;
 			}
 			if (bs.CallBlock.isPrototypeOf(b) && b.type == "cdef") {
@@ -2011,234 +649,53 @@
 					coeffs = '&' + funcs.getObjectPrefix() + id;
 				}
 
-				// functions dispatching
-	
-				function get_decls_assignments (locality, f) {
-
-					const prefix = locality == 1 ? funcs.getObjectPrefix() : "";
-
-					const inputs = [];
-					const outputs = [];
-					const decls = [];
-
-					for (let i = 0; i < f.f_inputs.length; i++) {
-						const input = f.f_inputs[i];
-						if (input == 'state') {
-							inputs.push(state);
+				// Setup is unconditional. Runtime callbacks execute together, in the
+				// scheduled position and on the same clock as the module's process call.
+				function emit_call(f, declarations, statements, persistent) {
+					if (!f) return;
+					function output(index) {
+						const port = b.o_ports[index];
+						if (!port.code.toString()) {
+							const id = program.identifiers.add('result');
+							declarations.add(new funcs.Declaration(false, false, port.datatype(), false, id, true));
+							port.code.add(persistent ? funcs.getObjectPrefix() + id : id);
 						}
-						if (input == "coeffs") {
-							inputs.push(coeffs);
-						}
-						if (input[0] == 'i') {
-							inputs.push(input_codes[input[1]]);
-						}
-						if (input[0] == 'o') {
-							const type = b.o_ports[input[1]].datatype();
-							const id = program.identifiers.add('x__');
-							const pid = prefix + id;
-							const decl = new funcs.Declaration(false, false, type, false, id, true);
-							const ref = '&' + pid;
-							decls.push(decl);
-							inputs.push(ref);
-							b.o_ports[input[1]].code.add(pid);
-						}
+						return port.code;
 					}
-					var alone = false;
-					if (decls.length > 0) {
-						alone = true;
-					}
-					if (f.f_outputs.length == 0) {
-						alone = true;
-					}
-					else {
-						const output = f.f_outputs[0];
-						if (true) { //(decls.length > 0) {
-							const type = b.o_ports[output[1]].datatype();
-							const id = program.identifiers.add('x__');
-							const pid = prefix + id;
-							const decl = new funcs.Declaration(false, false, type, false, id, true);
-							decls.push(decl);
-							b.o_ports[output[1]].code.add(pid);
-							outputs.push(pid);
-						}
-						else {
-
-						}
-					}
-
-					alone = true; // tmp
-					const stmt = new LazyString();
-					if (alone) {
-						if (outputs.length > 0) {
-							stmt.add(outputs[0], ' = ');
-						}
-						stmt.add(f.f_name, '(');
-						for (let i = 0; i < inputs.length; i++) {
-							stmt.add(inputs[i]);
-							if (i != inputs.length - 1)
-								stmt.add(', ');
-						}
-						stmt.add(');');
-					}
-					else {
-
-					}
-
-					return {
-						decls: decls,
-						assignments: [stmt]
-					};
+					const args = f.f_inputs.map(arg => {
+						if (arg == 'state') return state;
+						if (arg == 'coeffs') return coeffs;
+						if (/^i[0-9]+$/.test(arg)) return input_codes[Number(arg.slice(1))];
+						if (/^o[0-9]+$/.test(arg)) return new LazyString('&', output(Number(arg.slice(1))));
+						throw new Error('Unknown C function argument: ' + arg);
+					});
+					const statement = new LazyString();
+					if (f.f_outputs.length > 1)
+						throw new Error('A C function can return only one value: ' + f.f_name);
+					if (f.f_outputs.length)
+						statement.add(output(Number(f.f_outputs[0].slice(1))), ' = ');
+					statement.add(f.f_name, '(');
+					args.forEach((arg, i) => statement.add(i ? ', ' : '', arg));
+					statement.add(');');
+					statements.add(statement);
 				}
 
+				emit_call(cdef.funcs.init, program.coefficients, program.init, true);
+				emit_call(cdef.funcs.set_sample_rate, program.coefficients, program.fs_update, true);
+				emit_call(cdef.funcs.reset_coeffs, program.coefficients, program.reset, true);
+				emit_call(cdef.funcs.reset_state, program.coefficients, program.reset, true);
 
-				if (cdef.funcs.init) {
-					const f = cdef.funcs.init;
+				if (cdef.funcs.mem_req)
+					program.mem_reqs.push(cdef.funcs.mem_req.f_name + '(' + coeffs + ')');
+				if (cdef.funcs.mem_set)
+					program.mem_sets.push(cdef.funcs.mem_set.f_name + '(' + coeffs + ', ' + state + ', m)');
 
-					const locality = 1;
-					const whereDec = program.constants;
-					const whereAss = program.init;
-
-					const rr = get_decls_assignments(locality, f);
-					const decls = rr.decls;
-					const assignments = rr.assignments;
-				
-					decls.forEach(d => whereDec.add(d));
-					assignments.forEach(a => whereAss.add(a));
-				}
-
-				if (cdef.funcs.mem_req) {
-					const f = cdef.funcs.mem_req;
-
-					program.mem_reqs.push(
-						f.f_name + '(' + coeffs + ')'
-					);
-				}
-
-				if (cdef.funcs.mem_set) {
-					const f = cdef.funcs.mem_set;
-
-					program.mem_sets.push(
-						f.f_name + '(' + coeffs + ', ' + state + ', m)'
-					);
-				}
-
-				if (cdef.funcs.set_sample_rate) {
-					const f = cdef.funcs.set_sample_rate;
-
-					const locality = 1;
-					const whereDec = program.coefficients;
-					const whereAss = program.fs_update;
-
-					const rr = get_decls_assignments(locality, f);
-					const decls = rr.decls;
-					const assignments = rr.assignments;
-					decls.forEach(d => whereDec.add(d));
-					assignments.forEach(a => whereAss.add(a));
-				}
-
-				if (cdef.funcs.reset_coeffs) {
-					const f = cdef.funcs.reset_coeffs;
-
-					const locality = 1;
-					const whereDec = program.coefficients; // TODO: program.reset_coeffs and reset_state
-					const whereAss = program.reset;
-
-					const rr = get_decls_assignments(locality, f);
-					const decls = rr.decls;
-					const assignments = rr.assignments;
-					decls.forEach(d => whereDec.add(d));
-					assignments.forEach(a => whereAss.add(a));
-				}
-
-				if (cdef.funcs.reset_state) {
-					const f = cdef.funcs.reset_state;
-
-					const locality = 1;
-					const whereDec = program.coefficients; // TODO: program.reset_coeffs and reset_state
-					const whereAss = program.reset;
-
-					const rr = get_decls_assignments(locality, f);
-					const decls = rr.decls;
-					const assignments = rr.assignments;
-					decls.forEach(d => whereDec.add(d));
-					assignments.forEach(a => whereAss.add(a));
-				}
-				
-				if (cdef.funcs.update_coeffs_ctrl) {
-					const f = cdef.funcs.update_coeffs_ctrl;
-
-					const i_ports = [];
-					for (let i = 0; i < f.f_inputs.length; i++) {
-						const input = f.f_inputs[i];
-						if (input[0] == 'i') {
-							i_ports.push(b.i_ports[input[1]]);
-						}
-					}
-					const ur = RATES.max.apply(null, i_ports.map(p => p.updaterate()));
-
-					const locality = 1;
-					const whereDec = program.coefficients;
-					const whereAss = ur == RATES.Audio ? program.update_coeffs_audio : program.update_coeffs_ctrl;
-
-					const rr = get_decls_assignments(locality, f);
-					const decls = rr.decls;
-					const assignments = rr.assignments;
-					decls.forEach(d => whereDec.add(d));
-					assignments.forEach(a => whereAss.add(a));
-				}
-
-				if (cdef.funcs.update_coeffs_audio) {
-					const f = cdef.funcs.update_coeffs_audio;
-
-					const locality = 1;
-					const whereDec = program.coefficients;
-					const whereAss = program.update_coeffs_audio;
-
-					const rr = get_decls_assignments(locality, f);
-					const decls = rr.decls;
-					const assignments = rr.assignments;
-					decls.forEach(d => whereDec.add(d));
-					assignments.forEach(a => whereAss.add(a));
-				}
-
-				cdef.funcs.setters.forEach(setter => {
-					const f = setter;
-					
-					const valueinputport = b.i_ports[f.f_inputs[1][1]];
-					const inb = bdef.connections.find(c => c.out == valueinputport).in.block;
-					const r = dispatch(b, valueinputport.updaterate(), inb.control_dependencies);
-					const locality = r.locality;
-					const whereDec = r.whereDec;
-					const whereAss = r.whereAss;
-
-					const rr = get_decls_assignments(locality, f);
-					const decls = rr.decls;
-					const assignments = rr.assignments;
-				
-					decls.forEach(d => whereDec.add(d));
-					assignments.forEach(a => whereAss.add(a));
-				});
-
-				if (cdef.funcs.process1) {
-					const f = cdef.funcs.process1;
-
-					// Simplification: outputs might be declared in different places
-					const ur = RATES.max.apply(null, b.i_ports.concat(b.o_ports).map(p => p.updaterate()));
-					const r = dispatch(b, ur, b.control_dependencies);
-					const locality = r.locality;
-					const whereDec = r.whereDec;
-					const whereAss = r.whereAss;
-
-					const rr = get_decls_assignments(locality, f);
-					const decls = rr.decls;
-					const assignments = rr.assignments;
-				
-					decls.forEach(d => whereDec.add(d));
-					assignments.forEach(a => whereAss.add(a));
-				}
-				else {
-					throw new Error("process1 is required");
-				}
+				if (!cdef.funcs.process1)
+					throw new Error('process1 is required');
+				const runtime = guarded(program.audio_update, b);
+				for (const f of [...cdef.funcs.setters, cdef.funcs.update_coeffs_ctrl,
+					cdef.funcs.update_coeffs_audio, cdef.funcs.process1])
+					emit_call(f, program.audio_update, runtime, false);
 
 				return;
 			}
@@ -2268,7 +725,7 @@
 				op0.code.add(w0, ' || ', w1);
 			}
 			else if (bs.LogicalNotBlock.isPrototypeOf(b)) {
-				op0.code.add('!(', w0, ')');
+				op0.code.add(t == 'MATLAB' ? '~(' : '!(', w0, ')');
 			}
 			else if (bs.BitwiseOrBlock.isPrototypeOf(b)) {
 				op0.code.add(w0, ' | ', w1);
@@ -2286,7 +743,7 @@
 				op0.code.add(w0, ' == ', w1);
 			}
 			else if (bs.InequalityBlock.isPrototypeOf(b)) {
-				op0.code.add(w0, ' != ', w1);
+				op0.code.add(w0, t == 'MATLAB' ? ' ~= ' : ' != ', w1);
 			}
 			else if (bs.LessBlock.isPrototypeOf(b)) {
 				op0.code.add(w0, ' < ', w1);
@@ -2316,14 +773,17 @@
 				op0.code.add(w0, ' * ', w1);
 			}
 			else if (bs.DivisionBlock.isPrototypeOf(b)) {
-				op0.code.add(w0, ' / ', w1);
+				if (t == 'MATLAB' && op0.datatype() == TYPES.Int32)
+					op0.code.add('int32(fix(double(', w0, ') / double(', w1, ')))');
+				else
+					op0.code.add(w0, ' / ', w1);
 			}
 			else if (bs.UminusBlock.isPrototypeOf(b)) {
 				op0.code.add('-', w0);
 			}
 			else if (bs.ModuloBlock.isPrototypeOf(b)) {
 				if (t == "MATLAB")
-					op0.code.add('mod(', w0, ', ', w1, ')');
+					op0.code.add('rem(', w0, ', ', w1, ')');
 				else
 					op0.code.add(w0, ' % ', w1);
 			}
@@ -2335,7 +795,7 @@
 			}
 			else if (bs.CastI32Block.isPrototypeOf(b)) {
 				if (t == "MATLAB")
-					op0.code.add('int32(', w0, ')');
+					op0.code.add('int32(fix(', w0, '))');
 				else
 					op0.code.add('(int)', w0);
 			}
@@ -2343,61 +803,29 @@
 				if (t == "MATLAB")
 					op0.code.add('logical(', w0, ')');
 				else
-					op0.code.add('(char)', w0);
+					op0.code.add('(', w0, ' != 0)');
 			}
 			else if (bs.SelectBlock.isPrototypeOf(b)) {
-				const ur = b.o_ports[0].updaterate();
-				const r = dispatch(b, ur, b.control_dependencies);
-				const locality = r.locality;
-				const whereDec = r.whereDec;
-				const whereAss = r.whereAss;
-				const type = input_block_out_ports[1].datatype();
-				let preferred = (typeof op0.preferred_id == "string" && op0.preferred_id.length > 0)
-					? op0.preferred_id
-					: undefined;
-				if (!preferred) {
-					const outs = bdef.connections.filter(c => c.in == op0).map(c => c.out.block);
-					if (outs.length == 1 && bs.VarBlock.isPrototypeOf(outs[0])) {
-						const vid = outs[0].id;
-						if (typeof vid == "string" && !vid.startsWith("x__") && !vid.endsWith(".init") && !vid.endsWith(".fs"))
-							preferred = vid;
-					}
+				if (t != 'MATLAB' && op0.updaterate() == RATES.Constant) {
+					op0.code.add('(', w0, ' ? ', w1, ' : ', w2, ')');
+					return;
 				}
-				if (!preferred)
-					preferred = 'x__';
-				const id = program.identifiers.add(preferred);
-
-				let lhs;
-				if (locality == 0) {
-					lhs = id;
-					op0.code.add(lhs);
-					whereDec.add(new funcs.Declaration(false, false, type, false, id, true));
-				}
-				else if (locality == 1) {
-					lhs = funcs.getObjectPrefix() + id;
-					op0.code.add(lhs);
-					whereDec.add(new funcs.Declaration(false, false, type, false, id, true));
-				}
-				else {
-					lhs = id;
-					op0.code.add(lhs);
-					if (t != "MATLAB")
-						whereAss.add(new funcs.Declaration(false, false, type, false, id, true));
-				}
-
-				const ib = new funcs.IfElseBlock();
-				ib.defined_id = id;
-				ib.condition.add(w0);
-				ib.then_body.add(new funcs.Assignment(lhs, w1, null));
-				ib.else_body.add(new funcs.Assignment(lhs, w2, null));
-				whereAss.add(ib);
+				const value = value_name(b, op0.datatype(), op0.updaterate());
+				const branch = new funcs.IfElseBlock();
+				branch.condition.add(input_codes[0]);
+				branch.then_body.add(new funcs.Assignment(value.name, input_codes[1], null));
+				branch.else_body.add(new funcs.Assignment(value.name, input_codes[2], null));
+				value.where.whereAss.add(branch);
+				op0.code = new LazyString(value.name);
+				return;
 			}
-			
+
 			else {
 				const refId = b && b.ref ? b.ref.id : "N/A";
 				const btype = b && b.type ? b.type : "N/A";
 				throw new Error("Unexpected block type: " + b + " ref=" + refId + " type=" + btype);
 			}
+			emit_value(b, op0.code);
 		};
 	};
 

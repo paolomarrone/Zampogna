@@ -12,11 +12,11 @@
 	Port.datatype = () => TYPES.Generic;
 	Port.updaterate = () => RATES.Generic;
 	Port.type = function () {
-		if (this.block.i_ports.includes(this)) return "in";
+		if (this.block.inputs().includes(this)) return "in";
 		if (this.block.o_ports.includes(this)) return "out";
 	};
 	Port.index = function () {
-		if (this.type() == "in")  return this.block.i_ports.indexOf(this);
+		if (this.type() == "in")  return this.block.inputs().indexOf(this);
 		if (this.type() == "out") return this.block.o_ports.indexOf(this);
 	};
 	Port.clone = function () {
@@ -28,6 +28,7 @@
 		this.__clone__ = r;
 		r.block = this.block.clone();
 		r.id = this.id;
+		r.negated = this.negated;
 		r.datatype = this.datatype;
 		r.updaterate = this.updaterate;
 		return r;
@@ -47,7 +48,6 @@
 	Block.Port = Port;
 	Block.id = undefined;
 	Block.operation = "DEFAULT";
-	Block.control_dependencies = undefined;
 	Block.parLevel = 0;
 	Block.i_ports = undefined; // Array of Ports
 	Block.o_ports = undefined; // Array of Ports
@@ -57,9 +57,11 @@
 		this.i_ports.forEach(p => p.block = this);
 		this.o_ports.forEach(p => p.block = this);
 	};
+	// Guards are input ports too: cloning, scheduling and reachability follow their edges.
+	Block.inputs = function () { return this.i_ports.concat(this.guard_ports || []); };
 	Block.init = function (i_p_n = 0, o_p_n = 0) {
+		this.guard_ports = [];
 		this.createPorts(i_p_n, o_p_n);
-		this.control_dependencies = new Set();
 	};
 	Block.setMaxOutputUpdaterate = function () {
 		this.o_ports.forEach(p => p.updaterate = function () {
@@ -70,12 +72,12 @@
 	Block.validate = function () {
 		if (!this.i_ports || !this.o_ports)
 			throw new Error("Invalid ports");
-		this.i_ports.forEach(p => p.validate());
+		this.inputs().forEach(p => p.validate());
 		this.o_ports.forEach(p => p.validate());
 	};
 	Block.setToBeCloned = function () {
 		this.__clone__ = 1;
-		this.i_ports.forEach(p => p.__clone__ = 1);
+		this.inputs().forEach(p => p.__clone__ = 1);
 		this.o_ports.forEach(p => p.__clone__ = 1);
 	};
 	Block.clone = function () {
@@ -96,6 +98,7 @@
 			const pc = p.clone();
 			r.o_ports.push(pc);
 		});
+		r.guard_ports = (this.guard_ports || []).map(p => p.clone());
 		return r; 
 	};
 	Block.toString = function () {
@@ -131,6 +134,8 @@
 		const r = Block.clone.call(this);
 		r.id = this.id;
 		r.datatype = this.datatype;
+		if (this.init_parent)
+			r.init_parent = this.init_parent.clone();
 		return r;
 	};
 
@@ -157,7 +162,6 @@
 		const r = Block.clone.call(this);
 		r.datatype = this.datatype;
 		r.id = this.id;
-		r.__preferred_ids__ = Array.isArray(this.__preferred_ids__) ? Array.from(this.__preferred_ids__) : [];
 		return r;
 	};
 
@@ -204,8 +208,6 @@
 	MemoryWriterBlock.clone = function () {
 		const r = Block.clone.call(this);
 		r.memoryblock = this.memoryblock.clone();
-		if (this.predicate_terms)
-			r.predicate_terms = this.predicate_terms.map(t => ({ port: t.port, negated: t.negated }));
 		return r;
 	};
 
@@ -454,7 +456,7 @@
 	MaxBlock.operation = "max";
 	MaxBlock.datatype = () => TYPES.Generic;
 	MaxBlock.init = function () {
-		this.control_dependencies = new Set(); // Would be nice to normalize
+		this.guard_ports = [];
 		//Block.init.call(this, 0, 0);
 		// Create ports from outside. out ports must be 1
 		this.o_ports[0].datatype = function () {
@@ -559,11 +561,11 @@
 		this.createPorts(this.inputs_N, this.outputs_N);
 		Block.setMaxOutputUpdaterate.call(this);
 		desc.block_inputs.forEach((x, i) => {
-			const dt = TYPES.parse(x.type); 
+			const dt = TYPES.parse(x.type);
 			this.i_ports[i].datatype = () => dt;
 		});
 		desc.block_outputs.forEach((x, i) => {
-			const dt = TYPES.parse(x.type); 
+			const dt = TYPES.parse(x.type);
 			this.o_ports[i].datatype = () => dt;
 			if (x.updaterate) {
 				const ur = RATES.parse(x.updaterate);
@@ -617,336 +619,64 @@
 		return r;
 	};
 	IfthenelseBlock.flatten = function (bdef) {
-		const condConn = bdef.connections.find(c => c.out == this.i_ports[0]);
-		if (!condConn)
+		const condition = bdef.connections.find(c => c.out == this.i_ports[0]);
+		if (!condition)
 			throw new Error("IF_THEN_ELSE missing condition connection");
 
-		function append_predicate_to_writer (mw, port, negated) {
-			// If writer value is already selected by this same condition, adding the
-			// condition again would over-constrain updates.
-			let vc = bdef.connections.find(c => c.out == mw.i_ports[1]);
-			let srcp = vc ? vc.in : undefined;
-			while (srcp && VarBlock.isPrototypeOf(srcp.block)) {
-				const cvin = bdef.connections.find(c => c.out == srcp.block.i_ports[0]);
-				if (!cvin)
-					break;
-				srcp = cvin.in;
-			}
-			if (srcp && SelectBlock.isPrototypeOf(srcp.block)) {
-				const cc = bdef.connections.find(c => c.out == srcp.block.i_ports[0]);
-				if (cc && cc.in == port)
-					return;
-			}
-			if (!mw.predicate_terms)
-				mw.predicate_terms = [];
-			mw.predicate_terms.push({ port: port, negated: negated });
-		}
-
-			const reroute_branch_output_alias_writers = (bb, aliasToSelectedPort, aliasToStateUpdatePort) => {
-				function trace_alias_source (port, visited) {
-					if (!port || visited.has(port))
-						return undefined;
-				visited.add(port);
-				if (port.block && aliasToSelectedPort.has(port.block))
-					return port.block;
-				if (!port.block)
-					return undefined;
-				if (VarBlock.isPrototypeOf(port.block)) {
-					const cvin = bdef.connections.find(c => c.out == port.block.i_ports[0]);
-					if (!cvin)
-						return undefined;
-					return trace_alias_source(cvin.in, visited);
-				}
-				return undefined;
-			}
-
-			function reader_to_alias_kind (memoryblock, aliasBlock) {
-				const readers = bb.blocks.filter(b => MemoryReaderBlock.isPrototypeOf(b) && b.memoryblock == memoryblock);
-				let sawDirect = false;
-
-				function dfs_from_port (port, seenNonVar, visitedPorts) {
-					if (!port || visitedPorts.has(port))
-						return false;
-					visitedPorts.add(port);
-					const outConns = bdef.connections.filter(c => c.in == port);
-					for (let c of outConns) {
-						const db = c.out.block;
-						if (!db)
-							continue;
-						if (db == aliasBlock) {
-							if (seenNonVar)
-								return "computed";
-							sawDirect = true;
-							continue;
-						}
-						if (VarBlock.isPrototypeOf(db)) {
-							const r = dfs_from_port(db.o_ports[0], seenNonVar, visitedPorts);
-							if (r)
-								return r;
-							continue;
-						}
-						for (let op of db.o_ports) {
-							const r = dfs_from_port(op, true, visitedPorts);
-							if (r)
-								return r;
-						}
-					}
-					return false;
-				}
-
-				for (let mr of readers) {
-					const r = dfs_from_port(mr.o_ports[0], false, new Set());
-					if (r == "computed")
-						return "computed";
-				}
-				return sawDirect ? "direct" : "none";
-			}
-
-			function has_distinct_reader_alias (memoryblock, aliasBlock) {
-				function traces_to_reader (port, visited) {
-					if (!port || visited.has(port))
-						return false;
-					visited.add(port);
-					if (port.block && MemoryReaderBlock.isPrototypeOf(port.block))
-						return port.block.memoryblock == memoryblock;
-					if (port.block && VarBlock.isPrototypeOf(port.block)) {
-						const cvin = bdef.connections.find(c => c.out == port.block.i_ports[0]);
-						if (!cvin)
-							return false;
-						return traces_to_reader(cvin.in, visited);
-					}
-					return false;
-				}
-
-				return bb.blocks.some(vb => {
-					if (!VarBlock.isPrototypeOf(vb))
-						return false;
-					if (vb == aliasBlock)
-						return false;
-					if (vb.id == aliasBlock.id)
-						return false;
-					const cvin = bdef.connections.find(c => c.out == vb.i_ports[0]);
-					if (!cvin)
-						return false;
-					return traces_to_reader(cvin.in, new Set());
-				});
-			}
-
-			bb.blocks.filter(b => MemoryWriterBlock.isPrototypeOf(b)).forEach(mw => {
-				const vc = bdef.connections.find(c => c.out == mw.i_ports[1]);
-				if (!vc)
-					return;
-					const aliasBlock = trace_alias_source(vc.in, new Set());
-					if (!aliasBlock)
-						return;
-					const kind = reader_to_alias_kind(mw.memoryblock, aliasBlock);
-					if (kind == "direct") {
-						if (aliasToStateUpdatePort && aliasToStateUpdatePort.has(aliasBlock)) {
-							vc.in = aliasToStateUpdatePort.get(aliasBlock);
-							return;
-						}
-						return;
-					}
-					if (kind == "computed" && !has_distinct_reader_alias(mw.memoryblock, aliasBlock))
-						return;
-				vc.in = aliasToSelectedPort.get(aliasBlock);
-			});
-		};
-
-		const predicate_branch_writers = (bb, negated) => {
-			bb.blocks.filter(b => MemoryWriterBlock.isPrototypeOf(b)).forEach(mw => {
-				append_predicate_to_writer(mw, condConn.in, negated);
-			});
-		};
-
-		const flatten_branch_ref = (ref) => {
+		function inline_branch(ref, negated) {
 			ref.setToBeCloned();
-			const bb = ref.clone();
-			flatten_all(bb);
-			bdef.blocks = bdef.blocks.concat(bb.blocks);
-			bdef.connections = bdef.connections.concat(bb.connections);
-			bdef.properties = bdef.properties.concat(bb.properties);
-			bdef.cdefs = bdef.cdefs.concat(bb.cdefs);
+			const branch = ref.clone();
 			ref.clean();
-			return bb;
-		};
-
-		// Flatten branches first, then mark internal writes with branch predicate.
-		const bbThen = flatten_branch_ref(this.then_branch);
-		const bbElse = flatten_branch_ref(this.else_branch);
-
-			function port_traces_to_block (port, target, visited = new Set()) {
-				if (!port || visited.has(port))
-					return false;
-				visited.add(port);
-				if (port.block == target)
-					return true;
-				if (port.block && VarBlock.isPrototypeOf(port.block)) {
-					const cvin = bdef.connections.find(c => c.out == port.block.i_ports[0]);
-					if (!cvin)
-						return false;
-					return port_traces_to_block(cvin.in, target, visited);
-				}
-				return false;
+			while (branch.blocks.some(b => IfthenelseBlock.isPrototypeOf(b) || (CallBlock.isPrototypeOf(b) && b.type == 'bdef'))) {
+				const conditional = branch.blocks.find(b => IfthenelseBlock.isPrototypeOf(b));
+				if (conditional)
+					conditional.flatten(branch);
+				else
+					branch.flatten();
 			}
-
-			function branch_state_update_source (aliasPort, bb) {
-				if (!aliasPort || !aliasPort.block)
-					return aliasPort;
-				const aliasBlock = aliasPort.block;
-				const cvin = bdef.connections.find(c => c.out == aliasBlock.i_ports[0]);
-				if (!cvin)
-					return aliasPort;
-				let srcp = cvin.in;
-				while (srcp && srcp.block && VarBlock.isPrototypeOf(srcp.block)) {
-					const cc = bdef.connections.find(c => c.out == srcp.block.i_ports[0]);
-					if (!cc)
-						break;
-					srcp = cc.in;
-				}
-				if (!srcp || !srcp.block || !MemoryReaderBlock.isPrototypeOf(srcp.block))
-					return aliasPort;
-				const mr = srcp.block;
-				const mw = bb.blocks.find(b => MemoryWriterBlock.isPrototypeOf(b) && b.memoryblock == mr.memoryblock);
-				if (!mw)
-					return aliasPort;
-				const vc = bdef.connections.find(c => c.out == mw.i_ports[1]);
-				if (!vc)
-					return aliasPort;
-				if (port_traces_to_block(vc.in, aliasBlock))
-					return aliasPort;
-				return vc.in;
-			}
-
-			function has_non_output_non_property_consumer (vb) {
-				if (!vb || !vb.o_ports || vb.o_ports.length == 0)
-					return false;
-				return bdef.connections.some(c => {
-					if (c.in != vb.o_ports[0])
-						return false;
-					if (!c.out || !c.out.block)
-						return false;
-					if (c.out.block == bdef)
-						return false;
-					if (bdef.properties.some(p => p.block == c.out.block))
-						return false;
-					return true;
-				});
-			}
-
-			const aliasToSelectedPort = new Map();
-			const aliasToStateUpdatePort = new Map();
-			for (let i = 0; i < this.nOutputs; i++) {
-				const cThenOut = bdef.connections.filter(c => c.out == bbThen.o_ports[i]);
-				const cElseOut = bdef.connections.filter(c => c.out == bbElse.o_ports[i]);
-			if (cThenOut.length != 1 || cElseOut.length != 1)
-				throw new Error("Invalid IF_THEN_ELSE branch output wiring");
-			if (cThenOut[0].in && cThenOut[0].in.block)
-				cThenOut[0].in.block.__if_branch_output_alias__ = true;
-			if (cElseOut[0].in && cElseOut[0].in.block)
-				cElseOut[0].in.block.__if_branch_output_alias__ = true;
-
-				const outerUses = bdef.connections.filter(c => c.in == this.o_ports[i]);
-				const assignedVarConn = outerUses.find(c => c.out && c.out.block && VarBlock.isPrototypeOf(c.out.block));
-				const assignedVar = assignedVarConn ? assignedVarConn.out.block : undefined;
-
-				const sel = Object.create(SelectBlock);
-				sel.init();
-
-			const c0 = Object.create(CompositeBlock.Connection);
-			const c1 = Object.create(CompositeBlock.Connection);
-			const c2 = Object.create(CompositeBlock.Connection);
-			c0.in = condConn.in;
-			c0.out = sel.i_ports[0];
-			c1.in = cThenOut[0].in;
-			c1.out = sel.i_ports[1];
-			c2.in = cElseOut[0].in;
-			c2.out = sel.i_ports[2];
-			bdef.connections.push(c0);
-			bdef.connections.push(c1);
-			bdef.connections.push(c2);
-			bdef.blocks.push(sel);
-				if (cThenOut[0].in && cThenOut[0].in.block)
-					aliasToSelectedPort.set(cThenOut[0].in.block, sel.o_ports[0]);
-				if (cElseOut[0].in && cElseOut[0].in.block)
-					aliasToSelectedPort.set(cElseOut[0].in.block, sel.o_ports[0]);
-
-				const thenAliasBlock = cThenOut[0].in && cThenOut[0].in.block;
-				const elseAliasBlock = cElseOut[0].in && cElseOut[0].in.block;
-				if (thenAliasBlock && elseAliasBlock && has_non_output_non_property_consumer(assignedVar)) {
-					const stateSel = Object.create(SelectBlock);
-					stateSel.init();
-					const cs0 = Object.create(CompositeBlock.Connection);
-					const cs1 = Object.create(CompositeBlock.Connection);
-					const cs2 = Object.create(CompositeBlock.Connection);
-					cs0.in = condConn.in;
-					cs0.out = stateSel.i_ports[0];
-					cs1.in = branch_state_update_source(cThenOut[0].in, bbThen);
-					cs1.out = stateSel.i_ports[1];
-					cs2.in = branch_state_update_source(cElseOut[0].in, bbElse);
-					cs2.out = stateSel.i_ports[2];
-					bdef.connections.push(cs0);
-					bdef.connections.push(cs1);
-					bdef.connections.push(cs2);
-					bdef.blocks.push(stateSel);
-					aliasToStateUpdatePort.set(thenAliasBlock, stateSel.o_ports[0]);
-					aliasToStateUpdatePort.set(elseAliasBlock, stateSel.o_ports[0]);
-				}
-
-				bdef.connections.filter(c => c.in == this.o_ports[i]).forEach(c => {
-					c.in = sel.o_ports[0];
-			});
-
-			bdef.connections.splice(bdef.connections.indexOf(cThenOut[0]), 1);
-			bdef.connections.splice(bdef.connections.indexOf(cElseOut[0]), 1);
-		}
-
-			reroute_branch_output_alias_writers(bbThen, aliasToSelectedPort, aliasToStateUpdatePort);
-			reroute_branch_output_alias_writers(bbElse, aliasToSelectedPort, aliasToStateUpdatePort);
-		predicate_branch_writers(bbThen, false);
-		predicate_branch_writers(bbElse, true);
-
-		bdef.connections.splice(bdef.connections.indexOf(condConn), 1);
-		bdef.blocks.splice(bdef.blocks.indexOf(this), 1);
-		remove_redundant_predicates();
-
-		function flatten_all (cb) {
-			while (true) {
-				const ib = cb.blocks.find(b => IfthenelseBlock.isPrototypeOf(b));
-				if (ib) {
-					ib.flatten(cb);
+			// Storage is allocated/reset independently of branch execution. Values and
+			// effects inside the branch execute only when all enclosing guards hold.
+			const properties = new Set(branch.properties.map(p => p.block));
+			for (const block of branch.blocks) {
+				if (MemoryBlock.isPrototypeOf(block) || ConstantBlock.isPrototypeOf(block) || properties.has(block))
 					continue;
-				}
-				const hasCall = cb.blocks.some(b => CallBlock.isPrototypeOf(b) && b.type == 'bdef');
-				if (hasCall) {
-					cb.flatten();
-					continue;
-				}
-				break;
+				const guard = Object.create(Port);
+				guard.block = block;
+				guard.negated = negated;
+				block.guard_ports.unshift(guard);
+				const edge = Object.create(Connection);
+				edge.in = condition.in;
+				edge.out = guard;
+				branch.connections.push(edge);
 			}
+			bdef.blocks.push(...branch.blocks);
+			bdef.connections.push(...branch.connections);
+			bdef.properties.push(...branch.properties);
+			bdef.cdefs.push(...branch.cdefs);
+			return branch;
 		}
 
-		function remove_redundant_predicates () {
-			bdef.blocks.filter(b => MemoryWriterBlock.isPrototypeOf(b) && b.predicate_terms).forEach(mw => {
-				const vc = bdef.connections.find(c => c.out == mw.i_ports[1]);
-				let srcp = vc ? vc.in : undefined;
-				while (srcp && VarBlock.isPrototypeOf(srcp.block)) {
-					const cvin = bdef.connections.find(c => c.out == srcp.block.i_ports[0]);
-					if (!cvin)
-						break;
-					srcp = cvin.in;
-				}
-				if (!srcp || !SelectBlock.isPrototypeOf(srcp.block))
-					return;
-				const cc = bdef.connections.find(c => c.out == srcp.block.i_ports[0]);
-				if (!cc)
-					return;
-				mw.predicate_terms = mw.predicate_terms.filter(t => t.port != cc.in);
-				if (mw.predicate_terms.length == 0)
-					delete mw.predicate_terms;
+		const then_branch = inline_branch(this.then_branch, false);
+		const else_branch = inline_branch(this.else_branch, true);
+		for (let i = 0; i < this.nOutputs; i++) {
+			const left = bdef.connections.find(c => c.out == then_branch.o_ports[i]);
+			const right = bdef.connections.find(c => c.out == else_branch.o_ports[i]);
+			const select = Object.create(SelectBlock);
+			select.init();
+			[condition.in, left.in, right.in].forEach((input, j) => {
+				const edge = Object.create(Connection);
+				edge.in = input;
+				edge.out = select.i_ports[j];
+				bdef.connections.push(edge);
 			});
+			bdef.blocks.push(select);
+			bdef.connections.filter(c => c.in == this.o_ports[i]).forEach(c => c.in = select.o_ports[0]);
+			bdef.connections = bdef.connections.filter(c => c != left && c != right);
 		}
+		bdef.connections = bdef.connections.filter(c => c != condition);
+		bdef.blocks = bdef.blocks.filter(b => b != this);
 	};
+
 
 	const Connection = {};
 	Connection.in = undefined;  // Port
@@ -1093,14 +823,6 @@
 					throw new Error("Found invalid number of connections toward output");
 				this.connections.splice(this.connections.indexOf(csint[0]), 1);
 				csext.forEach(c => c.in = csint[0].in);
-				this.blocks.forEach(bb_ => {
-					if (!bb_.predicate_terms)
-						return;
-					bb_.predicate_terms.forEach(t => {
-						if (t.port == p)
-							t.port = csint[0].in;
-					});
-				});
 			});
 
 			this.blocks.splice(this.blocks.indexOf(b), 1);
@@ -1140,7 +862,7 @@
 	};
 	CompositeBlock.clean = function () {
 		this.blocks.forEach(b => {
-			b.i_ports.forEach(p => delete p.__clone__);
+			b.inputs().forEach(p => delete p.__clone__);
 			b.o_ports.forEach(p => delete p.__clone__);
 			delete b.__clone__;
 		});

@@ -36,7 +36,9 @@ bool y = delay (bool x) {
 
 
 int i = circular_iterator (int n) {
-    i = delay(i) >= n ? 0 : delay(i) + 1
+    # One history for every iterator step, shared by both branches.
+    int previous = delay(i)
+    i = previous >= n - 1 ? 0 : previous + 1
     i.init = -1
 }
 

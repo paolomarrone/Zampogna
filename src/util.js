@@ -34,7 +34,7 @@
 					const data = fs.readFileSync(p, 'utf8');
 					return data;
 				} catch (err) {
-			  		// Not in this dir;
+					// Not in this dir;
 				}
 			}
 			return null;

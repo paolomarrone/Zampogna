@@ -52,7 +52,7 @@
 				mwriters.forEach(mw => roots.push(mw));
 			}
 
-			b.i_ports.forEach(p => {
+			b.inputs().forEach(p => {
 				const bb = bdef.connections.find(c => c.out == p).in.block;
 				schedule_block(bb, nstack);
 			});

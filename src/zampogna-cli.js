@@ -20,9 +20,9 @@
 			[-v initial_values]
 			[-t target_lang]
 			[-o output_folder]
-			[-og outgen_opt_bool]
-			[-os outgen_sink_bool]
-			[-oh outgen_hoist_bool]
+			[-og ignored_legacy_bool]
+			[-os ignored_legacy_bool]
+			[-oh ignored_legacy_bool]
 			[-paths include_search_paths]
 			[-d debug_bool]
 			[-dl debug_last_step]
@@ -114,9 +114,6 @@
 		control_inputs: control_inputs,
 		initial_values: initial_values,
 		target_language: options["-t"],
-		outgen_optimizations: options["-og"] === "true",
-		outgen_code_sinking: options["-os"] === "true",
-		outgen_code_hoisting: options["-oh"] === "true",
 		debug_mode: debug,
 		debug_output_dir: debug ? path.join(options["-o"], "_debug") : "",
 		debug_last_step: options["-dl"],

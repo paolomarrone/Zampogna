@@ -1,36 +1,169 @@
 (function(f){if(typeof exports==="object"&&typeof module!=="undefined"){module.exports=f()}else if(typeof define==="function"&&define.amd){define([],f)}else{var g;if(typeof window!=="undefined"){g=window}else if(typeof global!=="undefined"){g=global}else if(typeof self!=="undefined"){g=self}else{g=this}g.zampogna = f()}})(function(){var define,module,exports;return (function(){function r(e,n,t){function o(i,f){if(!n[i]){if(!e[i]){var c="function"==typeof require&&require;if(!f&&c)return c(i,!0);if(u)return u(i,!0);var a=new Error("Cannot find module '"+i+"'");throw a.code="MODULE_NOT_FOUND",a}var p=n[i]={exports:{}};e[i][0].call(p.exports,function(r){var n=e[i][1][r];return o(n||r)},p,p.exports,r,e,n,t)}return n[i].exports}for(var u="function"==typeof require&&require,i=0;i<t.length;i++)o(t[i]);return o}return r})()({1:[function(require,module,exports){
-/*
-	Copyright (C) 2021, 2022, 2023 Orastron Srl
+// doT.js
+// 2011-2014, Laura Doktorova, https://github.com/olado/doT
+// Licensed under the MIT license.
 
-	Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is 
-	hereby granted, provided that the above copyright notice and this permission notice appear in all copies.
+(function () {
+	"use strict";
 
-	THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE 
-	INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE 
-	FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM 
-	LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, 
-	ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+	var doT = {
+		name: "doT",
+		version: "1.1.1",
+		templateSettings: {
+			evaluate:    /\{\{([\s\S]+?(\}?)+)\}\}/g,
+			interpolate: /\{\{=([\s\S]+?)\}\}/g,
+			encode:      /\{\{!([\s\S]+?)\}\}/g,
+			use:         /\{\{#([\s\S]+?)\}\}/g,
+			useParams:   /(^|[^\w$])def(?:\.|\[[\'\"])([\w$\.]+)(?:[\'\"]\])?\s*\:\s*([\w$\.]+|\"[^\"]+\"|\'[^\']+\'|\{[^\}]+\})/g,
+			define:      /\{\{##\s*([\w\.$]+)\s*(\:|=)([\s\S]+?)#\}\}/g,
+			defineParams:/^\s*([\w$]+):([\s\S]+)/,
+			conditional: /\{\{\?(\?)?\s*([\s\S]*?)\s*\}\}/g,
+			iterate:     /\{\{~\s*(?:\}\}|([\s\S]+?)\s*\:\s*([\w$]+)\s*(?:\:\s*([\w$]+))?\s*\}\})/g,
+			varname:	"it",
+			strip:		true,
+			append:		true,
+			selfcontained: false,
+			doNotSkipEncoded: false
+		},
+		template: undefined, //fn, compile template
+		compile:  undefined, //fn, for express
+		log: true
+	}, _globals;
 
-	Author: Paolo Marrone
-*/
+	doT.encodeHTMLSource = function(doNotSkipEncoded) {
+		var encodeHTMLRules = { "&": "&#38;", "<": "&#60;", ">": "&#62;", '"': "&#34;", "'": "&#39;", "/": "&#47;" },
+			matchHTML = doNotSkipEncoded ? /[&<>"'\/]/g : /&(?!#?\w+;)|<|>|"|'|\//g;
+		return function(code) {
+			return code ? code.toString().replace(matchHTML, function(m) {return encodeHTMLRules[m] || m;}) : "";
+		};
+	};
 
+	_globals = (function(){ return this || (0,eval)("this"); }());
+
+	/* istanbul ignore else */
+	if (typeof module !== "undefined" && module.exports) {
+		module.exports = doT;
+	} else if (typeof define === "function" && define.amd) {
+		define(function(){return doT;});
+	} else {
+		_globals.doT = doT;
+	}
+
+	var startend = {
+		append: { start: "'+(",      end: ")+'",      startencode: "'+encodeHTML(" },
+		split:  { start: "';out+=(", end: ");out+='", startencode: "';out+=encodeHTML(" }
+	}, skip = /$^/;
+
+	function resolveDefs(c, block, def) {
+		return ((typeof block === "string") ? block : block.toString())
+		.replace(c.define || skip, function(m, code, assign, value) {
+			if (code.indexOf("def.") === 0) {
+				code = code.substring(4);
+			}
+			if (!(code in def)) {
+				if (assign === ":") {
+					if (c.defineParams) value.replace(c.defineParams, function(m, param, v) {
+						def[code] = {arg: param, text: v};
+					});
+					if (!(code in def)) def[code]= value;
+				} else {
+					new Function("def", "def['"+code+"']=" + value)(def);
+				}
+			}
+			return "";
+		})
+		.replace(c.use || skip, function(m, code) {
+			if (c.useParams) code = code.replace(c.useParams, function(m, s, d, param) {
+				if (def[d] && def[d].arg && param) {
+					var rw = (d+":"+param).replace(/'|\\/g, "_");
+					def.__exp = def.__exp || {};
+					def.__exp[rw] = def[d].text.replace(new RegExp("(^|[^\\w$])" + def[d].arg + "([^\\w$])", "g"), "$1" + param + "$2");
+					return s + "def.__exp['"+rw+"']";
+				}
+			});
+			var v = new Function("def", "return " + code)(def);
+			return v ? resolveDefs(c, v, def) : v;
+		});
+	}
+
+	function unescape(code) {
+		return code.replace(/\\('|\\)/g, "$1").replace(/[\r\t\n]/g, " ");
+	}
+
+	doT.template = function(tmpl, c, def) {
+		c = c || doT.templateSettings;
+		var cse = c.append ? startend.append : startend.split, needhtmlencode, sid = 0, indv,
+			str  = (c.use || c.define) ? resolveDefs(c, tmpl, def || {}) : tmpl;
+
+		str = ("var out='" + (c.strip ? str.replace(/(^|\r|\n)\t* +| +\t*(\r|\n|$)/g," ")
+					.replace(/\r|\n|\t|\/\*[\s\S]*?\*\//g,""): str)
+			.replace(/'|\\/g, "\\$&")
+			.replace(c.interpolate || skip, function(m, code) {
+				return cse.start + unescape(code) + cse.end;
+			})
+			.replace(c.encode || skip, function(m, code) {
+				needhtmlencode = true;
+				return cse.startencode + unescape(code) + cse.end;
+			})
+			.replace(c.conditional || skip, function(m, elsecase, code) {
+				return elsecase ?
+					(code ? "';}else if(" + unescape(code) + "){out+='" : "';}else{out+='") :
+					(code ? "';if(" + unescape(code) + "){out+='" : "';}out+='");
+			})
+			.replace(c.iterate || skip, function(m, iterate, vname, iname) {
+				if (!iterate) return "';} } out+='";
+				sid+=1; indv=iname || "i"+sid; iterate=unescape(iterate);
+				return "';var arr"+sid+"="+iterate+";if(arr"+sid+"){var "+vname+","+indv+"=-1,l"+sid+"=arr"+sid+".length-1;while("+indv+"<l"+sid+"){"
+					+vname+"=arr"+sid+"["+indv+"+=1];out+='";
+			})
+			.replace(c.evaluate || skip, function(m, code) {
+				return "';" + unescape(code) + "out+='";
+			})
+			+ "';return out;")
+			.replace(/\n/g, "\\n").replace(/\t/g, '\\t').replace(/\r/g, "\\r")
+			.replace(/(\s|;|\}|^|\{)out\+='';/g, '$1').replace(/\+''/g, "");
+			//.replace(/(\s|;|\}|^|\{)out\+=''\+/g,'$1out+=');
+
+		if (needhtmlencode) {
+			if (!c.selfcontained && _globals && !_globals._encodeHTML) _globals._encodeHTML = doT.encodeHTMLSource(c.doNotSkipEncoded);
+			str = "var encodeHTML = typeof _encodeHTML !== 'undefined' ? _encodeHTML : ("
+				+ doT.encodeHTMLSource.toString() + "(" + (c.doNotSkipEncoded || '') + "));"
+				+ str;
+		}
+		try {
+			return new Function(c.varname, str);
+		} catch (e) {
+			/* istanbul ignore else */
+			if (typeof console !== "undefined") console.log("Could not create a template function: " + str);
+			throw e;
+		}
+	};
+
+	doT.compile = function(tmpl, def) {
+		return doT.template(tmpl, null, def);
+	};
+}());
+
+},{}],2:[function(require,module,exports){
 (function() {
 
-	const ts = require("./types");
-	const us = require("./uprates");
+	'use strict';
+
+	const TYPES = require("./types");
+	const RATES = require("./uprates");
 
 
 	const Port = {};
 	Port.block = undefined;
 	Port.id = undefined;
-	Port.datatype = () => ts.DataTypeGeneric;
-	Port.updaterate = () => us.UpdateRateGeneric;
+	Port.datatype = () => TYPES.Generic;
+	Port.updaterate = () => RATES.Generic;
 	Port.type = function () {
-		if (this.block.i_ports.includes(this)) return "in";
+		if (this.block.inputs().includes(this)) return "in";
 		if (this.block.o_ports.includes(this)) return "out";
 	};
 	Port.index = function () {
-		if (this.type() == "in")  return this.block.i_ports.indexOf(this);
+		if (this.type() == "in")  return this.block.inputs().indexOf(this);
 		if (this.type() == "out") return this.block.o_ports.indexOf(this);
 	};
 	Port.clone = function () {
@@ -42,14 +175,15 @@
 		this.__clone__ = r;
 		r.block = this.block.clone();
 		r.id = this.id;
+		r.negated = this.negated;
 		r.datatype = this.datatype;
 		r.updaterate = this.updaterate;
 		return r;
 	};
 	Port.validate = function () {
-		if (this.datatype() == ts.DataTypeGeneric)
+		if (this.datatype() == TYPES.Generic)
 			throw new Error("Generic port datatype: " + this.toString());
-		//if (this.updaterate() == us.UpdateRateGeneric)
+		//if (this.updaterate() == RATES.Generic)
 			;//throw new Error("Generic updaterate");
 	};
 	Port.toString = function () {
@@ -61,7 +195,6 @@
 	Block.Port = Port;
 	Block.id = undefined;
 	Block.operation = "DEFAULT";
-	Block.control_dependencies = undefined;
 	Block.parLevel = 0;
 	Block.i_ports = undefined; // Array of Ports
 	Block.o_ports = undefined; // Array of Ports
@@ -71,25 +204,27 @@
 		this.i_ports.forEach(p => p.block = this);
 		this.o_ports.forEach(p => p.block = this);
 	};
+	// Guards are input ports too: cloning, scheduling and reachability follow their edges.
+	Block.inputs = function () { return this.i_ports.concat(this.guard_ports || []); };
 	Block.init = function (i_p_n = 0, o_p_n = 0) {
+		this.guard_ports = [];
 		this.createPorts(i_p_n, o_p_n);
-		this.control_dependencies = new Set();
 	};
 	Block.setMaxOutputUpdaterate = function () {
 		this.o_ports.forEach(p => p.updaterate = function () {
-			//return this.block.i_ports.map(p => p.updaterate()).reduce((u, t) => t.level > u.level ? t : u, us.UpdateRateConstant);
-			return us.max.apply(null, this.block.i_ports.map(p => p.updaterate()));
+			//return this.block.i_ports.map(p => p.updaterate()).reduce((u, t) => t.level > u.level ? t : u, RATES.Constant);
+			return RATES.max.apply(null, this.block.i_ports.map(p => p.updaterate()));
 		});
 	};
 	Block.validate = function () {
 		if (!this.i_ports || !this.o_ports)
 			throw new Error("Invalid ports");
-		this.i_ports.forEach(p => p.validate());
+		this.inputs().forEach(p => p.validate());
 		this.o_ports.forEach(p => p.validate());
 	};
 	Block.setToBeCloned = function () {
 		this.__clone__ = 1;
-		this.i_ports.forEach(p => p.__clone__ = 1);
+		this.inputs().forEach(p => p.__clone__ = 1);
 		this.o_ports.forEach(p => p.__clone__ = 1);
 	};
 	Block.clone = function () {
@@ -110,6 +245,7 @@
 			const pc = p.clone();
 			r.o_ports.push(pc);
 		});
+		r.guard_ports = (this.guard_ports || []).map(p => p.clone());
 		return r; 
 	};
 	Block.toString = function () {
@@ -121,7 +257,7 @@
 	const VarBlock = Object.create(Block);
 	VarBlock.operation = "VAR";
 	VarBlock.id = "";
-	VarBlock.datatype = () => ts.DataTypeGeneric;
+	VarBlock.datatype = () => TYPES.Generic;
 	VarBlock.init = function () {
 		Block.init.call(this, 1, 1);
 		this.o_ports[0].datatype = function () {
@@ -133,7 +269,7 @@
 	};
 	VarBlock.validate = function () {
 		Block.validate.call(this);
-		if (this.datatype() == ts.DataTypeGeneric)
+		if (this.datatype() == TYPES.Generic)
 			throw new Error("Generic variable datatype");
 		if (this.i_ports[0].datatype() != this.datatype())
 			throw new Error("Inconsistent datatypes: " + this.toString());
@@ -145,6 +281,8 @@
 		const r = Block.clone.call(this);
 		r.id = this.id;
 		r.datatype = this.datatype;
+		if (this.init_parent)
+			r.init_parent = this.init_parent.clone();
 		return r;
 	};
 
@@ -152,14 +290,14 @@
 	const MemoryBlock = Object.create(Block);
 	MemoryBlock.operation = "MEMORY";
 	MemoryBlock.id = "";
-	MemoryBlock.datatype = () => ts.DataTypeGeneric;
+	MemoryBlock.datatype = () => TYPES.Generic;
 	MemoryBlock.init = function () {
 		Block.init.call(this, 2, 0); // size, init
 	};
 	MemoryBlock.validate = function () {
-		if (this.datatype() == ts.DataTypeGeneric)
+		if (this.datatype() == TYPES.Generic)
 			throw new Error("Generic datatype");
-		if (this.i_ports[0].datatype() != ts.DataTypeInt32)
+		if (this.i_ports[0].datatype() != TYPES.Int32)
 			throw new Error("Memory size must be int");
 		//if (this.i_ports[1].datatype() != this.datatype())
 		//	throw new Error("Memory init must carry the same datatype");
@@ -183,12 +321,12 @@
 			return this.block.memoryblock.datatype();
 		};
 		this.o_ports[0].updaterate = function () {
-			return this.block.i_ports[0].updaterate(); // Default. Set audio if loop
+			return this.block.memoryblock.updaterate();
 		};
 	};
 	MemoryReaderBlock.validate = function () {
 		Block.validate.call(this);
-		if (this.i_ports[0].datatype() != ts.DataTypeInt32)
+		if (this.i_ports[0].datatype() != TYPES.Int32)
 			throw new Error("Only int can be used to access memory");
 		if (this.memoryblock == undefined)
 			throw new Error("Undefined memoryblock");
@@ -207,7 +345,7 @@
 	};
 	MemoryWriterBlock.validate = function () {
 		Block.validate.call(this);
-		if (this.i_ports[0].datatype() != ts.DataTypeInt32)
+		if (this.i_ports[0].datatype() != TYPES.Int32)
 			throw new Error("Only int can be used to access memory");
 		if (this.i_ports[1].datatype() != this.memoryblock.datatype())
 			throw new Error("Inconsistent datatype");
@@ -223,17 +361,17 @@
 	const ConstantBlock = Object.create(Block);
 	ConstantBlock.operation = "CONSTANT";
 	ConstantBlock.value = undefined;
-	ConstantBlock.datatype = () => ts.DataTypeGeneric;
+	ConstantBlock.datatype = () => TYPES.Generic;
 	ConstantBlock.init = function () {
 		Block.init.call(this, 0, 1);
 		this.o_ports[0].datatype = function () {
 			return this.block.datatype();
 		};
-		this.o_ports[0].updaterate = () => us.UpdateRateConstant;
+		this.o_ports[0].updaterate = () => RATES.Constant;
 	};
 	ConstantBlock.validate = function () {
 		Block.validate.call(this);
-		if (this.datatype() == ts.DataTypeGeneric)
+		if (this.datatype() == TYPES.Generic)
 			throw new Error("Generic datatype");
 		if (this.value == undefined)
 			throw new Error("Undefined constant");
@@ -252,13 +390,13 @@
 	const LogicalBlock = Object.create(Block);
 	LogicalBlock.init = function () {
 		Block.init.call(this, 2, 1);
-		this.o_ports[0].datatype = () => ts.DataTypeBool;
+		this.o_ports[0].datatype = () => TYPES.Bool;
 		Block.setMaxOutputUpdaterate.call(this);
 	};
 	LogicalBlock.validate = function () {
 		Block.validate.call(this);
 		this.i_ports.forEach(p => {
-			if (p.datatype() != ts.DataTypeBool)
+			if (p.datatype() != TYPES.Bool)
 				throw new Error("Bad input types");
 		});
 	};
@@ -275,20 +413,20 @@
 	LogicalNotBlock.operation = "!";
 	LogicalNotBlock.init = function () {
 		Block.init.call(this, 1, 1);
-		this.o_ports[0].datatype = () => ts.DataTypeBool;
+		this.o_ports[0].datatype = () => TYPES.Bool;
 		Block.setMaxOutputUpdaterate.call(this);
 	};
 
 	const BitwiseBlock = Object.create(Block);
 	BitwiseBlock.init = function () {
 		Block.init.call(this, 2, 1);
-		this.o_ports[0].datatype = () => ts.DataTypeInt32;
+		this.o_ports[0].datatype = () => TYPES.Int32;
 		Block.setMaxOutputUpdaterate.call(this);
 	};
 	BitwiseBlock.validate = function () {
 		Block.validate.call(this);
 		this.i_ports.forEach(p => {
-			if (p.datatype() != ts.DataTypeInt32)
+			if (p.datatype() != TYPES.Int32)
 				throw new Error("Bad input types: " + this.toString());
 		});
 	};
@@ -315,7 +453,7 @@
 	const RelationalBlock = Object.create(Block);
 	RelationalBlock.init = function () {
 		Block.init.call(this, 2, 1);
-		this.o_ports[0].datatype = () => ts.DataTypeBool;
+		this.o_ports[0].datatype = () => TYPES.Bool;
 		Block.setMaxOutputUpdaterate.call(this);
 	};
 	RelationalBlock.validate = function () {
@@ -336,7 +474,7 @@
 	RelationalLGBlock.validate = function () {
 		RelationalBlock.validate.call(this);
 		const d = this.i_ports[0].datatype();
-		if (d != ts.DataTypeInt32 && d != ts.DataTypeFloat32)
+		if (d != TYPES.Int32 && d != TYPES.Float32)
 			throw new Error("Only int32 and float32 can be compared");
 	};
 	const LessBlock = Object.create(RelationalLGBlock);
@@ -357,12 +495,12 @@
 	ShiftBlock.parLevel = 13;
 	ShiftBlock.init = function () {
 		Block.init.call(this, 2, 1);
-		this.o_ports[0].datatype = () => ts.DataTypeInt32;
+		this.o_ports[0].datatype = () => TYPES.Int32;
 		Block.setMaxOutputUpdaterate.call(this);
 	};
 	ShiftBlock.validate = function () {
 		Block.validate.call(this);
-		if (this.i_ports[0].datatype() != ts.DataTypeInt32 || this.i_ports[1].datatype() != ts.DataTypeInt32)
+		if (this.i_ports[0].datatype() != TYPES.Int32 || this.i_ports[1].datatype() != TYPES.Int32)
 			throw new Error("Shift accepts int32 only");
 	};
 	const ShiftLeftBlock = Object.create(ShiftBlock);
@@ -383,7 +521,7 @@
 		Block.validate.call(this);
 		let b = this.i_ports[0].datatype();
 		this.i_ports.forEach(p => {
-			if (p.datatype() != ts.DataTypeInt32 && p.datatype() != ts.DataTypeFloat32)
+			if (p.datatype() != TYPES.Int32 && p.datatype() != TYPES.Float32)
 				throw new Error("Invalid input types: " + this.toString());
 			if (p.datatype() != b)
 				throw new Error("Inconsistent input types: " + this.toString());
@@ -422,12 +560,12 @@
 	ModuloBlock.parLevel = 11;
 	ModuloBlock.init = function () {
 		Block.init.call(this, 2, 1);
-		this.o_ports[0].datatype = () => ts.DataTypeInt32;
+		this.o_ports[0].datatype = () => TYPES.Int32;
 		Block.setMaxOutputUpdaterate.call(this);
 	};
 	ModuloBlock.validate = function () {
 		Block.validate.call(this);
-		if (this.i_ports[0].datatype() != ts.DataTypeInt32 || this.i_ports[1].datatype() != ts.DataTypeInt32)
+		if (this.i_ports[0].datatype() != TYPES.Int32 || this.i_ports[1].datatype() != TYPES.Int32)
 			throw new Error ("Invalid input types");
 	};
 
@@ -441,7 +579,7 @@
 	CastF32Block.operation = "(f32)";
 	CastF32Block.init = function () {
 		Block.init.call(this, 1, 1);
-		this.o_ports[0].datatype = () => ts.DataTypeFloat32;
+		this.o_ports[0].datatype = () => TYPES.Float32;
 		Block.setMaxOutputUpdaterate.call(this);
 	};
 	
@@ -449,7 +587,7 @@
 	CastI32Block.operation = "(i32)";
 	CastI32Block.init = function () {
 		Block.init.call(this, 1, 1);
-		this.o_ports[0].datatype = () => ts.DataTypeInt32;
+		this.o_ports[0].datatype = () => TYPES.Int32;
 		Block.setMaxOutputUpdaterate.call(this);
 	};
 
@@ -457,15 +595,15 @@
 	CastBoolBlock.operation = "(bool)";
 	CastBoolBlock.init = function () {
 		Block.init.call(this, 1, 1);
-		this.o_ports[0].datatype = () => ts.DataTypeBool;
+		this.o_ports[0].datatype = () => TYPES.Bool;
 		Block.setMaxOutputUpdaterate.call(this);
 	};
 
 	const MaxBlock = Object.create(Block);
 	MaxBlock.operation = "max";
-	MaxBlock.datatype = () => ts.DataTypeGeneric;
+	MaxBlock.datatype = () => TYPES.Generic;
 	MaxBlock.init = function () {
-		this.control_dependencies = new Set(); // Would be nice to normalize
+		this.guard_ports = [];
 		//Block.init.call(this, 0, 0);
 		// Create ports from outside. out ports must be 1
 		this.o_ports[0].datatype = function () {
@@ -475,10 +613,28 @@
 	};
 	MaxBlock.validate = function () {
 		Block.validate.call(this);
-		if (this.datatype() == ts.DataTypeGeneric)
+		if (this.datatype() == TYPES.Generic)
 			throw new Error("Generic MAX datatype");
 		if (this.i_ports.some(p => p.datatype() != this.datatype()))
 			throw new Error("Inconsistent MAX datatypes: " + this.toString());
+	};
+
+	const SelectBlock = Object.create(Block);
+	SelectBlock.operation = "SELECT";
+	SelectBlock.parLevel = 3;
+	SelectBlock.init = function () {
+		Block.init.call(this, 3, 1); // cond, then, else
+		this.o_ports[0].datatype = function () {
+			return this.block.i_ports[1].datatype();
+		};
+		Block.setMaxOutputUpdaterate.call(this);
+	};
+	SelectBlock.validate = function () {
+		Block.validate.call(this);
+		if (this.i_ports[0].datatype() != TYPES.Bool)
+			throw new Error("Select condition must be bool");
+		if (this.i_ports[1].datatype() != this.i_ports[2].datatype())
+			throw new Error("Select input types mismatch");
 	};
 
 	const CallBlock = Object.create(Block);
@@ -505,28 +661,6 @@
 		if (!this.ref)
 			return "{ Generic CALL }";
 		return "{ CALL: " + this.ref.toString() + " }";
-	};
-
-
-	function parseType (x) {
-		if (x == "float32")
-			return ts.DataTypeFloat32;
-		if (x == "int32")
-			return ts.DataTypeInt32;
-		if (x == "bool")
-			return ts.DataTypeBool;
-		throw new Error("Unrecongized type: " + x);
-	};
-	function parseUpdateRate(x) {
-		if (x == "const")
-			return us.UpdateRateConstant;
-		if (x == "fs")
-			return us.UpdateRateFs;
-		if (x == "control")
-			return us.UpdateRateControl;
-		if (x == "audio")
-			return us.UpdateRateAudio;
-		throw new Error("Unrecongized updaterate");
 	};
 
 	const CBlock = Object.create(Block);
@@ -574,14 +708,14 @@
 		this.createPorts(this.inputs_N, this.outputs_N);
 		Block.setMaxOutputUpdaterate.call(this);
 		desc.block_inputs.forEach((x, i) => {
-			const dt = parseType(x.type); 
+			const dt = TYPES.parse(x.type);
 			this.i_ports[i].datatype = () => dt;
 		});
 		desc.block_outputs.forEach((x, i) => {
-			const dt = parseType(x.type); 
+			const dt = TYPES.parse(x.type);
 			this.o_ports[i].datatype = () => dt;
 			if (x.updaterate) {
-				const ur = parseUpdateRate(x.updaterate);
+				const ur = RATES.parse(x.updaterate);
 				this.o_ports[i].updaterate = () => ur;
 			}
 		});
@@ -594,39 +728,102 @@
 	};
 
 	const IfthenelseBlock = Object.create(Block);
-	IfthenelseBlock.operation = "???";
+	IfthenelseBlock.operation = "IF_THEN_ELSE";
 	IfthenelseBlock.nOutputs = undefined;
+	IfthenelseBlock.then_branch = undefined; // CompositeBlock
+	IfthenelseBlock.else_branch = undefined; // CompositeBlock
 	IfthenelseBlock.init = function () {
-		const nInputs = 1 + this.nOutputs * 2; // Condition, outputs of 1st branch, output of 2nd branch
-		Block.init.call(this, nInputs, this.nOutputs);
+		Block.init.call(this, 1, this.nOutputs); // condition only, outputs are selected internally
 	};
 	IfthenelseBlock.setOutputDatatype = function () {
-		for (let i = 0; i < this.nOutputs; i++)
-			this.o_ports[i].datatype = this.i_ports[i + 1].datatype;
+		for (let i = 0; i < this.nOutputs; i++) {
+			const oi = i;
+			this.o_ports[i].datatype = function () {
+				return this.block.then_branch.o_ports[oi].datatype();
+			};
+			this.o_ports[i].updaterate = function () {
+				return RATES.max(this.block.then_branch.o_ports[oi].updaterate(), this.block.else_branch.o_ports[oi].updaterate());
+			};
+		}
 	};
 	IfthenelseBlock.validate = function () {
 		Block.validate.call(this);
 		if (this.nOutputs == undefined || this.nOutputs < 1)
 			throw new Error("Unexpected outputs number");
-		if (this.i_ports[0].datatype != ts.DataTypeBool)
+		if (!this.then_branch || !this.else_branch)
+			throw new Error("IF_THEN_ELSE branches not set");
+		if (this.i_ports[0].datatype() != TYPES.Bool)
 			throw new Error("Ifthenelse condition must return a boolean");
 		for (let i = 0; i < this.nOutputs; i++)
-			if (this.i_ports[1 + i].datatype != this.i_ports[1 + i + this.nOutputs].datatype)
-				throw new Error("Inconsistent input datatypes");
+			if (this.then_branch.o_ports[i].datatype() != this.else_branch.o_ports[i].datatype())
+				throw new Error("Inconsistent branch output datatypes");
 	};
-	IfthenelseBlock.flatten = function () {
-		// TODO
-		// Idea.
-		// 1. Flattening: Create nOutputs select blocks depending on the same condition. Then flatten branches. ...
-		// 		Maybe we should use decoders and conditional MemoryBlock update too... ?
-		// 2. Normalization: (In case of loops where the branch choice is lost). 
-		// 		2.1. Create graph1 with condition = T (remove all the selects)
-		// 		2.2. Create graph2 with condition = F
-		// 		All the blocks that are in the loop and in both graphes are de facto duplicated
-		// 		All the blocks that are NOT in the loop and in both graphes don't need to be duplicated
-		// 		This "enlarges" the branche blocks so that they can be treated as a black boxes
-		// 		Problem: if the duplicated blocks are used elsewhere, we need another select. TODO: define this better
+	IfthenelseBlock.clone = function () {
+		const r = Block.clone.call(this);
+		r.nOutputs = this.nOutputs;
+		r.then_branch = this.then_branch.clone();
+		r.else_branch = this.else_branch.clone();
+		return r;
 	};
+	IfthenelseBlock.flatten = function (bdef) {
+		const condition = bdef.connections.find(c => c.out == this.i_ports[0]);
+		if (!condition)
+			throw new Error("IF_THEN_ELSE missing condition connection");
+
+		function inline_branch(ref, negated) {
+			ref.setToBeCloned();
+			const branch = ref.clone();
+			ref.clean();
+			while (branch.blocks.some(b => IfthenelseBlock.isPrototypeOf(b) || (CallBlock.isPrototypeOf(b) && b.type == 'bdef'))) {
+				const conditional = branch.blocks.find(b => IfthenelseBlock.isPrototypeOf(b));
+				if (conditional)
+					conditional.flatten(branch);
+				else
+					branch.flatten();
+			}
+			// Storage is allocated/reset independently of branch execution. Values and
+			// effects inside the branch execute only when all enclosing guards hold.
+			const properties = new Set(branch.properties.map(p => p.block));
+			for (const block of branch.blocks) {
+				if (MemoryBlock.isPrototypeOf(block) || ConstantBlock.isPrototypeOf(block) || properties.has(block))
+					continue;
+				const guard = Object.create(Port);
+				guard.block = block;
+				guard.negated = negated;
+				block.guard_ports.unshift(guard);
+				const edge = Object.create(Connection);
+				edge.in = condition.in;
+				edge.out = guard;
+				branch.connections.push(edge);
+			}
+			bdef.blocks.push(...branch.blocks);
+			bdef.connections.push(...branch.connections);
+			bdef.properties.push(...branch.properties);
+			bdef.cdefs.push(...branch.cdefs);
+			return branch;
+		}
+
+		const then_branch = inline_branch(this.then_branch, false);
+		const else_branch = inline_branch(this.else_branch, true);
+		for (let i = 0; i < this.nOutputs; i++) {
+			const left = bdef.connections.find(c => c.out == then_branch.o_ports[i]);
+			const right = bdef.connections.find(c => c.out == else_branch.o_ports[i]);
+			const select = Object.create(SelectBlock);
+			select.init();
+			[condition.in, left.in, right.in].forEach((input, j) => {
+				const edge = Object.create(Connection);
+				edge.in = input;
+				edge.out = select.i_ports[j];
+				bdef.connections.push(edge);
+			});
+			bdef.blocks.push(select);
+			bdef.connections.filter(c => c.in == this.o_ports[i]).forEach(c => c.in = select.o_ports[0]);
+			bdef.connections = bdef.connections.filter(c => c != left && c != right);
+		}
+		bdef.connections = bdef.connections.filter(c => c != condition);
+		bdef.blocks = bdef.blocks.filter(b => b != this);
+	};
+
 
 	const Connection = {};
 	Connection.in = undefined;  // Port
@@ -708,7 +905,15 @@
 		this.connections.forEach(c => {
 			const cc = c;
 			c.out.updaterate = function () {
-				return cc.in.updaterate();
+				if (this.__computing_updaterate__)
+					return RATES.Audio; // Conservative fallback for feedback cycles (e.g. delay/state loops)
+				this.__computing_updaterate__ = true;
+				try {
+					return cc.in.updaterate();
+				}
+				finally {
+					this.__computing_updaterate__ = false;
+				}
 			};
 		});
 		this.bdefs.forEach(bd => bd.propagateUpdateRates());
@@ -752,7 +957,7 @@
 				const csext = this.connections.filter(c => c.out == p);
 				const csint = this.connections.filter(c => c.in == np);
 				if (csext.length != 1)
-					throw new Error("Found invalid number of connectrions toward input");
+					throw new Error("Found invalid number of connections toward input");
 				this.connections.splice(this.connections.indexOf(csext[0]), 1);
 				csint.forEach(c => c.in = csext[0].in );
 			});
@@ -762,7 +967,7 @@
 				const csext = this.connections.filter(c => c.in == p); 
 				const csint = this.connections.filter(c => c.out == np);
 				if (csint.length != 1)
-					throw new Error("Found invalid number of connectrions toward output");
+					throw new Error("Found invalid number of connections toward output");
 				this.connections.splice(this.connections.indexOf(csint[0]), 1);
 				csext.forEach(c => c.in = csint[0].in);
 			});
@@ -804,7 +1009,7 @@
 	};
 	CompositeBlock.clean = function () {
 		this.blocks.forEach(b => {
-			b.i_ports.forEach(p => delete p.__clone__);
+			b.inputs().forEach(p => delete p.__clone__);
 			b.o_ports.forEach(p => delete p.__clone__);
 			delete b.__clone__;
 		});
@@ -829,7 +1034,7 @@
 		ArithmeticalBlock, SumBlock, SubtractionBlock, MulBlock, DivisionBlock, UminusBlock,
 		ModuloBlock,
 		CastBlock, CastF32Block, CastI32Block, CastBoolBlock,
-		MaxBlock,
+		MaxBlock, SelectBlock,
 		CallBlock,
 		CBlock,
 		IfthenelseBlock,
@@ -837,7 +1042,153 @@
 	};
 
 }());
-},{"./types":8,"./uprates":9}],2:[function(require,module,exports){
+
+},{"./types":10,"./uprates":11}],3:[function(require,module,exports){
+(function() {
+
+	'use strict';
+
+	const fs = require("fs");
+	const path = require("path");
+
+	function graphToGraphviz (g) {
+		let ui = 0;
+		function getUID () {
+			return "A" + ui++;
+		}
+		function convertCompositeBlock (bdef) {
+			let s = "";
+			let conns = "";
+			let props = "";
+			s += "subgraph cluster" + getUID() + " { \n";
+			s += "label = \"" + bdef.id + "\"; \n";
+			bdef.i_ports.forEach((p, i) => {
+				s += p.__gvizid__ + "[ label = \"i_" + i + "\" style=filled,color=lightgrey ]; \n";
+			});
+			bdef.blocks.forEach(b => {
+				s += convertBlock(b);
+			});
+			bdef.bdefs.forEach(bd => {
+				let r = convertCompositeBlock(bd);
+				s += r[0];
+				conns += r[1];
+				props += r[2];
+			});
+			bdef.o_ports.forEach((p, i) => {
+				s += p.__gvizid__ + "[ label = \"o_" + i + "\" style=filled,color=darkgrey ]; \n";
+			});
+			bdef.connections.forEach(c => {
+				if (!c.in || !c.out || !c.in.__gvizid__ || !c.out.__gvizid__)
+					console.warn("Invalid connection, ", c.toString());
+				conns += c.in.__gvizid__ + " -> " + c.out.__gvizid__ + ";\n";
+			});
+			bdef.properties.forEach(p => {
+				if (!bdef.blocks.includes(p.of) || !bdef.blocks.includes(p.block))
+					return;
+				props += (p.block.o_ports[0] || p.block.i_ports[0]).__gvizid__ + " -> " + (p.of.o_ports[0] || p.of.i_ports[0]).__gvizid__ + "[style=\"dotted\", color=\"purple\", arrowhead=none];\n";
+			});
+			s += "} \n";
+			return [s, conns, props];
+		}
+		function convertBlock (b) {
+			let s = "";
+			let u = (b.o_ports[0] || b.i_ports[0]).__gvizid__;
+			b.inputs().forEach(p => p.__gvizid__ = u);
+			b.o_ports.forEach(p => p.__gvizid__ = u);
+
+			const ur = b.i_ports.concat(b.o_ports).map(x =>  {
+				try {
+					return x.updaterate();
+				}
+				catch (e) {
+					return { level: undefined };
+				}
+			}).reduce((a, b) => b.level > a.level ? b : a);
+			const urc = ur.level == undefined ? "red" : (ur.level == 0 ? "green" : (ur.level == 1 ? "yellow" : (ur.level == 2 ? "orange" : "blue")));
+			s += u + "[" + "label = \"" + (b.id || (b.value != undefined ? " " + b.value : null ) || b.operation || ".") + "\"" + "color=" + urc + "]; \n";
+			return s;
+		}
+
+		function bdefsetUID (bdef) {
+			bdef.i_ports.forEach(p => p.__gvizid__ = getUID());
+			bdef.o_ports.forEach(p => p.__gvizid__ = getUID());
+			bdef.blocks.forEach(b => {
+				b.inputs().forEach(p => p.__gvizid__ = getUID());
+				b.o_ports.forEach(p => p.__gvizid__ = getUID());
+			});
+			bdef.bdefs.forEach(bd => bdefsetUID(bd));
+		}
+		function bdefremUID (bdef) {
+			bdef.i_ports.forEach(p => delete p.__gvizid__);
+			bdef.o_ports.forEach(p => delete p.__gvizid__);
+			bdef.blocks.forEach(b => {
+				b.inputs().forEach(p => delete p.__gvizid__);
+				b.o_ports.forEach(p => delete p.__gvizid__);
+			});
+			bdef.bdefs.forEach(bd => bdefremUID(bd));
+		}
+
+		bdefsetUID(g);
+
+		let s = "";
+		s += "digraph D {\n";
+		s += "rankdir=LR; \n";
+		s += "compound=true \n";
+		s += "node [shape=record];\n";
+		let r = convertCompositeBlock(g);
+		s += r[0];
+		s += r[1];
+		s += r[2];
+		s += "\n}\n";
+
+		bdefremUID(g);
+
+		return s;
+	}
+
+	function createDebugReporter (options) {
+		const enabled = !!options.debug_mode;
+		const outdir = options.debug_output_dir || "";
+		const emitOutputs = options.debug_emit_outputs !== false;
+		if (enabled && outdir) {
+			fs.rmSync(outdir, { recursive: true, force: true });
+			fs.mkdirSync(outdir, { recursive: true });
+		}
+
+		function log (msg) {
+			if (!enabled)
+				return;
+			console.log("[debug]", msg);
+		}
+
+		function writeFile (relPath, str) {
+			if (!enabled || !outdir)
+				return;
+			const p = path.join(outdir, relPath);
+			fs.mkdirSync(path.dirname(p), { recursive: true });
+			fs.writeFileSync(p, str);
+		}
+
+		function writeJSON (relPath, obj) {
+			writeFile(relPath, JSON.stringify(obj, null, 2));
+		}
+
+		return {
+			enabled: enabled,
+			outdir: outdir,
+			emitOutputs: emitOutputs,
+			log: log,
+			writeFile: writeFile,
+			writeJSON: writeJSON
+		};
+	}
+
+	exports["graphToGraphviz"] = graphToGraphviz;
+	exports["createDebugReporter"] = createDebugReporter;
+
+}());
+
+},{"fs":15,"path":18}],4:[function(require,module,exports){
 (function (process){(function (){
 /* parser generated by jison 0.4.18 */
 /*
@@ -913,12 +1264,12 @@
   }
 */
 var grammar = (function(){
-var o=function(k,v,o,l){for(o=o||{},l=k.length;l--;o[k[l]]=v);return o},$V0=[2,3],$V1=[1,7],$V2=[1,34],$V3=[1,9],$V4=[1,32],$V5=[1,25],$V6=[1,24],$V7=[1,26],$V8=[1,27],$V9=[1,31],$Va=[1,39],$Vb=[1,40],$Vc=[1,41],$Vd=[1,42],$Ve=[1,35],$Vf=[1,36],$Vg=[1,37],$Vh=[1,38],$Vi=[1,9,13,16,17,27,54,55,61,62,65,67,68,69,70,72,73,74,75],$Vj=[1,44],$Vk=[11,14,19,71],$Vl=[9,11,14,19,31,71],$Vm=[9,11,14,19,30,31,33,71],$Vn=[1,48],$Vo=[9,11,14,19,30,31,33,35,71],$Vp=[1,49],$Vq=[9,11,14,19,30,31,33,35,37,71],$Vr=[1,50],$Vs=[9,11,14,19,30,31,33,35,37,39,71],$Vt=[1,51],$Vu=[9,11,14,19,30,31,33,35,37,39,41,71],$Vv=[1,52],$Vw=[1,53],$Vx=[9,11,14,19,30,31,33,35,37,39,41,43,44,71],$Vy=[1,54],$Vz=[1,55],$VA=[1,56],$VB=[1,57],$VC=[9,11,14,19,30,31,33,35,37,39,41,43,44,46,47,48,49,71],$VD=[1,58],$VE=[1,59],$VF=[9,11,14,19,30,31,33,35,37,39,41,43,44,46,47,48,49,51,52,71],$VG=[1,60],$VH=[1,61],$VI=[9,11,14,19,30,31,33,35,37,39,41,43,44,46,47,48,49,51,52,54,55,71],$VJ=[1,62],$VK=[1,63],$VL=[1,64],$VM=[9,11,14,19,30,31,33,35,37,39,41,43,44,46,47,48,49,51,52,54,55,57,58,59,71],$VN=[1,65],$VO=[9,11,14,19,30,31,33,35,37,39,41,43,44,46,47,48,49,51,52,54,55,57,58,59,64,71],$VP=[2,61],$VQ=[1,71],$VR=[13,72],$VS=[1,81],$VT=[9,30,33,35,37,39,41,43,44,46,47,48,49,51,52,54,55,57,58,59,64],$VU=[2,56],$VV=[2,57];
+var o=function(k,v,o,l){for(o=o||{},l=k.length;l--;o[k[l]]=v);return o},$V0=[2,3],$V1=[1,7],$V2=[1,34],$V3=[1,9],$V4=[1,32],$V5=[1,25],$V6=[1,24],$V7=[1,26],$V8=[1,27],$V9=[1,31],$Va=[1,39],$Vb=[1,40],$Vc=[1,41],$Vd=[1,42],$Ve=[1,35],$Vf=[1,36],$Vg=[1,37],$Vh=[1,38],$Vi=[1,9,13,16,17,28,55,56,62,63,66,68,69,70,71,73,74,75,76],$Vj=[1,44],$Vk=[11,14,19,72],$Vl=[9,11,14,19,32,72],$Vm=[9,11,14,19,31,32,34,72],$Vn=[1,48],$Vo=[9,11,14,19,31,32,34,36,72],$Vp=[1,49],$Vq=[9,11,14,19,31,32,34,36,38,72],$Vr=[1,50],$Vs=[9,11,14,19,31,32,34,36,38,40,72],$Vt=[1,51],$Vu=[9,11,14,19,31,32,34,36,38,40,42,72],$Vv=[1,52],$Vw=[1,53],$Vx=[9,11,14,19,31,32,34,36,38,40,42,44,45,72],$Vy=[1,54],$Vz=[1,55],$VA=[1,56],$VB=[1,57],$VC=[9,11,14,19,31,32,34,36,38,40,42,44,45,47,48,49,50,72],$VD=[1,58],$VE=[1,59],$VF=[9,11,14,19,31,32,34,36,38,40,42,44,45,47,48,49,50,52,53,72],$VG=[1,60],$VH=[1,61],$VI=[9,11,14,19,31,32,34,36,38,40,42,44,45,47,48,49,50,52,53,55,56,72],$VJ=[1,62],$VK=[1,63],$VL=[1,64],$VM=[9,11,14,19,31,32,34,36,38,40,42,44,45,47,48,49,50,52,53,55,56,58,59,60,72],$VN=[1,65],$VO=[9,11,14,19,31,32,34,36,38,40,42,44,45,47,48,49,50,52,53,55,56,58,59,60,65,72],$VP=[2,63],$VQ=[1,71],$VR=[13,73],$VS=[1,81],$VT=[9,31,34,36,38,40,42,44,45,47,48,49,50,52,53,55,56,58,59,60,65],$VU=[2,58],$VV=[2,59],$VW=[9,26],$VX=[2,19],$VY=[1,138];
 var parser = {trace: function trace () { },
 yy: {},
-symbols_: {"error":2,"program":3,"statements":4,"statement":5,"block_definition":6,"memory_declaration":7,"assignment":8,"END":9,"exprs":10,"=":11,"id":12,"(":13,")":14,"block":15,"MEM":16,"[":17,"expr":18,"]":19,"type":20,"if_then_elses":21,"IF":22,"branch":23,"elseifs":24,"ELSE":25,"{":26,"}":27,"conditional_expr":28,"logical_or_expr":29,"?":30,":":31,"logical_and_expr":32,"||":33,"inclusive_or_expr":34,"&&":35,"exclusive_or_expr":36,"|":37,"and_expr":38,"^":39,"equality_expr":40,"&":41,"relational_expr":42,"==":43,"!=":44,"shift_expr":45,"<":46,"<=":47,">":48,">=":49,"additive_expr":50,"<<":51,">>":52,"multiplicative_expr":53,"+":54,"-":55,"unary_expr":56,"*":57,"/":58,"%":59,"postfix_expr":60,"!":61,"~":62,"primary_expr":63,".":64,"_":65,"constant":66,"CONSTANT_INT32":67,"CONSTANT_FLOAT32":68,"CONSTANT_TRUE":69,"CONSTANT_FALSE":70,",":71,"ID":72,"TYPE_INT32":73,"TYPE_FLOAT32":74,"TYPE_BOOL":75,"$accept":0,"$end":1},
-terminals_: {2:"error",9:"END",11:"=",13:"(",14:")",16:"MEM",17:"[",19:"]",22:"IF",25:"ELSE",26:"{",27:"}",30:"?",31:":",33:"||",35:"&&",37:"|",39:"^",41:"&",43:"==",44:"!=",46:"<",47:"<=",48:">",49:">=",51:"<<",52:">>",54:"+",55:"-",57:"*",58:"/",59:"%",61:"!",62:"~",64:".",65:"_",67:"CONSTANT_INT32",68:"CONSTANT_FLOAT32",69:"CONSTANT_TRUE",70:"CONSTANT_FALSE",71:",",72:"ID",73:"TYPE_INT32",74:"TYPE_FLOAT32",75:"TYPE_BOOL"},
-productions_: [0,[3,1],[4,2],[4,0],[5,1],[5,1],[5,1],[5,1],[6,7],[6,6],[7,7],[8,4],[8,4],[8,4],[21,8],[23,1],[24,7],[24,0],[15,3],[18,1],[28,1],[28,5],[29,1],[29,3],[32,1],[32,3],[34,1],[34,3],[36,1],[36,3],[38,1],[38,3],[40,1],[40,3],[40,3],[42,1],[42,3],[42,3],[42,3],[42,3],[45,1],[45,3],[45,3],[50,1],[50,3],[50,3],[53,1],[53,3],[53,3],[53,3],[56,1],[56,2],[56,2],[56,2],[56,2],[60,1],[60,3],[60,4],[60,4],[60,4],[60,3],[63,1],[63,2],[63,1],[63,3],[63,1],[63,3],[66,1],[66,1],[66,1],[66,1],[10,1],[10,3],[12,1],[20,1],[20,1],[20,1]],
+symbols_: {"error":2,"program":3,"statements":4,"statement":5,"block_definition":6,"memory_declaration":7,"assignment":8,"END":9,"exprs":10,"=":11,"id":12,"(":13,")":14,"block":15,"MEM":16,"[":17,"expr":18,"]":19,"type":20,"if_then_elses":21,"IF":22,"branch":23,"elseifs":24,"opt_ends":25,"ELSE":26,"{":27,"}":28,"conditional_expr":29,"logical_or_expr":30,"?":31,":":32,"logical_and_expr":33,"||":34,"inclusive_or_expr":35,"&&":36,"exclusive_or_expr":37,"|":38,"and_expr":39,"^":40,"equality_expr":41,"&":42,"relational_expr":43,"==":44,"!=":45,"shift_expr":46,"<":47,"<=":48,">":49,">=":50,"additive_expr":51,"<<":52,">>":53,"multiplicative_expr":54,"+":55,"-":56,"unary_expr":57,"*":58,"/":59,"%":60,"postfix_expr":61,"!":62,"~":63,"primary_expr":64,".":65,"_":66,"constant":67,"CONSTANT_INT32":68,"CONSTANT_FLOAT32":69,"CONSTANT_TRUE":70,"CONSTANT_FALSE":71,",":72,"ID":73,"TYPE_INT32":74,"TYPE_FLOAT32":75,"TYPE_BOOL":76,"$accept":0,"$end":1},
+terminals_: {2:"error",9:"END",11:"=",13:"(",14:")",16:"MEM",17:"[",19:"]",22:"IF",26:"ELSE",27:"{",28:"}",31:"?",32:":",34:"||",36:"&&",38:"|",40:"^",42:"&",44:"==",45:"!=",47:"<",48:"<=",49:">",50:">=",52:"<<",53:">>",55:"+",56:"-",58:"*",59:"/",60:"%",62:"!",63:"~",65:".",66:"_",68:"CONSTANT_INT32",69:"CONSTANT_FLOAT32",70:"CONSTANT_TRUE",71:"CONSTANT_FALSE",72:",",73:"ID",74:"TYPE_INT32",75:"TYPE_FLOAT32",76:"TYPE_BOOL"},
+productions_: [0,[3,1],[4,2],[4,0],[5,1],[5,1],[5,1],[5,1],[6,7],[6,6],[7,7],[8,4],[8,4],[8,4],[21,10],[23,1],[24,9],[24,0],[25,2],[25,0],[15,3],[18,1],[29,1],[29,5],[30,1],[30,3],[33,1],[33,3],[35,1],[35,3],[37,1],[37,3],[39,1],[39,3],[41,1],[41,3],[41,3],[43,1],[43,3],[43,3],[43,3],[43,3],[46,1],[46,3],[46,3],[51,1],[51,3],[51,3],[54,1],[54,3],[54,3],[54,3],[57,1],[57,2],[57,2],[57,2],[57,2],[61,1],[61,3],[61,4],[61,4],[61,4],[61,3],[64,1],[64,2],[64,1],[64,3],[64,1],[64,3],[67,1],[67,1],[67,1],[67,1],[10,1],[10,3],[12,1],[20,1],[20,1],[20,1]],
 performAction: function anonymous(yytext, yyleng, yylineno, yy, yystate /* action[1] */, $$ /* vstack */, _$ /* lstack */) {
 /* this == yyval */
 
@@ -943,7 +1294,7 @@ case 3:
                             this.$ = []
                         
 break;
-case 4: case 5: case 6: case 19: case 20: case 22: case 24: case 26: case 28: case 30: case 40: case 50: case 52: case 55: case 65:
+case 4: case 5: case 6: case 21: case 22: case 24: case 26: case 28: case 30: case 32: case 42: case 52: case 54: case 57: case 67:
  this.$ = $$[$0] 
 break;
 case 7: case 17:
@@ -1013,10 +1364,10 @@ case 13:
 break;
 case 14:
 
-                            $$[$0-3].condition = $$[$0-5],
+                            $$[$0-5].condition = $$[$0-7],
                             this.$ = {
                                 name: 'IF_THEN_ELSES',
-                                branches: [$$[$0-3], $$[$0-2], $$[$0]].flat()
+                                branches: [$$[$0-5], $$[$0-4], $$[$0]].flat()
                             }
                         
 break;
@@ -1032,10 +1383,10 @@ break;
 case 16:
 
                             $$[$0].condition = $$[$0-2]
-                            this.$ = $$[$0-6].concat($$[$0])
+                            this.$ = $$[$0-8].concat($$[$0])
                         
 break;
-case 18:
+case 20:
 
                             this.$ = {
                                 name: 'BLOCK',
@@ -1043,7 +1394,7 @@ case 18:
                             }
                         
 break;
-case 21:
+case 23:
 
                             this.$ = {
                                 name: 'INLINE_IF_THEN_ELSE',
@@ -1051,7 +1402,7 @@ case 21:
                             }
                         
 break;
-case 23:
+case 25:
 
                             this.$ = {
                                 name: 'LOGICAL_OR_EXPR',
@@ -1059,7 +1410,7 @@ case 23:
                             }
                         
 break;
-case 25:
+case 27:
 
                             this.$ = {
                                 name: 'LOGICAL_AND_EXPR',
@@ -1067,7 +1418,7 @@ case 25:
                             }
                         
 break;
-case 27:
+case 29:
 
                             this.$ = {
                                 name: 'BITWISE_INCLUSIVE_OR_EXPR',
@@ -1075,7 +1426,7 @@ case 27:
                             }
                         
 break;
-case 29:
+case 31:
 
                             this.$ = {
                                 name: 'BITWISE_EXCLUSIVE_OR_EXPR',
@@ -1083,7 +1434,7 @@ case 29:
                             }
                         
 break;
-case 31:
+case 33:
 
                             this.$ = {
                                 name: 'BITWISE_AND_EXPR',
@@ -1091,12 +1442,12 @@ case 31:
                             }
                         
 break;
-case 32: case 35: case 43: case 46:
+case 34: case 37: case 45: case 48:
 
                             this.$ = $$[$0]
                         
 break;
-case 33:
+case 35:
 
                             this.$ = {
                                 name: 'EQUAL_EXPR',
@@ -1104,7 +1455,7 @@ case 33:
                             }
                         
 break;
-case 34:
+case 36:
 
                             this.$ = {
                                 name: 'NOTEQUAL_EXPR',
@@ -1112,7 +1463,7 @@ case 34:
                             }
                         
 break;
-case 36:
+case 38:
 
                             this.$ = {
                                 name: 'LESS_EXPR',
@@ -1120,7 +1471,7 @@ case 36:
                             }
                         
 break;
-case 37:
+case 39:
 
                             this.$ = {
                                 name: 'LESSEQUAL_EXPR',
@@ -1128,7 +1479,7 @@ case 37:
                             }
                         
 break;
-case 38:
+case 40:
 
                             this.$ = {
                                 name: 'GREATER_EXPR',
@@ -1136,7 +1487,7 @@ case 38:
                             }
                         
 break;
-case 39:
+case 41:
 
                             this.$ = {
                                 name: 'GREATEREQUAL_EXPR',
@@ -1144,7 +1495,7 @@ case 39:
                             }
                         
 break;
-case 41:
+case 43:
 
                             this.$ = {
                                 name: 'SHIFT_LEFT_EXPR',
@@ -1152,7 +1503,7 @@ case 41:
                             }
                         
 break;
-case 42:
+case 44:
 
                             this.$ = {
                                 name: 'SHIFT_RIGHT_EXPR',
@@ -1160,7 +1511,7 @@ case 42:
                             }
                         
 break;
-case 44:
+case 46:
 
                             this.$ = {
                                 name: 'PLUS_EXPR',
@@ -1168,7 +1519,7 @@ case 44:
                             }
                         
 break;
-case 45:
+case 47:
 
                             this.$ = {
                                 name: 'MINUS_EXPR',
@@ -1176,7 +1527,7 @@ case 45:
                             }
                         
 break;
-case 47:
+case 49:
 
                             this.$ = {
                                 name: 'TIMES_EXPR',
@@ -1184,7 +1535,7 @@ case 47:
                             }
                         
 break;
-case 48:
+case 50:
 
                             this.$ = {
                                 name: 'DIV_EXPR',
@@ -1192,7 +1543,7 @@ case 48:
                             }
                         
 break;
-case 49:
+case 51:
 
                             this.$ = {
                                 name: 'MODULO_EXPR',
@@ -1200,7 +1551,7 @@ case 49:
                             }
                         
 break;
-case 51:
+case 53:
 
                             this.$ = {
                                 name: 'UMINUS_EXPR',
@@ -1208,7 +1559,7 @@ case 51:
                             }
                         
 break;
-case 53:
+case 55:
 
                             this.$ = {
                                 name: 'LOGICAL_NOT_EXPR',
@@ -1216,7 +1567,7 @@ case 53:
                             }
                         
 break;
-case 54:
+case 56:
 
                             this.$ = {
                                 name: 'BITWISE_NOT_EXPR',
@@ -1224,7 +1575,7 @@ case 54:
                             }
                         
 break;
-case 56:
+case 58:
 
                             this.$ = {
                                 name: 'CALL_EXPR',
@@ -1234,7 +1585,7 @@ case 56:
                             }
                         
 break;
-case 57:
+case 59:
 
                             this.$ = {
                                 name: 'CALL_EXPR',
@@ -1244,7 +1595,7 @@ case 57:
                             }
                         
 break;
-case 58:
+case 60:
 
                             this.$ = {
                                 name: 'CAST_EXPR',
@@ -1253,7 +1604,7 @@ case 58:
                             }
                         
 break;
-case 59:
+case 61:
 
                             this.$ = {
                                 name: 'MEMORY_ELEMENT',
@@ -1262,7 +1613,7 @@ case 59:
                             }
                         
 break;
-case 60:
+case 62:
 
                             this.$ = {
                                 name: 'PROPERTY',
@@ -1271,7 +1622,7 @@ case 60:
                             }
                         
 break;
-case 61:
+case 63:
  
                             this.$ = {
                                 name: 'VARIABLE',
@@ -1279,7 +1630,7 @@ case 61:
                             } 
                         
 break;
-case 62:
+case 64:
 
                             this.$ = {
                                 name: 'VARIABLE',
@@ -1288,10 +1639,10 @@ case 62:
                             }
                         
 break;
-case 63:
+case 65:
  this.$ = { name: 'DISCARD' } 
 break;
-case 64:
+case 66:
 
                             this.$ = {
                                 name: 'ARRAY_CONST',
@@ -1299,60 +1650,60 @@ case 64:
                             }
                         
 break;
-case 66:
+case 68:
  this.$ = $$[$0-1] 
 break;
-case 67:
+case 69:
  
                             this.$ = { name: 'CONSTANT', type: 'INT32', val: parseInt(yytext) };
                         
 break;
-case 68:
+case 70:
  this.$ = { name: 'CONSTANT', type: 'FLOAT32', val: parseFloat(yytext) };
                         
 break;
-case 69:
+case 71:
  
                             this.$ = { name: 'CONSTANT', type:'BOOL', val: true }; 
                         
 break;
-case 70:
+case 72:
  
                             this.$ = { name: 'CONSTANT', type:'BOOL', val: false }; 
                         
 break;
-case 71:
+case 73:
  this.$ = [$$[$0]] 
 break;
-case 72:
+case 74:
  
                             this.$ = $$[$0-2].concat($$[$0]) 
                         
 break;
-case 73:
+case 75:
  
                             this.$ = yytext; 
                         
 break;
-case 74:
+case 76:
 
                             this.$ = 'TYPE_INT32'
                         
 break;
-case 75:
+case 77:
 
                             this.$ = 'TYPE_FLOAT32'
                         
 break;
-case 76:
+case 78:
 
                             this.$ = 'TYPE_BOOL'
                         
 break;
 }
 },
-table: [o([1,9,13,16,17,54,55,61,62,65,67,68,69,70,72,73,74,75],$V0,{3:1,4:2}),{1:[3]},{1:[2,1],5:3,6:4,7:5,8:6,9:$V1,10:8,12:29,13:$V2,16:$V3,17:$V4,18:10,20:30,28:11,29:12,32:13,34:14,36:15,38:16,40:17,42:18,45:19,50:20,53:21,54:$V5,55:$V6,56:22,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},o($Vi,[2,2]),o($Vi,[2,4]),o($Vi,[2,5]),o($Vi,[2,6]),o($Vi,[2,7]),{11:[1,43],71:$Vj},{17:[1,45]},o($Vk,[2,71]),o($Vl,[2,19]),o($Vl,[2,20],{30:[1,46],33:[1,47]}),o($Vm,[2,22],{35:$Vn}),o($Vo,[2,24],{37:$Vp}),o($Vq,[2,26],{39:$Vr}),o($Vs,[2,28],{41:$Vt}),o($Vu,[2,30],{43:$Vv,44:$Vw}),o($Vx,[2,32],{46:$Vy,47:$Vz,48:$VA,49:$VB}),o($VC,[2,35],{51:$VD,52:$VE}),o($VF,[2,40],{54:$VG,55:$VH}),o($VI,[2,43],{57:$VJ,58:$VK,59:$VL}),o($VM,[2,46]),o($VM,[2,50],{64:$VN}),{12:29,13:$V2,17:$V4,20:30,60:66,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},{12:29,13:$V2,17:$V4,20:30,60:67,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},{12:29,13:$V2,17:$V4,20:30,60:68,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},{12:29,13:$V2,17:$V4,20:30,60:69,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},o($VO,[2,55]),o($VO,$VP,{13:[1,70],17:$VQ}),{12:73,13:[1,72],72:$Ve},o($VO,[2,63]),{10:74,12:29,13:$V2,17:$V4,18:10,20:30,28:11,29:12,32:13,34:14,36:15,38:16,40:17,42:18,45:19,50:20,53:21,54:$V5,55:$V6,56:22,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},o($VO,[2,65]),{12:29,13:$V2,17:$V4,18:75,20:30,28:11,29:12,32:13,34:14,36:15,38:16,40:17,42:18,45:19,50:20,53:21,54:$V5,55:$V6,56:22,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},o([9,11,13,14,17,19,30,31,33,35,37,39,41,43,44,46,47,48,49,51,52,54,55,57,58,59,64,71],[2,73]),o($VR,[2,74]),o($VR,[2,75]),o($VR,[2,76]),o($VO,[2,67]),o($VO,[2,68]),o($VO,[2,69]),o($VO,[2,70]),{12:76,13:$V2,15:79,17:$V4,18:77,20:30,21:78,22:[1,80],26:$VS,28:11,29:12,32:13,34:14,36:15,38:16,40:17,42:18,45:19,50:20,53:21,54:$V5,55:$V6,56:22,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},{12:29,13:$V2,17:$V4,18:82,20:30,28:11,29:12,32:13,34:14,36:15,38:16,40:17,42:18,45:19,50:20,53:21,54:$V5,55:$V6,56:22,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},{12:29,13:$V2,17:$V4,18:83,20:30,28:11,29:12,32:13,34:14,36:15,38:16,40:17,42:18,45:19,50:20,53:21,54:$V5,55:$V6,56:22,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},{12:29,13:$V2,17:$V4,18:84,20:30,28:11,29:12,32:13,34:14,36:15,38:16,40:17,42:18,45:19,50:20,53:21,54:$V5,55:$V6,56:22,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},{12:29,13:$V2,17:$V4,20:30,32:85,34:14,36:15,38:16,40:17,42:18,45:19,50:20,53:21,54:$V5,55:$V6,56:22,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},{12:29,13:$V2,17:$V4,20:30,34:86,36:15,38:16,40:17,42:18,45:19,50:20,53:21,54:$V5,55:$V6,56:22,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},{12:29,13:$V2,17:$V4,20:30,36:87,38:16,40:17,42:18,45:19,50:20,53:21,54:$V5,55:$V6,56:22,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},{12:29,13:$V2,17:$V4,20:30,38:88,40:17,42:18,45:19,50:20,53:21,54:$V5,55:$V6,56:22,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},{12:29,13:$V2,17:$V4,20:30,40:89,42:18,45:19,50:20,53:21,54:$V5,55:$V6,56:22,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},{12:29,13:$V2,17:$V4,20:30,42:90,45:19,50:20,53:21,54:$V5,55:$V6,56:22,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},{12:29,13:$V2,17:$V4,20:30,42:91,45:19,50:20,53:21,54:$V5,55:$V6,56:22,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},{12:29,13:$V2,17:$V4,20:30,45:92,50:20,53:21,54:$V5,55:$V6,56:22,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},{12:29,13:$V2,17:$V4,20:30,45:93,50:20,53:21,54:$V5,55:$V6,56:22,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},{12:29,13:$V2,17:$V4,20:30,45:94,50:20,53:21,54:$V5,55:$V6,56:22,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},{12:29,13:$V2,17:$V4,20:30,45:95,50:20,53:21,54:$V5,55:$V6,56:22,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},{12:29,13:$V2,17:$V4,20:30,50:96,53:21,54:$V5,55:$V6,56:22,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},{12:29,13:$V2,17:$V4,20:30,50:97,53:21,54:$V5,55:$V6,56:22,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},{12:29,13:$V2,17:$V4,20:30,53:98,54:$V5,55:$V6,56:22,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},{12:29,13:$V2,17:$V4,20:30,53:99,54:$V5,55:$V6,56:22,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},{12:29,13:$V2,17:$V4,20:30,54:$V5,55:$V6,56:100,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},{12:29,13:$V2,17:$V4,20:30,54:$V5,55:$V6,56:101,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},{12:29,13:$V2,17:$V4,20:30,54:$V5,55:$V6,56:102,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},{12:103,72:$Ve},o($VM,[2,51],{64:$VN}),o($VM,[2,52],{64:$VN}),o($VM,[2,53],{64:$VN}),o($VM,[2,54],{64:$VN}),{10:105,12:29,13:$V2,14:[1,104],17:$V4,18:10,20:30,28:11,29:12,32:13,34:14,36:15,38:16,40:17,42:18,45:19,50:20,53:21,54:$V5,55:$V6,56:22,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},{12:29,13:$V2,17:$V4,18:106,20:30,28:11,29:12,32:13,34:14,36:15,38:16,40:17,42:18,45:19,50:20,53:21,54:$V5,55:$V6,56:22,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},{10:107,12:29,13:$V2,17:$V4,18:10,20:30,28:11,29:12,32:13,34:14,36:15,38:16,40:17,42:18,45:19,50:20,53:21,54:$V5,55:$V6,56:22,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},o($VO,[2,62]),{19:[1,108],71:$Vj},{14:[1,109]},o($VT,$VP,{13:[1,110],17:$VQ}),{9:[1,111]},{9:[1,112]},{9:[1,113]},{13:[1,114]},o([9,13,16,17,27,54,55,61,62,65,67,68,69,70,72,73,74,75],$V0,{4:115}),o($Vk,[2,72]),{19:[1,116]},{31:[1,117]},o($Vm,[2,23],{35:$Vn}),o($Vo,[2,25],{37:$Vp}),o($Vq,[2,27],{39:$Vr}),o($Vs,[2,29],{41:$Vt}),o($Vu,[2,31],{43:$Vv,44:$Vw}),o($Vx,[2,33],{46:$Vy,47:$Vz,48:$VA,49:$VB}),o($Vx,[2,34],{46:$Vy,47:$Vz,48:$VA,49:$VB}),o($VC,[2,36],{51:$VD,52:$VE}),o($VC,[2,37],{51:$VD,52:$VE}),o($VC,[2,38],{51:$VD,52:$VE}),o($VC,[2,39],{51:$VD,52:$VE}),o($VF,[2,41],{54:$VG,55:$VH}),o($VF,[2,42],{54:$VG,55:$VH}),o($VI,[2,44],{57:$VJ,58:$VK,59:$VL}),o($VI,[2,45],{57:$VJ,58:$VK,59:$VL}),o($VM,[2,47]),o($VM,[2,48]),o($VM,[2,49]),o($VO,[2,60]),o($VO,$VU),{14:[1,118],71:$Vj},{19:[1,119]},{14:[1,120],71:$Vj},o($VO,[2,64]),o($VO,[2,66]),{10:121,12:29,13:$V2,14:[1,122],17:$V4,18:10,20:30,28:11,29:12,32:13,34:14,36:15,38:16,40:17,42:18,45:19,50:20,53:21,54:$V5,55:$V6,56:22,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},o($Vi,[2,11]),o($Vi,[2,12]),o($Vi,[2,13]),{12:29,13:$V2,17:$V4,18:123,20:30,28:11,29:12,32:13,34:14,36:15,38:16,40:17,42:18,45:19,50:20,53:21,54:$V5,55:$V6,56:22,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},{5:3,6:4,7:5,8:6,9:$V1,10:8,12:29,13:$V2,16:$V3,17:$V4,18:10,20:30,27:[1,124],28:11,29:12,32:13,34:14,36:15,38:16,40:17,42:18,45:19,50:20,53:21,54:$V5,55:$V6,56:22,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},{20:125,73:$Vf,74:$Vg,75:$Vh},{12:29,13:$V2,17:$V4,20:30,28:126,29:12,32:13,34:14,36:15,38:16,40:17,42:18,45:19,50:20,53:21,54:$V5,55:$V6,56:22,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},o($VO,$VV),o($VO,[2,59]),o($VO,[2,58]),{14:[1,127],71:$Vj},o($VT,$VU,{15:128,26:$VS}),{14:[1,129]},o([1,9,13,16,17,25,27,54,55,61,62,65,67,68,69,70,72,73,74,75],[2,18]),{12:130,72:$Ve},o($Vl,[2,21]),o($VT,$VV,{15:131,26:$VS}),o($Vi,[2,9]),{15:133,23:132,26:$VS},{9:[1,134]},o($Vi,[2,8]),{24:135,25:[2,17]},o([9,25],[2,15]),o($Vi,[2,10]),{25:[1,136]},{15:133,22:[1,138],23:137,26:$VS},{9:[2,14]},{13:[1,139]},{12:29,13:$V2,17:$V4,18:140,20:30,28:11,29:12,32:13,34:14,36:15,38:16,40:17,42:18,45:19,50:20,53:21,54:$V5,55:$V6,56:22,60:23,61:$V7,62:$V8,63:28,65:$V9,66:33,67:$Va,68:$Vb,69:$Vc,70:$Vd,72:$Ve,73:$Vf,74:$Vg,75:$Vh},{14:[1,141]},{15:133,23:142,26:$VS},{25:[2,16]}],
-defaultActions: {137:[2,14],142:[2,16]},
+table: [o([1,9,13,16,17,55,56,62,63,66,68,69,70,71,73,74,75,76],$V0,{3:1,4:2}),{1:[3]},{1:[2,1],5:3,6:4,7:5,8:6,9:$V1,10:8,12:29,13:$V2,16:$V3,17:$V4,18:10,20:30,29:11,30:12,33:13,35:14,37:15,39:16,41:17,43:18,46:19,51:20,54:21,55:$V5,56:$V6,57:22,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},o($Vi,[2,2]),o($Vi,[2,4]),o($Vi,[2,5]),o($Vi,[2,6]),o($Vi,[2,7]),{11:[1,43],72:$Vj},{17:[1,45]},o($Vk,[2,73]),o($Vl,[2,21]),o($Vl,[2,22],{31:[1,46],34:[1,47]}),o($Vm,[2,24],{36:$Vn}),o($Vo,[2,26],{38:$Vp}),o($Vq,[2,28],{40:$Vr}),o($Vs,[2,30],{42:$Vt}),o($Vu,[2,32],{44:$Vv,45:$Vw}),o($Vx,[2,34],{47:$Vy,48:$Vz,49:$VA,50:$VB}),o($VC,[2,37],{52:$VD,53:$VE}),o($VF,[2,42],{55:$VG,56:$VH}),o($VI,[2,45],{58:$VJ,59:$VK,60:$VL}),o($VM,[2,48]),o($VM,[2,52],{65:$VN}),{12:29,13:$V2,17:$V4,20:30,61:66,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},{12:29,13:$V2,17:$V4,20:30,61:67,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},{12:29,13:$V2,17:$V4,20:30,61:68,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},{12:29,13:$V2,17:$V4,20:30,61:69,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},o($VO,[2,57]),o($VO,$VP,{13:[1,70],17:$VQ}),{12:73,13:[1,72],73:$Ve},o($VO,[2,65]),{10:74,12:29,13:$V2,17:$V4,18:10,20:30,29:11,30:12,33:13,35:14,37:15,39:16,41:17,43:18,46:19,51:20,54:21,55:$V5,56:$V6,57:22,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},o($VO,[2,67]),{12:29,13:$V2,17:$V4,18:75,20:30,29:11,30:12,33:13,35:14,37:15,39:16,41:17,43:18,46:19,51:20,54:21,55:$V5,56:$V6,57:22,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},o([9,11,13,14,17,19,31,32,34,36,38,40,42,44,45,47,48,49,50,52,53,55,56,58,59,60,65,72],[2,75]),o($VR,[2,76]),o($VR,[2,77]),o($VR,[2,78]),o($VO,[2,69]),o($VO,[2,70]),o($VO,[2,71]),o($VO,[2,72]),{12:76,13:$V2,15:79,17:$V4,18:77,20:30,21:78,22:[1,80],27:$VS,29:11,30:12,33:13,35:14,37:15,39:16,41:17,43:18,46:19,51:20,54:21,55:$V5,56:$V6,57:22,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},{12:29,13:$V2,17:$V4,18:82,20:30,29:11,30:12,33:13,35:14,37:15,39:16,41:17,43:18,46:19,51:20,54:21,55:$V5,56:$V6,57:22,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},{12:29,13:$V2,17:$V4,18:83,20:30,29:11,30:12,33:13,35:14,37:15,39:16,41:17,43:18,46:19,51:20,54:21,55:$V5,56:$V6,57:22,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},{12:29,13:$V2,17:$V4,18:84,20:30,29:11,30:12,33:13,35:14,37:15,39:16,41:17,43:18,46:19,51:20,54:21,55:$V5,56:$V6,57:22,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},{12:29,13:$V2,17:$V4,20:30,33:85,35:14,37:15,39:16,41:17,43:18,46:19,51:20,54:21,55:$V5,56:$V6,57:22,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},{12:29,13:$V2,17:$V4,20:30,35:86,37:15,39:16,41:17,43:18,46:19,51:20,54:21,55:$V5,56:$V6,57:22,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},{12:29,13:$V2,17:$V4,20:30,37:87,39:16,41:17,43:18,46:19,51:20,54:21,55:$V5,56:$V6,57:22,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},{12:29,13:$V2,17:$V4,20:30,39:88,41:17,43:18,46:19,51:20,54:21,55:$V5,56:$V6,57:22,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},{12:29,13:$V2,17:$V4,20:30,41:89,43:18,46:19,51:20,54:21,55:$V5,56:$V6,57:22,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},{12:29,13:$V2,17:$V4,20:30,43:90,46:19,51:20,54:21,55:$V5,56:$V6,57:22,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},{12:29,13:$V2,17:$V4,20:30,43:91,46:19,51:20,54:21,55:$V5,56:$V6,57:22,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},{12:29,13:$V2,17:$V4,20:30,46:92,51:20,54:21,55:$V5,56:$V6,57:22,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},{12:29,13:$V2,17:$V4,20:30,46:93,51:20,54:21,55:$V5,56:$V6,57:22,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},{12:29,13:$V2,17:$V4,20:30,46:94,51:20,54:21,55:$V5,56:$V6,57:22,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},{12:29,13:$V2,17:$V4,20:30,46:95,51:20,54:21,55:$V5,56:$V6,57:22,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},{12:29,13:$V2,17:$V4,20:30,51:96,54:21,55:$V5,56:$V6,57:22,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},{12:29,13:$V2,17:$V4,20:30,51:97,54:21,55:$V5,56:$V6,57:22,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},{12:29,13:$V2,17:$V4,20:30,54:98,55:$V5,56:$V6,57:22,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},{12:29,13:$V2,17:$V4,20:30,54:99,55:$V5,56:$V6,57:22,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},{12:29,13:$V2,17:$V4,20:30,55:$V5,56:$V6,57:100,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},{12:29,13:$V2,17:$V4,20:30,55:$V5,56:$V6,57:101,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},{12:29,13:$V2,17:$V4,20:30,55:$V5,56:$V6,57:102,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},{12:103,73:$Ve},o($VM,[2,53],{65:$VN}),o($VM,[2,54],{65:$VN}),o($VM,[2,55],{65:$VN}),o($VM,[2,56],{65:$VN}),{10:105,12:29,13:$V2,14:[1,104],17:$V4,18:10,20:30,29:11,30:12,33:13,35:14,37:15,39:16,41:17,43:18,46:19,51:20,54:21,55:$V5,56:$V6,57:22,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},{12:29,13:$V2,17:$V4,18:106,20:30,29:11,30:12,33:13,35:14,37:15,39:16,41:17,43:18,46:19,51:20,54:21,55:$V5,56:$V6,57:22,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},{10:107,12:29,13:$V2,17:$V4,18:10,20:30,29:11,30:12,33:13,35:14,37:15,39:16,41:17,43:18,46:19,51:20,54:21,55:$V5,56:$V6,57:22,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},o($VO,[2,64]),{19:[1,108],72:$Vj},{14:[1,109]},o($VT,$VP,{13:[1,110],17:$VQ}),{9:[1,111]},{9:[1,112]},{9:[1,113]},{13:[1,114]},o([9,13,16,17,28,55,56,62,63,66,68,69,70,71,73,74,75,76],$V0,{4:115}),o($Vk,[2,74]),{19:[1,116]},{32:[1,117]},o($Vm,[2,25],{36:$Vn}),o($Vo,[2,27],{38:$Vp}),o($Vq,[2,29],{40:$Vr}),o($Vs,[2,31],{42:$Vt}),o($Vu,[2,33],{44:$Vv,45:$Vw}),o($Vx,[2,35],{47:$Vy,48:$Vz,49:$VA,50:$VB}),o($Vx,[2,36],{47:$Vy,48:$Vz,49:$VA,50:$VB}),o($VC,[2,38],{52:$VD,53:$VE}),o($VC,[2,39],{52:$VD,53:$VE}),o($VC,[2,40],{52:$VD,53:$VE}),o($VC,[2,41],{52:$VD,53:$VE}),o($VF,[2,43],{55:$VG,56:$VH}),o($VF,[2,44],{55:$VG,56:$VH}),o($VI,[2,46],{58:$VJ,59:$VK,60:$VL}),o($VI,[2,47],{58:$VJ,59:$VK,60:$VL}),o($VM,[2,49]),o($VM,[2,50]),o($VM,[2,51]),o($VO,[2,62]),o($VO,$VU),{14:[1,118],72:$Vj},{19:[1,119]},{14:[1,120],72:$Vj},o($VO,[2,66]),o($VO,[2,68]),{10:121,12:29,13:$V2,14:[1,122],17:$V4,18:10,20:30,29:11,30:12,33:13,35:14,37:15,39:16,41:17,43:18,46:19,51:20,54:21,55:$V5,56:$V6,57:22,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},o($Vi,[2,11]),o($Vi,[2,12]),o($Vi,[2,13]),{12:29,13:$V2,17:$V4,18:123,20:30,29:11,30:12,33:13,35:14,37:15,39:16,41:17,43:18,46:19,51:20,54:21,55:$V5,56:$V6,57:22,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},{5:3,6:4,7:5,8:6,9:$V1,10:8,12:29,13:$V2,16:$V3,17:$V4,18:10,20:30,28:[1,124],29:11,30:12,33:13,35:14,37:15,39:16,41:17,43:18,46:19,51:20,54:21,55:$V5,56:$V6,57:22,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},{20:125,74:$Vf,75:$Vg,76:$Vh},{12:29,13:$V2,17:$V4,20:30,29:126,30:12,33:13,35:14,37:15,39:16,41:17,43:18,46:19,51:20,54:21,55:$V5,56:$V6,57:22,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},o($VO,$VV),o($VO,[2,61]),o($VO,[2,60]),{14:[1,127],72:$Vj},o($VT,$VU,{15:128,27:$VS}),{14:[1,129]},o([1,9,13,16,17,26,28,55,56,62,63,66,68,69,70,71,73,74,75,76],[2,20]),{12:130,73:$Ve},o($Vl,[2,23]),o($VT,$VV,{15:131,27:$VS}),o($Vi,[2,9]),{15:133,23:132,27:$VS},{9:[1,134]},o($Vi,[2,8]),o($VW,[2,17],{24:135}),o($VW,[2,15]),o($Vi,[2,10]),o($VW,$VX,{25:136}),{9:$VY,26:[1,137]},o([9,22,27],$VX,{25:139}),o([9,22,26,27],[2,18]),{9:$VY,15:133,22:[1,141],23:140,27:$VS},{9:[2,14]},{13:[1,142]},{12:29,13:$V2,17:$V4,18:143,20:30,29:11,30:12,33:13,35:14,37:15,39:16,41:17,43:18,46:19,51:20,54:21,55:$V5,56:$V6,57:22,61:23,62:$V7,63:$V8,64:28,66:$V9,67:33,68:$Va,69:$Vb,70:$Vc,71:$Vd,73:$Ve,74:$Vf,75:$Vg,76:$Vh},{14:[1,144]},{15:133,23:145,27:$VS},o($VW,[2,16])],
+defaultActions: {140:[2,14]},
 parseError: function parseError (str, hash) {
     if (hash.recoverable) {
         this.trace(str);
@@ -1839,15 +2190,15 @@ case 4:return ">="
 break;
 case 5:return "<="
 break;
-case 6:return 54
+case 6:return 55
 break;
-case 7:return 55
+case 7:return 56
 break;
-case 8:return 57
+case 8:return 58
 break;
-case 9:return 58
+case 9:return 59
 break;
-case 10:return 59
+case 10:return 60
 break;
 case 11:return "<"
 break;
@@ -1873,35 +2224,35 @@ case 21:return "~"
 break;
 case 22:return 11
 break;
-case 23:return 26
+case 23:return 27
 break;
-case 24:return 27
+case 24:return 28
 break;
 case 25:return 13
 break;
 case 26:return 14
 break;
-case 27:return 71
+case 27:return 72
 break;
 case 28:return 17
 break;
 case 29:return 19
 break;
-case 30:return 68
+case 30:return 69
 break;
-case 31:return 67
+case 31:return 68
 break;
-case 32:return 69
+case 32:return 70
 break;
-case 33:return 70
+case 33:return 71
 break;
-case 34:return 73
+case 34:return 74
 break;
-case 35:return 74
+case 35:return 75
 break;
-case 36:return 75
+case 36:return 76
 break;
-case 37:return 65
+case 37:return 66
 break;
 case 38:return 16
 break;
@@ -1909,13 +2260,13 @@ case 39:return 22
 break;
 case 40:return "ELSE"
 break;
-case 41:return 30
+case 41:return 31
 break;
-case 42:return 31
+case 42:return 32
 break;
-case 43:return 64
+case 43:return 65
 break;
-case 44:return 72
+case 44:return 73
 break;
 case 45:return 9
 break;
@@ -1956,7 +2307,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 }
 }
 }).call(this)}).call(this,require('_process'))
-},{"_process":35,"fs":13,"path":34}],3:[function(require,module,exports){
+},{"_process":19,"fs":15,"path":18}],5:[function(require,module,exports){
 /*
 	Copyright (C) 2021, 2022, 2023 Orastron Srl
 
@@ -1974,9 +2325,13 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 (function() {
 
-	const ts = require("./types");
+	'use strict';
+
+	const TYPES = require("./types");
 	const bs = require("./blocks").BlockTypes;
-	const us = require("./uprates");
+	const RATES = require("./uprates");
+	const util = require("./util");
+	let ifthenelse_branch_counter = 0;
 
 	function ASTToGraph (root, options, cblock_descs = []) {
 
@@ -1986,14 +2341,14 @@ if (typeof module !== 'undefined' && require.main === module) {
 		bdef.inputs_N = 1; // fs
 		bdef.outputs_N = 0;
 		bdef.init();
-		bdef.i_ports[0].datatype = () => ts.DataTypeFloat32;
-		bdef.i_ports[0].updaterate = () => us.UpdateRateFs;
+		bdef.i_ports[0].datatype = () => TYPES.Float32;
+		bdef.i_ports[0].updaterate = () => RATES.Fs;
 		bdef.i_ports[0].id = "fs";
 
 		(function create_fs (bdef) {
 			const fs = Object.create(bs.VarBlock);
 			fs.id = "fs";
-			fs.datatype = () => ts.DataTypeFloat32;
+			fs.datatype = () => TYPES.Float32;
 			fs.init();
 			const c = Object.create(bs.CompositeBlock.Connection);
 			c.in = bdef.i_ports[0];
@@ -2128,10 +2483,20 @@ if (typeof module !== 'undefined' && require.main === module) {
 		statements.filter(s => s.name == 'ASSIGNMENT').forEach((s) => {
 			switch (s.type) {
 			case 'ANONYMOUS_BLOCK': {
-				throw new Error("Not imeplemented yet");
+				throw new Error("Anonymous blocks are not implemented yet");
 			}
-			case 'IF_THEN_ELSE': {
-				throw new Error("Not imeplemented yet");
+			case 'IF_THEN_ELSES': {
+				const expr_ports = convert_if_then_elses(s.expr, s.outputs, bdef);
+				s.outputs.forEach((o, oi) => {
+					if (o.name != 'VARIABLE')
+						throw new Error("Unexpected non-variable output in IF_THEN_ELSES assignment");
+					const v = findVarById(o.id, bdef).r;
+					const c = Object.create(bs.CompositeBlock.Connection);
+					c.in = expr_ports[1][oi];
+					c.out = v.i_ports[0];
+					bdef.connections.push(c);
+				});
+				break;
 			}
 			case 'EXPR': {
 				const expr_ports = convert_expr(s.expr, bdef);
@@ -2152,7 +2517,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 					case 'PROPERTY': {
 						const r = convert_property_left(o, bdef);
 						if (bdef.connections.find(c => c.out == r.p.i_ports[0]))
-							throw new Error("Property assiged multiple times");
+							throw new Error("Property assigned multiple times");
 						const c = Object.create(bs.CompositeBlock.Connection);
 						c.in = expr_ports[1][oi];
 						c.out = r.p.i_ports[0];
@@ -2184,6 +2549,71 @@ if (typeof module !== 'undefined' && require.main === module) {
 		});
 	}
 
+	function convert_if_then_elses (if_node, outputs, bdef) {
+		if (!if_node.branches || if_node.branches.length < 2)
+			throw new Error("IF_THEN_ELSES requires at least if and else branches");
+
+		const outputsTemplate = outputs.map(o => ({
+			name: 'VARIABLE',
+			id: o.id,
+			declaredType: o.declaredType
+		}));
+
+		const cond_expr_ports = convert_expr(if_node.branches[0].condition, bdef);
+		const then_branch_bdef = convert_if_branch_bdef(if_node.branches[0], outputsTemplate, bdef);
+		// Else-if is a nested conditional, so later conditions also run only
+		// when the preceding conditions were false.
+		const otherwise = if_node.branches.length == 2 ? if_node.branches[1] : {
+			block: { statements: [{ name: 'ASSIGNMENT', type: 'IF_THEN_ELSES',
+				outputs: outputsTemplate,
+				expr: { branches: if_node.branches.slice(1) }
+			}] }
+		};
+		const else_branch_bdef = convert_if_branch_bdef(otherwise, outputsTemplate, bdef);
+		return connect_conditional(cond_expr_ports[1][0], then_branch_bdef, else_branch_bdef, bdef);
+	}
+
+	function connect_conditional(condition, then_branch_bdef, else_branch_bdef, bdef) {
+		bdef.bdefs.push(then_branch_bdef);
+		bdef.bdefs.push(else_branch_bdef);
+
+		const ib = Object.create(bs.IfthenelseBlock);
+		ib.nOutputs = then_branch_bdef.o_ports.length;
+		ib.then_branch = then_branch_bdef;
+		ib.else_branch = else_branch_bdef;
+		ib.init();
+		ib.setOutputDatatype();
+		bdef.blocks.push(ib);
+
+		const cc = Object.create(bs.CompositeBlock.Connection);
+		cc.in = condition;
+		cc.out = ib.i_ports[0];
+		bdef.connections.push(cc);
+
+		return [[], ib.o_ports];
+	}
+
+	function convert_if_branch_bdef (branch, outputsTemplate, bdef) {
+		const bdef_node = {
+			name: 'BLOCK_DEFINITION',
+			id: "if_branch__" + (ifthenelse_branch_counter++),
+			inputs: [],
+			outputs: outputsTemplate.map(o => ({
+				name: o.name,
+				id: o.id,
+				declaredType: o.declaredType
+			})),
+			statements: branch.block.statements
+		};
+
+		const branch_block = convert_block_definition(bdef_node, bdef);
+		for (const output of outputsTemplate) {
+			const local = findVarById(output.id, branch_block).r;
+			local.init_parent = findVarById(output.id, bdef).r;
+		}
+		return branch_block;
+	}
+
 	function convert_property_left (property_node, bdef) {
 		let x = property_node.expr;
 		if (x.name == 'VARIABLE') {
@@ -2203,8 +2633,8 @@ if (typeof module !== 'undefined' && require.main === module) {
 			v.id = (block.id || block.value || block.operation) + "." + property;
 			v.init();
 			if (property == 'fs') {
-				v.datatype = () => ts.DataTypeFloat32;
-				v.i_ports[0].datatype = () => ts.DataTypeFloat32; // Check this
+				v.datatype = () => TYPES.Float32;
+				v.i_ports[0].datatype = () => TYPES.Float32; // Check this
 			}
 			else {
 				const dto = (block.o_ports[0] || block);
@@ -2256,11 +2686,11 @@ if (typeof module !== 'undefined' && require.main === module) {
 			b.value = expr_node.val;
 			b.init();
 			if (expr_node.type == 'INT32')
-				b.datatype = () => ts.DataTypeInt32;
+				b.datatype = () => TYPES.Int32;
 			else if (expr_node.type == 'FLOAT32')
-				b.datatype = () => ts.DataTypeFloat32;
+				b.datatype = () => TYPES.Float32;
 			else if (expr_node.type == 'BOOL')
-				b.datatype = () => ts.DataTypeBool;
+				b.datatype = () => TYPES.Bool;
 			bdef.blocks.push(b);
 			return [[], b.o_ports];
 		}
@@ -2300,7 +2730,21 @@ if (typeof module !== 'undefined' && require.main === module) {
 			return [[], b.o_ports];
 		}
 		case 'INLINE_IF_THEN_ELSE': {
-			throw new Error("Not imeplemented yet");
+			const condition = convert_expr(expr_node.args[0], bdef)[1][0];
+			const branches = expr_node.args.slice(1).map(expr => {
+				const branch = Object.create(bs.CompositeBlock);
+				branch.id = 'if_expr__' + (ifthenelse_branch_counter++);
+				branch.bdef_father = bdef;
+				branch.outputs_N = 1;
+				branch.init();
+				const value = convert_expr(expr, branch)[1][0];
+				const edge = Object.create(bs.CompositeBlock.Connection);
+				edge.in = value;
+				edge.out = branch.o_ports[0];
+				branch.connections.push(edge);
+				return branch;
+			});
+			return connect_conditional(condition, branches[0], branches[1], bdef);
 		}
 		}
 
@@ -2358,7 +2802,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 				else if (expr_node.type == 'TYPE_BOOL')
 					return Object.create(bs.CastBoolBlock);
 				else 
-					throw new Error("Unexpect cast type: " + expr_node.type);
+					throw new Error("Unexpected cast type: " + expr_node.type);
 			default:
 				throw new Error("Unexpected AST expr node");
 			}
@@ -2409,8 +2853,8 @@ if (typeof module !== 'undefined' && require.main === module) {
 	function find_initial_bdef (bdef, options) {
 		let bds = bdef.bdefs
 			.filter(bd => bd.id == options.initial_block_id)
-			.filter(bd => bd.i_ports.map(p => p.datatype()).every(d => d == ts.DataTypeFloat32))
-			.filter(bd => bd.o_ports.map(p => p.datatype()).every(d => d == ts.DataTypeFloat32));
+			.filter(bd => bd.i_ports.map(p => p.datatype()).every(d => d == TYPES.Float32))
+			.filter(bd => bd.o_ports.map(p => p.datatype()).every(d => d == TYPES.Float32));
 		if (bds.length == 1)
 			return bds[0];
 		bds = bds.filter(bd => bd.inputs_N == options.initial_block_inputs_n);
@@ -2428,8 +2872,8 @@ if (typeof module !== 'undefined' && require.main === module) {
 		const pfs = bdef.i_ports[0];
 		bdef.createPorts(bdef.inputs_N + 1, bdef.outputs_N);
 		bdef.i_ports[0] = pfs;
-		bdef.i_ports.forEach(p => p.datatype = () => ts.DataTypeFloat32);
-		bdef.o_ports.forEach(p => p.datatype = () => ts.DataTypeFloat32);
+		bdef.i_ports.forEach(p => p.datatype = () => TYPES.Float32);
+		bdef.o_ports.forEach(p => p.datatype = () => TYPES.Float32);
 		bdef.i_ports.forEach((p, i) => {
 			if (i == 0)
 				return;
@@ -2458,10 +2902,50 @@ if (typeof module !== 'undefined' && require.main === module) {
 		}
 		bdef.blocks.push(b);
 
-		bdef.flatten();
+		while (true) {
+			const ib = bdef.blocks.find(bb => bs.IfthenelseBlock.isPrototypeOf(bb));
+			if (ib) {
+				ib.flatten(bdef);
+				continue;
+			}
+			const hasBdefCalls = bdef.blocks.some(bb => bs.CallBlock.isPrototypeOf(bb) && bb.type == 'bdef');
+			if (hasBdefCalls) {
+				bdef.flatten();
+				continue;
+			}
+			break;
+		}
 
 		bdef.id = i_bdef.id;
 
+		// Storage sizes are compile-time expressions, even when the storage is
+		// declared inside a branch. Their constants can be shared with runtime code.
+		const static_blocks = new Set();
+		function constant_size(b, visiting = new Set()) {
+			if (static_blocks.has(b)) return true;
+			if (visiting.has(b) || b == bdef || bs.MemoryReaderBlock.isPrototypeOf(b)
+				|| bs.CallBlock.isPrototypeOf(b)) return false;
+			visiting.add(b);
+			const constant = bs.ConstantBlock.isPrototypeOf(b) || (b.i_ports.length > 0
+				&& b.i_ports.every(p => {
+					const c = bdef.connections.find(c => c.out == p);
+					return c && constant_size(c.in.block, visiting);
+				}));
+			visiting.delete(b);
+			if (constant) static_blocks.add(b);
+			return constant;
+		}
+		for (const memory of bdef.blocks.filter(b => bs.MemoryBlock.isPrototypeOf(b))) {
+			const size = bdef.connections.find(c => c.out == memory.i_ports[0]);
+			memory.static_size = constant_size(size.in.block);
+		}
+		for (const block of static_blocks) {
+			const guards = block.guard_ports;
+			bdef.connections = bdef.connections.filter(c => !guards.includes(c.out));
+			block.guard_ports = [];
+		}
+
+		bdef.propagateDataTypes();
 		normalize_properties(bdef);
 
 		(function validate (bdef) {
@@ -2469,7 +2953,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 			mems.forEach(m => {
 				const p = bdef.properties.find(p => p.of == m && p.type == 'init');
 				if (!p)
-					throw new Error("Memory init not assiged");
+					throw new Error("Memory init not assigned");
 			});
 			bdef.properties.forEach(p => {
 				if (bdef.properties.filter(pp => pp.of == p.of && pp.type == p.type).length > 1)
@@ -2488,25 +2972,25 @@ if (typeof module !== 'undefined' && require.main === module) {
 			});
 		})(bdef);
 
+		bdef.propagateDataTypes();
+
 		// It's important to call this after flattening/cloning
 		setUpdateRate(bdef, options);
 
-		propagateControlDependencies(bdef);
 	}
 
 	// replace properties with blocks/connections
 	// Assuming bdef flattened
 	function normalize_properties (bdef) {
 
-		// I propose to remove this blasfemy
-		// This is also a bad place for this
+		// Initializers use initial signal values, not the first active sample.
 		(function explicitize_init (bdef) {
 			// y.init = expr -> y.init = (expr).init
 			bdef.properties.filter(p => p.type == 'init').forEach(p => {
 				const c = bdef.connections.find(c => c.out == p.block.i_ports[0]);
 				if (!c)
 					return;
-				// This is a not nice cheating too:
+				// C wrappers explicitly connect outputs produced by reset callbacks.
 				if (bs.CallBlock.isPrototypeOf(c.in.block) && c.in.block.type == 'cdef')
 					return;
 				const v = convert_property(c.in.block, "init", bdef);
@@ -2545,7 +3029,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 		const b0 = Object.create(bs.ConstantBlock);
 		b0.value = 0;
-		b0.datatype = () => ts.DataTypeFloat32;
+		b0.datatype = () => TYPES.Float32;
 		b0.init();
 		bdef.blocks.push(b0);
 
@@ -2579,7 +3063,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 			const p = bdef.properties.find(p => p.block == b);
 			if (!p)
-				throw new Error("No propery found..." + b.toString());
+				throw new Error("No property found: " + b.toString());
 
 			if (p.type == "fs")
 				infer_fs(p);
@@ -2605,7 +3089,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 					return b0;
 				
 				const max = Object.create(bs.MaxBlock);
-				max.datatype = () => ts.DataTypeFloat32;
+				max.datatype = () => TYPES.Float32;
 				max.createPorts(b.i_ports.length, 1);
 				max.init();
 				for (let i = 0; i < b.i_ports.length; i++) {
@@ -2634,6 +3118,8 @@ if (typeof module !== 'undefined' && require.main === module) {
 			normalize(p.of);
 
 			const b = get_init(p.of);
+			if (b == p.block)
+				return; // Avoid creating recursive self-edge on property carrier var
 			const c = Object.create(bs.CompositeBlock.Connection);
 			c.in = b.o_ports[0];
 			c.out = p.block.i_ports[0];
@@ -2648,15 +3134,28 @@ if (typeof module !== 'undefined' && require.main === module) {
 					return b;
 				if (bs.MemoryReaderBlock.isPrototypeOf(b))
 					return convert_property(b.memoryblock, 'init', bdef);
+				if (has_explicit_init_assignment(b))
+					return convert_property(b, 'init', bdef);
+				// Branch outputs inherit an explicit initializer from their lexical
+				// parent, never from an unrelated variable with the same spelling.
+				for (let parent = b.init_parent; parent; parent = parent.init_parent) {
+					if (has_explicit_init_assignment(parent))
+						return convert_property(parent, 'init', bdef);
+				}
 
 				b.setToBeCloned();
 				const bb = b.clone();
+				bb.guard_ports = []; // Initialization does not run on the branch clock.
 
-				const args = [];
 				b.i_ports.forEach((pp, i) => {
 					const c = bdef.connections.find(c => c.out == pp);
-					const vv = convert_property(c.in.block, "init", bdef);
-					toBeNormalized.push(vv);
+					let vv;
+					if (bs.ConstantBlock.isPrototypeOf(c.in.block))
+						vv = c.in.block;
+					else {
+						vv = convert_property(c.in.block, "init", bdef);
+						toBeNormalized.push(vv);
+					}
 					const cc = Object.create(bs.CompositeBlock.Connection);
 					cc.in = vv.o_ports[0];
 					cc.out = bb.i_ports[i];
@@ -2665,6 +3164,14 @@ if (typeof module !== 'undefined' && require.main === module) {
 				bdef.blocks.push(bb);
 				return bb;
 			}
+
+			function has_explicit_init_assignment (b) {
+				const p = bdef.properties.find(p => p.of == b && p.type == "init");
+				if (!p)
+					return false;
+				return !!bdef.connections.find(c => c.out == p.block.i_ports[0]);
+			}
+
 		}
 	}
 
@@ -2673,499 +3180,123 @@ if (typeof module !== 'undefined' && require.main === module) {
 			const p = bdef.i_ports.find(p => p.id == c);
 			if (!p)
 				throw new Error("No input with such id. " + bdef.i_ports.join());
-			p.updaterate = () => us.UpdateRateControl;
+			p.updaterate = () => RATES.Control;
 		});
 		bdef.i_ports.forEach(p => {
 			if (!options.control_inputs.includes(p.id))
-				p.updaterate = () => us.UpdateRateAudio;
+				p.updaterate = () => RATES.Audio;
 		});
-		bdef.i_ports[0].updaterate = () => us.UpdateRateFs;
+		bdef.i_ports[0].updaterate = () => RATES.Fs;
 
-		bdef.blocks.filter(b => bs.CallBlock.isPrototypeOf(b) && b.type == 'cdef').forEach(b => {
-			b.o_ports.forEach((p, i) => {
-				const u = b.ref.o_ports[i].updaterate;
-				p.updaterate = u;
-			});
-		});
-
-		// Detecting memory loops and setting updaterate to Audio for now
-		const mems = bdef.blocks.filter(b => bs.MemoryReaderBlock.isPrototypeOf(b)).map(b => b.memoryblock);
-		mems.forEach(m => {
-			const ws = bdef.blocks.filter(b => bs.MemoryWriterBlock.isPrototypeOf(b) && b.memoryblock == m);
-			ws.forEach(w => f(w));
-
-			bdef.blocks.forEach(b => delete b.__visited__);
-			function f (b) {
-				if (b.__visited__)
-					return;
-				b.__visited__ = true;
-				if (bs.MemoryReaderBlock.isPrototypeOf(b) && b.memoryblock == m) {
-					b.o_ports[0].updaterate = () => us.UpdateRateAudio;
-				}
-				bdef.connections.filter(c => c.out.block == b).forEach(c => {
-					f (c.in.block);
-				});
-			};
-		});
-
+		// Every memory read is a snapshot of this sample's old state. Guarded
+		// computations run in the sample loop, including their first activation.
+		for (const block of bdef.blocks) {
+			if (bs.MemoryReaderBlock.isPrototypeOf(block) || block.guard_ports.length > 0
+				|| (bs.CallBlock.isPrototypeOf(block) && block.type == 'cdef'))
+				block.o_ports.forEach(p => p.updaterate = () => RATES.Audio);
+		}
+		// C outputs belong to the phase that produces them. In particular, reset
+		// results must be available to memory initializers before the sample loop.
+		for (const b of bdef.blocks.filter(b => bs.CallBlock.isPrototypeOf(b) && b.type == 'cdef')) {
+			for (const [name, rate] of [['init', RATES.Constant], ['set_sample_rate', RATES.Fs],
+				['reset_coeffs', RATES.Reset], ['reset_state', RATES.Reset]]) {
+				const f = b.ref.funcs[name];
+				if (!f) continue;
+				for (const arg of [...f.f_outputs, ...f.f_inputs.filter(arg => /^o[0-9]+$/.test(arg))])
+					b.o_ports[Number(arg.slice(1))].updaterate = () => rate;
+			}
+		}
 		bdef.propagateUpdateRates();
-
-		// TODO: think about memory update rate. Readings should be up-bounded to writings...?
 	}
 
 	// Assuming bdef flattened
-	function propagateControlDependencies (bdef) {
 
-		// Better to reset
-		bdef.blocks.forEach(b => b.control_dependencies = new Set());
-
-		bdef.i_ports.filter(p => p.updaterate() == us.UpdateRateControl).forEach(p => {
-			const cs = bdef.connections.filter(c => c.in == p);
-			cs.forEach(c => f (c.out.block, p.id));
-			bdef.blocks.forEach(b => delete b.__visited__);
-		});
-
-		function f (b, ctrd) {
-			if (b == bdef)
-				return;
-			if (b.__visited__)
-				return;
-			b.__visited__ = true;
-
-			b.control_dependencies.add(ctrd);
-
-			b.o_ports.forEach(p => {
-				const cs = bdef.connections.filter(c => c.in == p)
-				cs.forEach(c => f (c.out.block, ctrd));
-			});
-		}
-	}
-
-	// Assuming bdef flattened
+	// Local expression rewrites and reachability. Never merge state or move a
+	// computation across branch clocks. Properties have already become edges.
 	function optimize (bdef, options) {
+		const incoming = new Map(bdef.connections.map(c => [c.out, c]));
+		const input = port => incoming.get(port).in;
+		function replace(block, source) {
+			for (const edge of bdef.connections)
+				if (edge.in == block.o_ports[0]) edge.in = source;
+			bdef.connections = bdef.connections.filter(c => c.out.block != block);
+			bdef.blocks = bdef.blocks.filter(b => b != block);
+			bdef.properties = bdef.properties.filter(p => p.of != block && p.block != block);
+		}
+		function same_guards(a, b) {
+			return a.guard_ports.length == b.guard_ports.length && a.guard_ports.every((p, i) =>
+				p.negated == b.guard_ports[i].negated && input(p) == input(b.guard_ports[i]));
+		}
 
-		var _x_counter = 0;
+		// Each rewrite removes a negation, so chains simplify regardless of
+		// block order after flattening. A shared inner negation remains available
+		// to its other consumers; reachability removes it when it becomes unused.
+		let changed;
+		do {
+			changed = false;
+			for (const b of bdef.blocks.slice()) {
+				if (!bs.UminusBlock.isPrototypeOf(b) && !bs.LogicalNotBlock.isPrototypeOf(b))
+					continue;
+				const source = input(b.i_ports[0]);
+				if (options.optimizations.negative_negative
+					&& Object.getPrototypeOf(b) == Object.getPrototypeOf(source.block)
+					&& same_guards(b, source.block)
+					&& (bs.LogicalNotBlock.isPrototypeOf(b) || b.o_ports[0].datatype() == TYPES.Float32)) {
+					// Signed integer negation can overflow at INT_MIN. Keep it explicit.
+					replace(b, input(source.block.i_ports[0]));
+					changed = true;
+				} else if (options.optimizations.negative_consts && bs.UminusBlock.isPrototypeOf(b)
+					&& bs.ConstantBlock.isPrototypeOf(source.block)) {
+					const value = source.block.value;
+					const type = source.block.datatype();
+					if (!Number.isFinite(value) || (type == TYPES.Int32
+						&& (!Number.isInteger(value) || value <= -2147483648 || value > 2147483647)))
+						continue;
+					const constant = Object.create(bs.ConstantBlock);
+					constant.value = type == TYPES.Int32 && value == 0 ? 0 : -value;
+					constant.datatype = () => type;
+					constant.init();
+					bdef.blocks.push(constant);
+					replace(b, constant.o_ports[0]);
+					changed = true;
+				}
+			}
+		} while (changed);
 
-		if (options.optimizations["remove_dead_graph"])
-			remove_dead_graph();
+		if (options.optimizations.unify_consts) {
+			const constants = [];
+			for (const b of bdef.blocks.slice()) {
+				if (!bs.ConstantBlock.isPrototypeOf(b)) continue;
+				// Object.is keeps +0 and -0 distinct, and types never share a node.
+				const same = constants.find(c => c.datatype() == b.datatype() && Object.is(c.value, b.value));
+				if (same) replace(b, same.o_ports[0]);
+				else constants.push(b);
+			}
+		}
 
-		if (options.optimizations["negative_negative"])
-			negative_negative();
-
-		if (options.optimizations["negative_consts"])
-			negative_consts();
-
-		if (options.optimizations["unify_consts"])
-			unify_consts();
-	
-		if (options.optimizations["remove_useless_vars"])
-			remove_useless_vars();
-
-		if (options.optimizations["merge_vars"])
-			merge_vars();
-
-		if (options.optimizations["merge_max_blocks"])
-			merge_max_blocks();
-
-		if (options.optimizations["simplifly_max_blocks1"])
-			simplifly_max_blocks1();
-
-		if (options.optimizations["simplifly_max_blocks2"])
-			simplifly_max_blocks2();
-
-		// Sad that we need this
+		if (options.optimizations.remove_dead_graph) {
+			const live = new Set();
+			function visit(block) {
+				if (block == bdef || live.has(block))
+					return;
+				live.add(block);
+				if (bs.MemoryReaderBlock.isPrototypeOf(block))
+					visit(block.memoryblock);
+				if (bs.MemoryBlock.isPrototypeOf(block))
+					bdef.blocks.filter(b => bs.MemoryWriterBlock.isPrototypeOf(b) && b.memoryblock == block).forEach(visit);
+				for (const port of block.inputs()) {
+					const edge = bdef.connections.find(c => c.out == port);
+					if (edge) visit(edge.in.block);
+				}
+			}
+			bdef.o_ports.forEach(p => visit(bdef.connections.find(c => c.out == p).in.block));
+			bdef.blocks = bdef.blocks.filter(b => live.has(b));
+			bdef.connections = bdef.connections.filter(c => (c.in.block == bdef || live.has(c.in.block)) && (c.out.block == bdef || live.has(c.out.block)));
+			bdef.properties = bdef.properties.filter(p => live.has(p.block) && live.has(p.of));
+		}
+		bdef.propagateDataTypes();
 		setUpdateRate(bdef, options);
-
-		if (options.optimizations["lazyfy_subexpressions_rates"])
-			lazyfy_subexpressions_rates();
-
-		if (options.optimizations["lazyfy_subexpressions_controls"])
-			lazyfy_subexpressions_controls();
-
-		// Needed cuz we eventually created new blocks... Anything better?
-		propagateControlDependencies (bdef);
-
-
-		function safely_remove_blocks (blocks) {
-			blocks.forEach(b => {
-				const i = bdef.blocks.indexOf(b);
-				bdef.blocks.splice(i, 1);
-			});
-		}
-
-		function safely_remove_connections (conns) {
-			conns.forEach(c => {
-				const i = bdef.connections.indexOf(c);
-				bdef.connections.splice(i, 1);
-			});
-		}
-
-		// Very similar to the scheduling...
-		function remove_dead_graph () {
-			
-			var blocks = [];
-			var conns = [];
-			
-			const iconns = bdef.o_ports.map(p => bdef.connections.find(c => c.out == p));
-			const roots = iconns.map(c => c.in.block);
-
-			for (let i = 0; i < roots.length; i++) {
-				f (roots[i]);
-			}
-
-			conns = conns.concat(iconns);
-
-			bdef.blocks = blocks;
-			bdef.connections = conns;
-			
-			bdef.blocks.forEach(b => delete b.__visited__);
-
-			function f (b) {
-				if (b == bdef)
-					return;
-
-				if (b.__visited__)
-					return;
-				b.__visited__ = true;
-
-				if (bs.MemoryReaderBlock.isPrototypeOf(b)) {
-					roots.push(b.memoryblock);
-				}
-
-				if (bs.MemoryBlock.isPrototypeOf(b)) {
-					bdef.blocks.filter(bb => bs.MemoryWriterBlock.isPrototypeOf(bb) && bb.memoryblock == b).forEach(bb => {
-						roots.push(bb);
-					});
-				}
-
-				b.i_ports.forEach(p => {
-					const cc = bdef.connections.find(c => c.out == p);
-					const bb = cc.in.block;
-					conns.push(cc);
-					f (bb);
-				});
-				
-				blocks.push(b);
-			}
-		}
-
-		function negative_negative () {
-
-			bdef.connections.forEach(c => {
-				if (!bdef.connections.includes(c))
-					return;
-
-				const l = c.in.block;
-				const r = c.out.block;
-
-				if (!(bs.UminusBlock.isPrototypeOf(l) && bs.UminusBlock.isPrototypeOf(r)))
-					return;
-
-				const rem_blocks = [];
-				const rem_conns = [];
-
-				const llc  = bdef.connections.find(c => c.out == l.i_ports[0]);
-				const lrcs = bdef.connections.filter(c => c.in == l.o_ports[0]);
-				const rlc  = c;
-				const rrcs = bdef.connections.filter(c => c.in == r.o_ports[0]);
-
-				rrcs.forEach(cc => {
-					cc.in = llc.in;
-				});
-
-				if (lrcs.length == 1) {
-					rem_blocks.push(l);
-					rem_blocks.push(r);
-					rem_conns.push(llc);
-					rem_conns.push(rlc);
-				}
-				else {
-					rem_blocks.push(r);
-					rem_conns.push(rlc);
-				}
-
-				safely_remove_blocks(rem_blocks);
-				safely_remove_connections(rem_conns);
-			});
-		}
-
-		function negative_consts () {
-			
-			bdef.connections.forEach(c => {
-
-				const l = c.in.block;
-				const r = c.out.block;
-
-				if (!(bs.ConstantBlock.isPrototypeOf(l) && bs.UminusBlock.isPrototypeOf(r)))
-					return;
-
-				const rem_blocks = [];
-				const rem_conns = [];
-
-				const lrcs = bdef.connections.filter(c => c.in == l.o_ports[0]);
-				const rlc  = c;
-				const rrcs = bdef.connections.filter(c => c.in == r.o_ports[0]);
-
-				const nc = Object.create(bs.ConstantBlock);
-				nc.value = -l.value;
-				nc.datatype = l.datatype;
-				nc.init();
-				bdef.blocks.push(nc);
-
-				rrcs.forEach(cc => {
-					cc.in = nc.o_ports[0];
-				});
-
-				if (lrcs.length == 1) {
-					rem_blocks.push(l);
-					rem_blocks.push(r);
-					rem_conns.push(rlc);
-				}
-				else {
-					rem_blocks.push(r);
-					rem_conns.push(rlc);
-				}
-				
-				safely_remove_blocks(rem_blocks);
-				safely_remove_connections(rem_conns);
-			});
-		}
-
-		function unify_consts () {
-
-			const rem_blocks = [];
-			const rem_conns = [];
-
-			const CBlocks = bdef.blocks.filter(b => bs.ConstantBlock.isPrototypeOf(b));
-
-			const values = [
-				Array.from(new Set(CBlocks.filter(b => b.datatype() == ts.DataTypeFloat32).map(b => b.value))).map(v => [ts.DataTypeFloat32, v]),
-				Array.from(new Set(CBlocks.filter(b => b.datatype() == ts.DataTypeInt32).map(b => b.value))).map(v => [ts.DataTypeInt32, v]),
-				Array.from(new Set(CBlocks.filter(b => b.datatype() == ts.DataTypeBool).map(b => b.value))).map(v => [ts.DataTypeBool, v])
-			].flat(1);
-
-			values.forEach(v => {
-				const VBlocks = CBlocks.filter(b => b.datatype() == v[0] && b.value == v[1]);
-				const VB0 = VBlocks[0];
-				for (let i = 1; i < VBlocks.length; i++) {
-					const vb = VBlocks[i];
-					const cs = bdef.connections.filter(c => c.in == vb.o_ports[0]);
-					cs.forEach(c => {
-						c.in = VB0.o_ports[0];
-					});
-					rem_blocks.push(vb);
-				}
-			});
-
-			safely_remove_blocks(rem_blocks);
-		}
-
-		function remove_useless_vars () {
-
-			const VBlocks = bdef.blocks.filter(b => bs.VarBlock.isPrototypeOf(b));
-
-			VBlocks.forEach(b => {
-				const rem_blocks = [];
-				const rem_conns = [];
-
-				const lc  = bdef.connections.find(c => c.out == b.i_ports[0]);
-				const rcs = bdef.connections.filter(c => c.in  == b.o_ports[0]);
-
-				if (rcs.length != 1)
-					return;
-				if (rcs.some(c => c.out.block == bdef))
-					return;
-
-				rcs[0].in = lc.in;
-				rem_blocks.push(b)
-				rem_conns.push(lc);
-
-				safely_remove_blocks(rem_blocks); // Check this position in the ohter opts
-				safely_remove_connections(rem_conns);
-			});
-		}
-
-		function merge_vars () {
-			// TODO: y1 = 5; y2 = 5. Merge y1 and y2
-		}
-
-		function merge_max_blocks () {
-
-			const rem_blocks = [];
-			const rem_conns = [];
-
-			const MBlocks = bdef.blocks.filter(b => bs.MaxBlock.isPrototypeOf(b));
-
-			MBlocks.forEach(b => f(b));
-
-			function f (b) {
-				if (b.__handling__)
-					return;
-				b.__handling__ = true;
-
-				const incs = bdef.connections.filter(c => c.out.block == b);
-				
-				const newports = [];
-				incs.forEach(c => {
-					const bb = c.in.block;
-					if (bs.MaxBlock.isPrototypeOf(bb)) {
-						f(bb);
-						bb.i_ports.forEach(p => newports.push(p));
-						rem_blocks.push(bb);
-						rem_conns.push(c);
-					}
-					else {
-						newports.push(c.out);
-					}
-				});
-				newports.forEach(p => p.block = b);
-				b.i_ports = newports;
-			}
-
-			MBlocks.forEach(b => delete b.__handling__);
-			safely_remove_blocks(rem_blocks);
-			safely_remove_connections(rem_conns);
-		}
-
-		function simplifly_max_blocks1 () {
-
-			const rem_conns = [];
-
-			const MBlocks = bdef.blocks.filter(b => bs.MaxBlock.isPrototypeOf(b));
-
-			MBlocks.forEach((b, i) => {
-				const lcs = bdef.connections.filter(c => c.out.block == b);
-				const rcs = bdef.connections.filter(c => c.in  == b.o_ports[0]);
-				
-				const lps = Array.from(new Set(lcs.map(c => c.in)));
-				const newlps = [];
-				var c0 = undefined;
-				for (let i = 0; i < lps.length; i++) {
-					if (bs.ConstantBlock.isPrototypeOf(lps[i].block) && lps[i].block.value == 0)
-						c0 = lps[i];
-					else
-						newlps.push(lps[i]);
-				}
-				if (newlps.length == 0) {
-					if (!c0)
-						throw new Error("Invalid max block found");
-					newlps.push(c0);
-				}
-
-				b.createPorts(newlps.length, 1);
-				b.init();
-				newlps.forEach((p, ii) => {
-					const c = Object.create(bs.CompositeBlock.Connection);
-					c.in = p;
-					c.out = b.i_ports[ii];
-					bdef.connections.push(c);
-				});
-				rcs.forEach(c => {
-					c.in = b.o_ports[0];
-				});
-				lcs.forEach(c => {
-					rem_conns.push(c);
-				});
-			});
-
-			safely_remove_connections(rem_conns);
-		}
-
-		function simplifly_max_blocks2 () {
-
-			const rem_blocks = [];
-			const rem_conns = [];
-
-			const MBlocks = bdef.blocks.filter(b => bs.MaxBlock.isPrototypeOf(b));
-
-			MBlocks.forEach(b => {
-				if (b.i_ports.length != 1)
-					return;
-
-				const lc  = bdef.connections.find(c => c.out == b.i_ports[0]);
-				const rcs = bdef.connections.filter(c => c.in  == b.o_ports[0]);
-
-				rcs.forEach(c => {
-					c.in = lc.in;
-				});
-
-				rem_blocks.push(b)
-				rem_conns.push(lc);
-			});
-
-			safely_remove_blocks(rem_blocks);
-			safely_remove_connections(rem_conns);
-		}
-
-		// Assuming blocks with only 1 output
-		function lazyfy_subexpressions_rates () {
-
-			bdef.blocks.forEach(b => {
-				if (b.o_ports.length == 0)
-					return; // Uhm, what to do in this case?
-				const our = b.o_ports[0].updaterate();
-				b.i_ports.forEach(p => {
-					const c = bdef.connections.find(c => c.out == p);
-					const iur = c.in.updaterate();
-					if (us.equal(our, iur))
-						return;
-					if (bs.VarBlock.isPrototypeOf(c.in.block))
-						return;
-					if (bs.ConstantBlock.isPrototypeOf(c.in.block))
-						return;
-					const v = Object.create(bs.VarBlock);
-					v.id = "_x_" + _x_counter++;
-					const d = c.in.datatype();
-					v.datatype = () => d;
-					v.init();
-					v.i_ports[0].datatype = () => d;
-					v.i_ports[0].updaterate = () => iur;
-					v.o_ports[0].updaterate = () => iur;
-					const cc = Object.create(bs.CompositeBlock.Connection);
-					cc.in = v.o_ports[0];
-					cc.out = c.out;
-					c.out = v.i_ports[0];
-					bdef.blocks.push(v);
-					bdef.connections.push(cc);
-				});
-			});
-		}
-
-		function lazyfy_subexpressions_controls () {
-			return; // Something is wrong here
-			// Here too
-			bdef.blocks.filter(b => b.o_ports.length != 0 && b.o_ports[0].updaterate() == us.UpdateRateControl).forEach(b => {
-
-				b.i_ports.forEach(p => {
-					const c = bdef.connections.find(c => c.out == p);
-					const iur = c.in.updaterate();
-					const bb = c.in.block;
-
-					if (bb == bdef)
-						return;
-					if (Set.checkEquality(b.control_dependencies, bb.control_dependencies))
-						return;
-					if (bs.VarBlock.isPrototypeOf(bb))
-						return;
-
-					const v = Object.create(bs.VarBlock);
-					v.id = "_x_" + _x_counter++;
-					const d = c.in.datatype();
-					v.datatype = () => d;
-					v.init();
-					v.i_ports[0].datatype = () => d;
-					v.i_ports[0].updaterate = () => iur;
-					v.o_ports[0].updaterate = () => iur;
-					const cc = Object.create(bs.CompositeBlock.Connection);
-					cc.in = v.o_ports[0];
-					cc.out = c.out;
-					c.out = v.i_ports[0];
-					bdef.blocks.push(v);
-					bdef.connections.push(cc);
-				});
-			});
-		}
-	};
+	}
 
 	function findVarById (id, bdef) {
 		let bd = bdef;
@@ -3176,6 +3307,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 			bd = bd.bdef_father;
 		}
 	}
+
 
 	function findMemById (id, bdef) {
 		let bd = bdef;
@@ -3229,13 +3361,13 @@ if (typeof module !== 'undefined' && require.main === module) {
 	function getDataType (s) {
 		switch (s) {
 		case "TYPE_INT32":
-			return ts.DataTypeInt32;
+			return TYPES.Int32;
 		case "TYPE_FLOAT32":
-			return ts.DataTypeFloat32;
+			return TYPES.Float32;
 		case "TYPE_BOOL":
-			return ts.DataTypeBool;
+			return TYPES.Bool;
 		case undefined:
-			return ts.DataTypeFloat32;
+			return TYPES.Float32;
 		default:
 			throw new Error("Unexpected datatype " + s);
 		}
@@ -3245,7 +3377,8 @@ if (typeof module !== 'undefined' && require.main === module) {
 	exports["flatten"] = flatten;
 	exports["optimize"] = optimize;
 }());
-},{"./blocks":1,"./types":8,"./uprates":9}],4:[function(require,module,exports){
+
+},{"./blocks":2,"./types":10,"./uprates":11,"./util":12}],6:[function(require,module,exports){
 (function (Buffer){(function (){
 /*
 	Copyright (C) 2021, 2022, 2023 Orastron Srl
@@ -3262,27 +3395,20 @@ if (typeof module !== 'undefined' && require.main === module) {
 	Author: Paolo Marrone
 */
 
-/**
- * TODO:
- * - We're delcaring/assigning only on VARs. So we might check if other blocks fork their output. Should not happen with the implemented opts, might better to be sure anyways
- * - For the future: Control grouping system should be trated in the same way of user IFs. In the graph itself
- * 
- * - Check memory updates order. Might be better to save reads in vars.
- * 
- */
-
 (function() {
+
+	'use strict';
 
 	const doT = require("dot");
 	
 	const path = require("path");
 	const templates = {
-		//"matlab": 			String(fs.readFileSync(path.join(__dirname, "templates", "matlab_template.txt"))),
-		"simple_c": String(Buffer("CiNpZm5kZWYgX3t7PWl0Lm5hbWUudG9VcHBlckNhc2UoKX19X0gKI2RlZmluZSBfe3s9aXQubmFtZS50b1VwcGVyQ2FzZSgpfX1fSAoKe3s9aXQuaW5jbHVkZXMudG9TdHJpbmcoMCl9fQoKe3s/aXQucGFyYW1ldGVycy5sZW5ndGggPiAwfX0KZW51bSB7Cgl7e35pdC5wYXJhbWV0ZXJzOmN9fQoJcF97ez1jfX0se3t+fX0KCglwX24KfTsKe3s/fX0KCnN0cnVjdCBfe3s9aXQubmFtZX19IHsKCQoJLy8gUGFyYW1ldGVycwp7ez1pdC5wYXJhbWV0ZXJfc3RhdGVzLnRvU3RyaW5nKDEpfX0KCgkvLyBNZW1vcnkKe3s9aXQubWVtb3J5X2RlY2xhcmF0aW9ucy50b1N0cmluZygxKX19CgoJLy8gU3RhdGVzCnt7PWl0LnN0YXRlcy50b1N0cmluZygxKX19CgoJLy8gQ29lZmZpY2llbnRzCnt7PWl0LmNvZWZmaWNpZW50cy50b1N0cmluZygxKX19CgoJLy8gU3VuLW1vY3VsZGVzCnt7PWl0LnN1Ym1vZHVsZXMudG9TdHJpbmcoMSl9fQoKCWZsb2F0IGZzOwoJY2hhciBmaXJzdFJ1bjsKfTsKdHlwZWRlZiBzdHJ1Y3QgX3t7PWl0Lm5hbWV9fSB7ez1pdC5uYW1lfX07CgoKdm9pZCB7ez1pdC5uYW1lfX1faW5pdCh7ez1pdC5uYW1lfX0gKmluc3RhbmNlKTsKdm9pZCB7ez1pdC5uYW1lfX1fc2V0X3NhbXBsZV9yYXRlKHt7PWl0Lm5hbWV9fSAqaW5zdGFuY2UsIGZsb2F0IHNhbXBsZV9yYXRlKTsKdm9pZCB7ez1pdC5uYW1lfX1fcmVzZXQoe3s9aXQubmFtZX19ICppbnN0YW5jZSk7CnZvaWQge3s9aXQubmFtZX19X3Byb2Nlc3Moe3s9aXQubmFtZX19ICppbnN0YW5jZSwge3s/aXQuYXVkaW9faW5wdXRzLmxlbmd0aCA+IDB9fSB7ez1pdC5hdWRpb19pbnB1dHMubWFwKHggPT4gJ2NvbnN0IGZsb2F0IConICsgeCkuam9pbignLCAnKX19LCB7ez99fXt7P2l0LmF1ZGlvX291dHB1dHMubGVuZ3RoID4gMH19e3s9aXQuYXVkaW9fb3V0cHV0cy5tYXAoeCA9PiAnZmxvYXQgKicgKyB4KS5qb2luKCcsICcpfX0sIHt7P319aW50IG5fc2FtcGxlcyk7CmZsb2F0IHt7PWl0Lm5hbWV9fV9nZXRfcGFyYW1ldGVyKHt7PWl0Lm5hbWV9fSAqaW5zdGFuY2UsIGludCBpbmRleCk7CnZvaWQge3s9aXQubmFtZX19X3NldF9wYXJhbWV0ZXIoe3s9aXQubmFtZX19ICppbnN0YW5jZSwgaW50IGluZGV4LCBmbG9hdCB2YWx1ZSk7CgoKe3s9aXQuY29uc3RhbnRzLnRvU3RyaW5nKDApfX0KCnZvaWQge3s9aXQubmFtZX19X2luaXQoe3s9aXQubmFtZX19ICppbnN0YW5jZSkgewoKe3s9aXQuaW5pdC50b1N0cmluZygxKX19Cgp9Cgp2b2lkIHt7PWl0Lm5hbWV9fV9yZXNldCh7ez1pdC5uYW1lfX0gKmluc3RhbmNlKSB7CglpbnN0YW5jZS0+Zmlyc3RSdW4gPSAxOwp9Cgp2b2lkIHt7PWl0Lm5hbWV9fV9zZXRfc2FtcGxlX3JhdGUoe3s9aXQubmFtZX19ICppbnN0YW5jZSwgZmxvYXQgc2FtcGxlX3JhdGUpIHsKCQoJaW5zdGFuY2UtPmZzID0gc2FtcGxlX3JhdGU7CgkKe3s9aXQuZnNfdXBkYXRlLnRvU3RyaW5nKDEpfX0KCn0KCnZvaWQge3s9aXQubmFtZX19X3Byb2Nlc3Moe3s9aXQubmFtZX19ICppbnN0YW5jZSwge3s/aXQuYXVkaW9faW5wdXRzLmxlbmd0aCA+IDB9fSB7ez1pdC5hdWRpb19pbnB1dHMubWFwKHggPT4gJ2NvbnN0IGZsb2F0IConICsgeCkuam9pbignLCAnKX19LCB7ez99fXt7P2l0LmF1ZGlvX291dHB1dHMubGVuZ3RoID4gMH19e3s9aXQuYXVkaW9fb3V0cHV0cy5tYXAoeCA9PiAnZmxvYXQgKicgKyB4KS5qb2luKCcsICcpfX0sIHt7P319aW50IG5fc2FtcGxlcykgewoJCglpZiAoaW5zdGFuY2UtPmZpcnN0UnVuKSB7e3t+aXQucGFyYW1ldGVyczpjfX0KCQlpbnN0YW5jZS0+e3s9Y319X0NIQU5HRUQgPSAxO3t7fn19Cgl9CgllbHNlIHt7e35pdC5wYXJhbWV0ZXJzOmN9fQoJCWluc3RhbmNlLT57ez1jfX1fQ0hBTkdFRCA9IGluc3RhbmNlLT57ez1jfX0gIT0gaW5zdGFuY2UtPnt7PWN9fV96MTt7e359fQoJfQoJCnt7PWl0LmNvbnRyb2xfY29lZmZzX3VwZGF0ZS50b1N0cmluZygxKX19Cgp7ez1pdC51cGRhdGVfY29lZmZzX2N0cmwudG9TdHJpbmcoMSl9fQoKCXt7fml0LnBhcmFtZXRlcnM6Y319CglpbnN0YW5jZS0+e3s9Y319X0NIQU5HRUQgPSAwO3t7fn19CgoJaWYgKGluc3RhbmNlLT5maXJzdFJ1bikgewp7ez1pdC5yZXNldC50b1N0cmluZygyKX19Cgl9CgoJZm9yIChpbnQgaSA9IDA7IGkgPCBuX3NhbXBsZXM7IGkrKykgewoKe3s9aXQudXBkYXRlX2NvZWZmc19hdWRpby50b1N0cmluZygyKX19Cgp7ez1pdC5hdWRpb191cGRhdGUudG9TdHJpbmcoMil9fQoJCQp7ez1pdC5tZW1vcnlfdXBkYXRlcy50b1N0cmluZygyKX19Cgp7ez1pdC5vdXRwdXRfdXBkYXRlcy50b1N0cmluZygyKX19CgoJfQoKCXt7fml0LnBhcmFtZXRlcnM6Y319CglpbnN0YW5jZS0+e3s9Y319X3oxID0gaW5zdGFuY2UtPnt7PWN9fTt7e359fQoJaW5zdGFuY2UtPmZpcnN0UnVuID0gMDsKfQoKZmxvYXQge3s9aXQubmFtZX19X2dldF9wYXJhbWV0ZXIoe3s9aXQubmFtZX19ICppbnN0YW5jZSwgaW50IGluZGV4KSB7Cglzd2l0Y2ggKGluZGV4KSB7CgkJe3t+aXQucGFyYW1ldGVyczpjfX1jYXNlIHBfe3s9Y319OgoJCQlyZXR1cm4gaW5zdGFuY2UtPnt7PWN9fTsKCQl7e359fQoJfQp9Cgp2b2lkIHt7PWl0Lm5hbWV9fV9zZXRfcGFyYW1ldGVyKHt7PWl0Lm5hbWV9fSAqaW5zdGFuY2UsIGludCBpbmRleCwgZmxvYXQgdmFsdWUpIHsKCXN3aXRjaCAoaW5kZXgpIHsKCQl7e35pdC5wYXJhbWV0ZXJzOmN9fWNhc2UgcF97ez1jfX06CgkJCWluc3RhbmNlLT57ez1jfX0gPSB2YWx1ZTsKCQkJYnJlYWs7CgkJe3t+fX0KCX0KfQoKI2VuZGlm","base64")),
+		"matlab": String(Buffer("ZnVuY3Rpb24gW3t7PWl0LmF1ZGlvX291dHB1dHMuam9pbignLCAnKX19XSA9IHt7PWl0Lm5hbWV9fSh7ez1pdC5hdWRpb19pbnB1dHMuam9pbignLCAnKX19e3s/aXQuYXVkaW9faW5wdXRzLmxlbmd0aCA+IDB9fSx7ez8/fX1uU2FtcGxlcyx7ez99fSBmc3t7P2l0LnBhcmFtZXRlcnMubGVuZ3RoID4gMH19LCB7ez99fXt7PWl0LnBhcmFtZXRlcnMuam9pbignLCAnKX19KQoKCSUgZGVjbGFyYXRpb25zCnt7PWl0LnBhcmFtZXRlcl9zdGF0ZXMudG9TdHJpbmcoMSl9fQp7ez1pdC5tZW1vcnlfZGVjbGFyYXRpb25zLnRvU3RyaW5nKDEpfX0Ke3s9aXQuc3RhdGVzLnRvU3RyaW5nKDEpfX0Ke3s9aXQuY29lZmZpY2llbnRzLnRvU3RyaW5nKDEpfX0Ke3s9aXQuc3VibW9kdWxlcy50b1N0cmluZygxKX19CgoJJSBjb25zdGFudHMvaW5pdAp7ez1pdC5jb25zdGFudHMudG9TdHJpbmcoMSl9fQp7ez1pdC5pbml0LnRvU3RyaW5nKDEpfX0KCgklIGZzL2NvbnRyb2wgY29lZmZzCnt7PWl0LmZzX3VwZGF0ZS50b1N0cmluZygxKX19Cnt7PWl0LmNvbnRyb2xfY29lZmZzX3VwZGF0ZS50b1N0cmluZygxKX19CgoJJSByZXNldAp7ez1pdC5yZXNldC50b1N0cmluZygxKX19CgoJJSBvdXRwdXRzCgl7e35pdC5hdWRpb19vdXRwdXRzOm99fQoJe3s/aXQuYXVkaW9faW5wdXRzLmxlbmd0aCA+IDB9fQoJe3s9b319ID0gemVyb3Moc2l6ZSh7ez1pdC5hdWRpb19pbnB1dHNbMF19fSkpOwoJe3s/P319Cgl7ez1vfX0gPSB6ZXJvcygxLCBuU2FtcGxlcyk7Cgl7ez99fQoJe3t+fX0KCglmb3IgaSA9IDE6e3s/aXQuYXVkaW9faW5wdXRzLmxlbmd0aCA+IDB9fWxlbmd0aCh7ez1pdC5hdWRpb19pbnB1dHNbMF19fSl7ez8/fX1uU2FtcGxlc3t7P319Cnt7PWl0LmF1ZGlvX3VwZGF0ZS50b1N0cmluZygyKX19Cnt7PWl0Lm1lbW9yeV91cGRhdGVzLnRvU3RyaW5nKDIpfX0Ke3s9aXQub3V0cHV0X3VwZGF0ZXMudG9TdHJpbmcoMil9fQoJZW5kCgplbmQK","base64")),
+		"simple_c": String(Buffer("CiNpZm5kZWYgX3t7PWl0Lm5hbWUudG9VcHBlckNhc2UoKX19X0gKI2RlZmluZSBfe3s9aXQubmFtZS50b1VwcGVyQ2FzZSgpfX1fSAoKe3s9aXQuaW5jbHVkZXMudG9TdHJpbmcoMCl9fQoKe3s/aXQucGFyYW1ldGVycy5sZW5ndGggPiAwfX0KZW51bSB7Cgl7e35pdC5wYXJhbWV0ZXJzOmN9fQoJcF97ez1jfX0se3t+fX0KCglwX24KfTsKe3s/fX0KCnN0cnVjdCBfe3s9aXQubmFtZX19IHsKCQoJLy8gUGFyYW1ldGVycwp7ez1pdC5wYXJhbWV0ZXJfc3RhdGVzLnRvU3RyaW5nKDEpfX0KCgkvLyBNZW1vcnkKe3s9aXQubWVtb3J5X2RlY2xhcmF0aW9ucy50b1N0cmluZygxKX19CgoJLy8gU3RhdGVzCnt7PWl0LnN0YXRlcy50b1N0cmluZygxKX19CgoJLy8gQ29lZmZpY2llbnRzCnt7PWl0LmNvZWZmaWNpZW50cy50b1N0cmluZygxKX19CgoJLy8gU3VibW9kdWxlcwp7ez1pdC5zdWJtb2R1bGVzLnRvU3RyaW5nKDEpfX0KCglmbG9hdCBmczsKCWNoYXIgZmlyc3RSdW47Cn07CnR5cGVkZWYgc3RydWN0IF97ez1pdC5uYW1lfX0ge3s9aXQubmFtZX19OwoKCnZvaWQge3s9aXQubmFtZX19X2luaXQoe3s9aXQubmFtZX19ICppbnN0YW5jZSk7CnZvaWQge3s9aXQubmFtZX19X3NldF9zYW1wbGVfcmF0ZSh7ez1pdC5uYW1lfX0gKmluc3RhbmNlLCBmbG9hdCBzYW1wbGVfcmF0ZSk7CnZvaWQge3s9aXQubmFtZX19X3Jlc2V0KHt7PWl0Lm5hbWV9fSAqaW5zdGFuY2UpOwp2b2lkIHt7PWl0Lm5hbWV9fV9wcm9jZXNzKHt7PWl0Lm5hbWV9fSAqaW5zdGFuY2UsIHt7P2l0LmF1ZGlvX2lucHV0cy5sZW5ndGggPiAwfX0ge3s9aXQuYXVkaW9faW5wdXRzLm1hcCh4ID0+ICdjb25zdCBmbG9hdCAqJyArIHgpLmpvaW4oJywgJyl9fSwge3s/fX17ez9pdC5hdWRpb19vdXRwdXRzLmxlbmd0aCA+IDB9fXt7PWl0LmF1ZGlvX291dHB1dHMubWFwKHggPT4gJ2Zsb2F0IConICsgeCkuam9pbignLCAnKX19LCB7ez99fWludCBuX3NhbXBsZXMpOwpmbG9hdCB7ez1pdC5uYW1lfX1fZ2V0X3BhcmFtZXRlcih7ez1pdC5uYW1lfX0gKmluc3RhbmNlLCBpbnQgaW5kZXgpOwp2b2lkIHt7PWl0Lm5hbWV9fV9zZXRfcGFyYW1ldGVyKHt7PWl0Lm5hbWV9fSAqaW5zdGFuY2UsIGludCBpbmRleCwgZmxvYXQgdmFsdWUpOwoKCnt7PWl0LmNvbnN0YW50cy50b1N0cmluZygwKX19Cgp2b2lkIHt7PWl0Lm5hbWV9fV9pbml0KHt7PWl0Lm5hbWV9fSAqaW5zdGFuY2UpIHsKCWluc3RhbmNlLT5maXJzdFJ1biA9IDE7Cgl7e35pdC5wYXJhbWV0ZXJzOmN9fQoJaW5zdGFuY2UtPnt7PWN9fSA9IHt7PWl0LnBhcmFtZXRlcnNfaW5pdGlhbFZhbHVlc1tjXX19O3t7fn19Cgp7ez1pdC5pbml0LnRvU3RyaW5nKDEpfX0KCn0KCnZvaWQge3s9aXQubmFtZX19X3Jlc2V0KHt7PWl0Lm5hbWV9fSAqaW5zdGFuY2UpIHsKCWluc3RhbmNlLT5maXJzdFJ1biA9IDE7Cn0KCnZvaWQge3s9aXQubmFtZX19X3NldF9zYW1wbGVfcmF0ZSh7ez1pdC5uYW1lfX0gKmluc3RhbmNlLCBmbG9hdCBzYW1wbGVfcmF0ZSkgewoJCglpbnN0YW5jZS0+ZnMgPSBzYW1wbGVfcmF0ZTsKCQp7ez1pdC5mc191cGRhdGUudG9TdHJpbmcoMSl9fQoKfQoKdm9pZCB7ez1pdC5uYW1lfX1fcHJvY2Vzcyh7ez1pdC5uYW1lfX0gKmluc3RhbmNlLCB7ez9pdC5hdWRpb19pbnB1dHMubGVuZ3RoID4gMH19IHt7PWl0LmF1ZGlvX2lucHV0cy5tYXAoeCA9PiAnY29uc3QgZmxvYXQgKicgKyB4KS5qb2luKCcsICcpfX0sIHt7P319e3s/aXQuYXVkaW9fb3V0cHV0cy5sZW5ndGggPiAwfX17ez1pdC5hdWRpb19vdXRwdXRzLm1hcCh4ID0+ICdmbG9hdCAqJyArIHgpLmpvaW4oJywgJyl9fSwge3s/fX1pbnQgbl9zYW1wbGVzKSB7CgkKe3s9aXQuY29udHJvbF9jb2VmZnNfdXBkYXRlLnRvU3RyaW5nKDEpfX0KCgoJaWYgKGluc3RhbmNlLT5maXJzdFJ1bikgewp7ez1pdC5yZXNldC50b1N0cmluZygyKX19Cgl9CgoJZm9yIChpbnQgaSA9IDA7IGkgPCBuX3NhbXBsZXM7IGkrKykgewoKe3s9aXQuYXVkaW9fdXBkYXRlLnRvU3RyaW5nKDIpfX0KCQkKe3s9aXQubWVtb3J5X3VwZGF0ZXMudG9TdHJpbmcoMil9fQoKe3s9aXQub3V0cHV0X3VwZGF0ZXMudG9TdHJpbmcoMil9fQoKCX0KCglpbnN0YW5jZS0+Zmlyc3RSdW4gPSAwOwp9CgpmbG9hdCB7ez1pdC5uYW1lfX1fZ2V0X3BhcmFtZXRlcih7ez1pdC5uYW1lfX0gKmluc3RhbmNlLCBpbnQgaW5kZXgpIHsKCXN3aXRjaCAoaW5kZXgpIHsKCQl7e35pdC5wYXJhbWV0ZXJzOmN9fWNhc2UgcF97ez1jfX06CgkJCXJldHVybiBpbnN0YW5jZS0+e3s9Y319OwoJCXt7fn19Cgl9CglyZXR1cm4gMC4wZjsKfQoKdm9pZCB7ez1pdC5uYW1lfX1fc2V0X3BhcmFtZXRlcih7ez1pdC5uYW1lfX0gKmluc3RhbmNlLCBpbnQgaW5kZXgsIGZsb2F0IHZhbHVlKSB7Cglzd2l0Y2ggKGluZGV4KSB7CgkJe3t+aXQucGFyYW1ldGVyczpjfX1jYXNlIHBfe3s9Y319OgoJCQlpbnN0YW5jZS0+e3s9Y319ID0gdmFsdWU7CgkJCWJyZWFrOwoJCXt7fn19Cgl9Cn0KCiNlbmRpZgo=","base64")),
 		"bw": {
 			"src": {
-				"module_h": String(Buffer("CiNpZm5kZWYgX3t7PWl0Lm5hbWUudG9VcHBlckNhc2UoKX19X0gKI2RlZmluZSBfe3s9aXQubmFtZS50b1VwcGVyQ2FzZSgpfX1fSAoKI2luY2x1ZGUgInBsYXRmb3JtLmgiCgp7ez1pdC5pbmNsdWRlcy50b1N0cmluZygwKX19CgojaWZkZWYgX19jcGx1c3BsdXMKZXh0ZXJuICJDIiB7CiNlbmRpZgoKe3s/aXQucGFyYW1ldGVycy5sZW5ndGggPiAwfX0KZW51bSB7Cgl7e35pdC5wYXJhbWV0ZXJzOmN9fQoJcF97ez1jfX0se3t+fX0KCglwX24KfTsKe3s/fX0KCnN0cnVjdCBfe3s9aXQubmFtZX19IHsKCS8vIFBhcmFtZXRlcnMKe3s9aXQucGFyYW1ldGVyX3N0YXRlcy50b1N0cmluZygxKX19CgoJLy8gTWVtb3J5Cnt7PWl0Lm1lbW9yeV9kZWNsYXJhdGlvbnMudG9TdHJpbmcoMSl9fQoKCS8vIFN0YXRlcwp7ez1pdC5zdGF0ZXMudG9TdHJpbmcoMSl9fQoKCS8vIENvZWZmaWNpZW50cwp7ez1pdC5jb2VmZmljaWVudHMudG9TdHJpbmcoMSl9fQoKCS8vIFN1bi1tb2N1bGRlcwp7ez1pdC5zdWJtb2R1bGVzLnRvU3RyaW5nKDEpfX0KCglmbG9hdCBmczsKCWNoYXIgZmlyc3RSdW47Cn07CnR5cGVkZWYgc3RydWN0IF97ez1pdC5uYW1lfX0ge3s9aXQubmFtZX19OwoKdm9pZCB7ez1pdC5uYW1lfX1faW5pdCh7ez1pdC5uYW1lfX0gKmluc3RhbmNlKTsKdm9pZCB7ez1pdC5uYW1lfX1fc2V0X3NhbXBsZV9yYXRlKHt7PWl0Lm5hbWV9fSAqaW5zdGFuY2UsIGZsb2F0IHNhbXBsZV9yYXRlKTsKe3s/aXQubWVtX3NldHMubGVuZ3RoID4gMH19CnNpemVfdCB7ez1pdC5uYW1lfX1fbWVtX3JlcSh7ez1pdC5uYW1lfX0gKmluc3RhbmNlKTsKdm9pZCB7ez1pdC5uYW1lfX1fbWVtX3NldCh7ez1pdC5uYW1lfX0gKmluc3RhbmNlLCB2b2lkICptZW0pOwp7ez99fQp2b2lkIHt7PWl0Lm5hbWV9fV9yZXNldCh7ez1pdC5uYW1lfX0gKmluc3RhbmNlKTsKdm9pZCB7ez1pdC5uYW1lfX1fcHJvY2Vzcyh7ez1pdC5uYW1lfX0gKmluc3RhbmNlLCBjb25zdCBmbG9hdCoqIHgsIGZsb2F0KiogeSwgaW50IG5fc2FtcGxlcyk7CnZvaWQge3s9aXQubmFtZX19X3NldF9wYXJhbWV0ZXIoe3s9aXQubmFtZX19ICppbnN0YW5jZSwgaW50IGluZGV4LCBmbG9hdCB2YWx1ZSk7CmZsb2F0IHt7PWl0Lm5hbWV9fV9nZXRfcGFyYW1ldGVyKHt7PWl0Lm5hbWV9fSAqaW5zdGFuY2UsIGludCBpbmRleCk7CgojaWZkZWYgX19jcGx1c3BsdXMKfQojZW5kaWYKCiNlbmRpZgo=","base64")),
-				"module_c": String(Buffer("LyoKCUdlbmVyYXRlZCBieSBaYW1wb2duYQoqLwoKI2luY2x1ZGUgInt7PWl0Lm5hbWV9fS5oIgoKe3s9aXQuY29uc3RhbnRzLnRvU3RyaW5nKDApfX0KCnZvaWQge3s9aXQubmFtZX19X2luaXQoe3s9aXQubmFtZX19ICppbnN0YW5jZSkgewp7ez1pdC5pbml0LnRvU3RyaW5nKDEpfX0KfQoKdm9pZCB7ez1pdC5uYW1lfX1fc2V0X3NhbXBsZV9yYXRlKHt7PWl0Lm5hbWV9fSAqaW5zdGFuY2UsIGZsb2F0IHNhbXBsZV9yYXRlKSB7CglpbnN0YW5jZS0+ZnMgPSBzYW1wbGVfcmF0ZTsKe3s9aXQuZnNfdXBkYXRlLnRvU3RyaW5nKDEpfX0KfQoKe3s/aXQubWVtX3NldHMubGVuZ3RoID4gMH19CnNpemVfdCB7ez1pdC5uYW1lfX1fbWVtX3JlcSh7ez1pdC5uYW1lfX0gKmluc3RhbmNlKSB7Cgl7ez9pdC5tZW1fcmVxcy5sZW5ndGggIT0gMH19CglyZXR1cm4gCgkJe3s9aXQubWVtX3JlcXMuam9pbignXG5cdFx0KyAnKX19OwoJe3s/P319CglyZXR1cm4gMDsKCXt7P319Cn0KCnZvaWQge3s9aXQubmFtZX19X21lbV9zZXQoe3s9aXQubmFtZX19ICppbnN0YW5jZSwgdm9pZCAqbWVtKSB7CgljaGFyICptID0gKGNoYXIgKiltZW07Cgl7e35pdC5tZW1fc2V0czpzOml9fQoJe3s9c319OwoJbSArPSB7ez1pdC5tZW1fcmVxc1tpXX19OwoJe3t+fX0KfQp7ez99fQoKdm9pZCB7ez1pdC5uYW1lfX1fcmVzZXQoe3s9aXQubmFtZX19ICppbnN0YW5jZSkgewoJaW5zdGFuY2UtPmZpcnN0UnVuID0gMTsKfQoKdm9pZCB7ez1pdC5uYW1lfX1fcHJvY2Vzcyh7ez1pdC5uYW1lfX0gKmluc3RhbmNlLCBjb25zdCBmbG9hdCoqIHgsIGZsb2F0KiogeSwgaW50IG5fc2FtcGxlcykgewoKCXt7fml0LmF1ZGlvX2lucHV0czphOml9fQoJY29uc3QgZmxvYXQqIHt7PWF9fSA9IHhbe3s9aX19XTt7e359fQoJe3t+aXQuYXVkaW9fb3V0cHV0czphOml9fQoJZmxvYXQqIHt7PWF9fSA9IHlbe3s9aX19XTt7e359fQoKCWlmIChpbnN0YW5jZS0+Zmlyc3RSdW4pIHt7e35pdC5wYXJhbWV0ZXJzOmN9fQoJCWluc3RhbmNlLT57ez1jfX1fQ0hBTkdFRCA9IDE7e3t+fX0KCX0KCWVsc2Uge3t7fml0LnBhcmFtZXRlcnM6Y319CgkJaW5zdGFuY2UtPnt7PWN9fV9DSEFOR0VEID0gaW5zdGFuY2UtPnt7PWN9fSAhPSBpbnN0YW5jZS0+e3s9Y319X3oxO3t7fn19Cgl9CgkKe3s9aXQuY29udHJvbF9jb2VmZnNfdXBkYXRlLnRvU3RyaW5nKDEpfX0KCgoJe3t+aXQucGFyYW1ldGVyczpjfX0KCWluc3RhbmNlLT57ez1jfX1fQ0hBTkdFRCA9IDA7e3t+fX0KCglpZiAoaW5zdGFuY2UtPmZpcnN0UnVuKSB7Cnt7PWl0LnJlc2V0LnRvU3RyaW5nKDIpfX0KCX0KCnt7PWl0LnVwZGF0ZV9jb2VmZnNfY3RybC50b1N0cmluZygxKX19CgoJZm9yIChpbnQgaSA9IDA7IGkgPCBuX3NhbXBsZXM7IGkrKykgewoKe3s9aXQudXBkYXRlX2NvZWZmc19hdWRpby50b1N0cmluZygyKX19Cgp7ez1pdC5hdWRpb191cGRhdGUudG9TdHJpbmcoMil9fQoJCQp7ez1pdC5tZW1vcnlfdXBkYXRlcy50b1N0cmluZygyKX19Cgp7ez1pdC5vdXRwdXRfdXBkYXRlcy50b1N0cmluZygyKX19CgoJfQoKCXt7fml0LnBhcmFtZXRlcnM6Y319CglpbnN0YW5jZS0+e3s9Y319X3oxID0gaW5zdGFuY2UtPnt7PWN9fTt7e359fQoJaW5zdGFuY2UtPmZpcnN0UnVuID0gMDsKfQoKdm9pZCB7ez1pdC5uYW1lfX1fc2V0X3BhcmFtZXRlcih7ez1pdC5uYW1lfX0gKmluc3RhbmNlLCBpbnQgaW5kZXgsIGZsb2F0IHZhbHVlKSB7Cglzd2l0Y2ggKGluZGV4KSB7CgkJe3t+aXQucGFyYW1ldGVyczpjfX1jYXNlIHBfe3s9Y319OgoJCQlpbnN0YW5jZS0+e3s9Y319ID0gdmFsdWU7CgkJCWJyZWFrOwoJCXt7fn19Cgl9Cn0KCmZsb2F0IHt7PWl0Lm5hbWV9fV9nZXRfcGFyYW1ldGVyKHt7PWl0Lm5hbWV9fSAqaW5zdGFuY2UsIGludCBpbmRleCkgewoJc3dpdGNoIChpbmRleCkgewoJCXt7fml0LnBhcmFtZXRlcnM6Y319Y2FzZSBwX3t7PWN9fToKCQkJcmV0dXJuIGluc3RhbmNlLT57ez1jfX07CgkJe3t+fX0KCX0KfQo=","base64")),
+				"module_h": String(Buffer("CiNpZm5kZWYgX3t7PWl0Lm5hbWUudG9VcHBlckNhc2UoKX19X0gKI2RlZmluZSBfe3s9aXQubmFtZS50b1VwcGVyQ2FzZSgpfX1fSAoKI2luY2x1ZGUgInBsYXRmb3JtLmgiCgp7ez1pdC5pbmNsdWRlcy50b1N0cmluZygwKX19CgojaWZkZWYgX19jcGx1c3BsdXMKZXh0ZXJuICJDIiB7CiNlbmRpZgoKe3s/aXQucGFyYW1ldGVycy5sZW5ndGggPiAwfX0KZW51bSB7Cgl7e35pdC5wYXJhbWV0ZXJzOmN9fQoJcF97ez1jfX0se3t+fX0KCglwX24KfTsKe3s/fX0KCnN0cnVjdCBfe3s9aXQubmFtZX19IHsKCS8vIFBhcmFtZXRlcnMKe3s9aXQucGFyYW1ldGVyX3N0YXRlcy50b1N0cmluZygxKX19CgoJLy8gTWVtb3J5Cnt7PWl0Lm1lbW9yeV9kZWNsYXJhdGlvbnMudG9TdHJpbmcoMSl9fQoKCS8vIFN0YXRlcwp7ez1pdC5zdGF0ZXMudG9TdHJpbmcoMSl9fQoKCS8vIENvZWZmaWNpZW50cwp7ez1pdC5jb2VmZmljaWVudHMudG9TdHJpbmcoMSl9fQoKCS8vIFN1Ym1vZHVsZXMKe3s9aXQuc3VibW9kdWxlcy50b1N0cmluZygxKX19CgoJZmxvYXQgZnM7CgljaGFyIGZpcnN0UnVuOwp9Owp0eXBlZGVmIHN0cnVjdCBfe3s9aXQubmFtZX19IHt7PWl0Lm5hbWV9fTsKCnZvaWQge3s9aXQubmFtZX19X2luaXQoe3s9aXQubmFtZX19ICppbnN0YW5jZSk7CnZvaWQge3s9aXQubmFtZX19X3NldF9zYW1wbGVfcmF0ZSh7ez1pdC5uYW1lfX0gKmluc3RhbmNlLCBmbG9hdCBzYW1wbGVfcmF0ZSk7Cnt7P2l0Lm1lbV9zZXRzLmxlbmd0aCA+IDB9fQpzaXplX3Qge3s9aXQubmFtZX19X21lbV9yZXEoe3s9aXQubmFtZX19ICppbnN0YW5jZSk7CnZvaWQge3s9aXQubmFtZX19X21lbV9zZXQoe3s9aXQubmFtZX19ICppbnN0YW5jZSwgdm9pZCAqbWVtKTsKe3s/fX0Kdm9pZCB7ez1pdC5uYW1lfX1fcmVzZXQoe3s9aXQubmFtZX19ICppbnN0YW5jZSk7CnZvaWQge3s9aXQubmFtZX19X3Byb2Nlc3Moe3s9aXQubmFtZX19ICppbnN0YW5jZSwgY29uc3QgZmxvYXQqKiB4LCBmbG9hdCoqIHksIGludCBuX3NhbXBsZXMpOwp2b2lkIHt7PWl0Lm5hbWV9fV9zZXRfcGFyYW1ldGVyKHt7PWl0Lm5hbWV9fSAqaW5zdGFuY2UsIGludCBpbmRleCwgZmxvYXQgdmFsdWUpOwpmbG9hdCB7ez1pdC5uYW1lfX1fZ2V0X3BhcmFtZXRlcih7ez1pdC5uYW1lfX0gKmluc3RhbmNlLCBpbnQgaW5kZXgpOwoKI2lmZGVmIF9fY3BsdXNwbHVzCn0KI2VuZGlmCgojZW5kaWYK","base64")),
+				"module_c": String(Buffer("LyoKCUdlbmVyYXRlZCBieSBaYW1wb2duYQoqLwoKI2luY2x1ZGUgInt7PWl0Lm5hbWV9fS5oIgoKe3s9aXQuY29uc3RhbnRzLnRvU3RyaW5nKDApfX0KCnZvaWQge3s9aXQubmFtZX19X2luaXQoe3s9aXQubmFtZX19ICppbnN0YW5jZSkgewoJaW5zdGFuY2UtPmZpcnN0UnVuID0gMTsKCXt7fml0LnBhcmFtZXRlcnM6Y319CglpbnN0YW5jZS0+e3s9Y319ID0ge3s9aXQucGFyYW1ldGVyc19pbml0aWFsVmFsdWVzW2NdfX07e3t+fX0Ke3s9aXQuaW5pdC50b1N0cmluZygxKX19Cn0KCnZvaWQge3s9aXQubmFtZX19X3NldF9zYW1wbGVfcmF0ZSh7ez1pdC5uYW1lfX0gKmluc3RhbmNlLCBmbG9hdCBzYW1wbGVfcmF0ZSkgewoJaW5zdGFuY2UtPmZzID0gc2FtcGxlX3JhdGU7Cnt7PWl0LmZzX3VwZGF0ZS50b1N0cmluZygxKX19Cn0KCnt7P2l0Lm1lbV9zZXRzLmxlbmd0aCA+IDB9fQpzaXplX3Qge3s9aXQubmFtZX19X21lbV9yZXEoe3s9aXQubmFtZX19ICppbnN0YW5jZSkgewoJe3s/aXQubWVtX3JlcXMubGVuZ3RoICE9IDB9fQoJcmV0dXJuIAoJCXt7PWl0Lm1lbV9yZXFzLmpvaW4oJ1xuXHRcdCsgJyl9fTsKCXt7Pz99fQoJcmV0dXJuIDA7Cgl7ez99fQp9Cgp2b2lkIHt7PWl0Lm5hbWV9fV9tZW1fc2V0KHt7PWl0Lm5hbWV9fSAqaW5zdGFuY2UsIHZvaWQgKm1lbSkgewoJY2hhciAqbSA9IChjaGFyICopbWVtOwoJe3t+aXQubWVtX3NldHM6czppfX0KCXt7PXN9fTsKCW0gKz0ge3s9aXQubWVtX3JlcXNbaV19fTsKCXt7fn19Cn0Ke3s/fX0KCnZvaWQge3s9aXQubmFtZX19X3Jlc2V0KHt7PWl0Lm5hbWV9fSAqaW5zdGFuY2UpIHsKCWluc3RhbmNlLT5maXJzdFJ1biA9IDE7Cn0KCnZvaWQge3s9aXQubmFtZX19X3Byb2Nlc3Moe3s9aXQubmFtZX19ICppbnN0YW5jZSwgY29uc3QgZmxvYXQqKiB4LCBmbG9hdCoqIHksIGludCBuX3NhbXBsZXMpIHsKCgl7e35pdC5hdWRpb19pbnB1dHM6YTppfX0KCWNvbnN0IGZsb2F0KiB7ez1hfX0gPSB4W3t7PWl9fV07e3t+fX0KCXt7fml0LmF1ZGlvX291dHB1dHM6YTppfX0KCWZsb2F0KiB7ez1hfX0gPSB5W3t7PWl9fV07e3t+fX0KCnt7PWl0LmNvbnRyb2xfY29lZmZzX3VwZGF0ZS50b1N0cmluZygxKX19CgoKCWlmIChpbnN0YW5jZS0+Zmlyc3RSdW4pIHsKe3s9aXQucmVzZXQudG9TdHJpbmcoMil9fQoJfQoKCglmb3IgKGludCBpID0gMDsgaSA8IG5fc2FtcGxlczsgaSsrKSB7CgoKe3s9aXQuYXVkaW9fdXBkYXRlLnRvU3RyaW5nKDIpfX0KCQkKe3s9aXQubWVtb3J5X3VwZGF0ZXMudG9TdHJpbmcoMil9fQoKe3s9aXQub3V0cHV0X3VwZGF0ZXMudG9TdHJpbmcoMil9fQoKCX0KCglpbnN0YW5jZS0+Zmlyc3RSdW4gPSAwOwp9Cgp2b2lkIHt7PWl0Lm5hbWV9fV9zZXRfcGFyYW1ldGVyKHt7PWl0Lm5hbWV9fSAqaW5zdGFuY2UsIGludCBpbmRleCwgZmxvYXQgdmFsdWUpIHsKCXN3aXRjaCAoaW5kZXgpIHsKCQl7e35pdC5wYXJhbWV0ZXJzOmN9fWNhc2UgcF97ez1jfX06CgkJCWluc3RhbmNlLT57ez1jfX0gPSB2YWx1ZTsKCQkJYnJlYWs7CgkJe3t+fX0KCX0KfQoKZmxvYXQge3s9aXQubmFtZX19X2dldF9wYXJhbWV0ZXIoe3s9aXQubmFtZX19ICppbnN0YW5jZSwgaW50IGluZGV4KSB7Cglzd2l0Y2ggKGluZGV4KSB7CgkJe3t+aXQucGFyYW1ldGVyczpjfX1jYXNlIHBfe3s9Y319OgoJCQlyZXR1cm4gaW5zdGFuY2UtPnt7PWN9fTsKCQl7e359fQoJfQoJcmV0dXJuIDAuMGY7Cn0K","base64")),
 				"config_h": String(Buffer("CiNpZm5kZWYgX0NPTkZJR19ICiNkZWZpbmUgX0NPTkZJR19ICgovLyBEZWZpbml0aW9ucwoKI2RlZmluZSBJT19NT05PCQkJMQojZGVmaW5lIElPX1NURVJFTwkJKDE8PDEpCgpzdHJ1Y3QgY29uZmlnX2lvX2J1cyB7Cgljb25zdCBjaGFyCSpuYW1lOwoJY2hhcgkJIG91dDsKCWNoYXIJCSBhdXg7CgljaGFyCQkgY3Y7CgljaGFyCQkgY29uZmlnczsKfTsKCnN0cnVjdCBjb25maWdfcGFyYW1ldGVyIHsKCWNvbnN0IGNoYXIJKm5hbWU7Cgljb25zdCBjaGFyCSpzaG9ydE5hbWU7Cgljb25zdCBjaGFyCSp1bml0czsKCWNoYXIJCSBvdXQ7CgljaGFyCQkgYnlwYXNzOwoJaW50CQkgc3RlcHM7CglmbG9hdAkJIGRlZmF1bHRWYWx1ZVVubWFwcGVkOwp9OwoKLy8gRGF0YQoKI2RlZmluZSBDT01QQU5ZX05BTUUJCSJPcmFzdHJvbiIKI2RlZmluZSBDT01QQU5ZX1dFQlNJVEUJCSJodHRwczovL3d3dy5vcmFzdHJvbi5jb20vIgojZGVmaW5lIENPTVBBTllfTUFJTFRPCQkibWFpbHRvOmluZm9Ab3Jhc3Ryb24uY29tIgoKI2RlZmluZSBQTFVHSU5fTkFNRQkJInt7PWl0Lm5hbWV9fSIKI2RlZmluZSBQTFVHSU5fVkVSU0lPTgkJIjAuMC4xIgoKe3sgaWYgKGl0LmF1ZGlvX2lucHV0cy5sZW5ndGggPiAyKSB0aHJvdyBuZXcgRXJyb3IoIk1heCAyIGF1ZGlvIGlucHV0cyBzdXBwb3J0ZWQgaW4gdnN0MyBmb3Igbm93Iik7IH19Cnt7IGlmIChpdC5hdWRpb19vdXRwdXRzLmxlbmd0aCA+IDIpIHRocm93IG5ldyBFcnJvcigiTWF4IDIgYXVkaW8gb3V0cHV0cyBzdXBwb3J0ZWQgaW4gdnN0MyBmb3Igbm93Iik7IH19CgojZGVmaW5lIE5VTV9CVVNFU19JTgkJMQojZGVmaW5lIE5VTV9CVVNFU19PVVQJCTEKI2RlZmluZSBOVU1fQ0hBTk5FTFNfSU4JCXt7PWl0LmF1ZGlvX2lucHV0cy5sZW5ndGh9fQojZGVmaW5lIE5VTV9DSEFOTkVMU19PVVQJe3s9aXQuYXVkaW9fb3V0cHV0cy5sZW5ndGh9fQoKc3RhdGljIHN0cnVjdCBjb25maWdfaW9fYnVzIGNvbmZpZ19idXNlc19pbltOVU1fQlVTRVNfSU5dID0gewoJeyAiQXVkaW8gaW4iLCAwLCAwLCAwLCB7ez1pdC5hdWRpb19pbnB1dHMubGVuZ3RofX0gfQp9OwoKc3RhdGljIHN0cnVjdCBjb25maWdfaW9fYnVzIGNvbmZpZ19idXNlc19vdXRbTlVNX0JVU0VTX09VVF0gPSB7Cgl7ICJBdWRpbyBvdXQiLCAxLCAwLCAwLCB7ez1pdC5hdWRpb19vdXRwdXRzLmxlbmd0aH19IH0KfTsKCiNkZWZpbmUgTlVNX1BBUkFNRVRFUlMJCXt7PWl0LnBhcmFtZXRlcnMubGVuZ3RofX0KCnN0YXRpYyBzdHJ1Y3QgY29uZmlnX3BhcmFtZXRlciBjb25maWdfcGFyYW1ldGVyc1tOVU1fUEFSQU1FVEVSU10gPSB7Cgl7e35pdC5wYXJhbWV0ZXJzOnB9fQoJeyAie3s9cH19IiwgInt7PXB9fSIsICIiLCAwLCAwLCAwLCB7ez1pdC5wYXJhbWV0ZXJzX2luaXRpYWxWYWx1ZXNbcF19fSB9LHt7fn19Cn07CgovLyBJbnRlcm5hbCBBUEkKCiNpbmNsdWRlICJ7ez1pdC5uYW1lfX0uaCIKCiNkZWZpbmUgUF9UWVBFCQkJCXt7PWl0Lm5hbWV9fQojZGVmaW5lIFBfSU5JVAkJCQl7ez1pdC5uYW1lfX1faW5pdAojZGVmaW5lIFBfU0VUX1NBTVBMRV9SQVRFCQl7ez1pdC5uYW1lfX1fc2V0X3NhbXBsZV9yYXRlCnt7P2l0Lm1lbV9zZXRzLmxlbmd0aCA+IDB9fQojZGVmaW5lIFBfTUVNX1JFUQkJCXt7PWl0Lm5hbWV9fV9tZW1fcmVxCiNkZWZpbmUgUF9NRU1fU0VUCQkJe3s9aXQubmFtZX19X21lbV9zZXQKe3s/fX0KI2RlZmluZSBQX1JFU0VUCQkJCXt7PWl0Lm5hbWV9fV9yZXNldAojZGVmaW5lIFBfUFJPQ0VTUwkJCXt7PWl0Lm5hbWV9fV9wcm9jZXNzCiNkZWZpbmUgUF9TRVRfUEFSQU1FVEVSCQkJe3s9aXQubmFtZX19X3NldF9wYXJhbWV0ZXIKI2RlZmluZSBQX0dFVF9QQVJBTUVURVIJCQl7ez1pdC5uYW1lfX1fZ2V0X3BhcmFtZXRlcgoKI2VuZGlmCg==","base64")),
 			},
 			"vst3": {
@@ -3292,16 +3418,18 @@ if (typeof module !== 'undefined' && require.main === module) {
 		}	
 	};
 	const bs = require("./blocks").BlockTypes;
-	const ts = require("./types");
-	const us = require("./uprates");
-	const ut = require("./util");
+	const TYPES = require("./types");
+	const RATES = require("./uprates");
 
 	
 	function prependTabs (s, tabLevel) {
 		let tabs = '';
 		for (let i = 0; i < tabLevel; i++)
 			tabs += '\t';
-		return s.toString().trim().split('\n').map(x => tabs + x).join('\n');
+		const trimmed = s.toString().trim();
+		if (trimmed.length == 0)
+			return '';
+		return trimmed.split('\n').map(x => tabs + x).join('\n');
 	};
 
 	function LazyString (...init) {
@@ -3359,6 +3487,8 @@ if (typeof module !== 'undefined' && require.main === module) {
 			keys.type_int = '';
 			keys.type_float = '';
 			keys.type_bool = '';
+			keys.type_true = 'true';
+			keys.type_false = 'false';
 			keys.float_f_postfix = false;
 			break;
 		case "js":
@@ -3370,20 +3500,23 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 		const funcs = {};
 		funcs["getArrayIndexer"] = (i) => new LazyString(keys.array_indexer_l, i, keys.array_indexer_r);
+		funcs["getMemoryArrayIndexer"] = (i) => target_language == "MATLAB"
+			? new LazyString('(', i, ' + 1)')
+			: funcs.getArrayIndexer(i);
 		funcs["getFloat"] = keys.float_f_postfix
 			? (n) =>  {
-				n = n + "";
+				n = Object.is(Number(n), -0) ? '-0' : n + "";
 				return n + ((n.includes('.') || n.toLowerCase().includes('e')) ? 'f' : '.0f')
 			}
-			: (n) => n + "";
+			: (n) => Object.is(Number(n), -0) ? '-0.0' : n + "";
 		funcs["getInt"] = (n) => n;
 		funcs["getBool"] = (n) => n ? keys.type_true : keys.type_false;
 		funcs["getConstant"] = (n, datatype) => {
-			if (ts.DataTypeFloat32 == datatype)
+			if (TYPES.Float32 == datatype)
 				return funcs.getFloat(n);
-			if (ts.DataTypeInt32 == datatype)
+			if (TYPES.Int32 == datatype)
 				return funcs.getInt(n);
-			if (ts.DataTypeBool == datatype) {
+			if (TYPES.Bool == datatype) {
 				return funcs.getBool(n);
 			}
 			throw new Error("getConstant. Type error");
@@ -3392,11 +3525,11 @@ if (typeof module !== 'undefined' && require.main === module) {
 		funcs["getConstKey"] = () => keys.const;
 		funcs["getStaticKey"] = () => keys.static;
 		funcs["getTypeDecl"] = (t) => {
-			if (ts.DataTypeFloat32 == t)
+			if (TYPES.Float32 == t)
 				return keys.type_float;
-			if (ts.DataTypeInt32 ==  t)
+			if (TYPES.Int32 ==  t)
 				return keys.type_int;
-			if (ts.DataTypeBool == t)
+			if (TYPES.Bool == t)
 				return keys.type_bool;
 			throw new Error("getTypeDecl. Type error");
 		};
@@ -3405,7 +3538,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 		funcs.Identifiers = function () {
 			this.ids = [];
 			const nuostr = Array.from(funcs.getReservedKeywords());
-			nuostr.push('i', 'instance', 'n_samples', 'sample_rate', 'firstRun', 'x', 'y');
+			nuostr.push('i', 'instance', 'n_samples', 'sample_rate', 'firstRun');
 			nuostr.forEach(k => {
 				this.ids.push( {
 					raw: k,
@@ -3453,24 +3586,50 @@ if (typeof module !== 'undefined' && require.main === module) {
 			};
 		};
 		funcs.MemoryDeclaration = function (type, id, size) {
-			this.s = new LazyString();
-			this.s.add(funcs.getTypeDecl(type), ' ', id, '[', size, '];');
+			this.type = type;
+			this.id = id;
+			this.size = size;
+			this.memory_id = id;
 			this.toString = function () {
-				return this.s.toString();
+				const s = new LazyString();
+				if (target_language == "MATLAB")
+					s.add(this.id, ' = zeros(1, ', this.size, ');');
+				else
+					s.add(funcs.getTypeDecl(this.type), ' ', this.id, '[', this.size, '];');
+				return s.toString();
 			};
 		};
 		funcs.MemoryInit = function (id, size, value) {
+			this.memory_id = id && id.__memory_id ? id.__memory_id : undefined;
 			this.s = new LazyString();
-			this.s.add("for (int i = 0; i < ", size, "; i++) { \n");
-			this.s.add('\t', id, keys.array_indexer_l, 'i', keys.array_indexer_r, ' = ', value, ';\n');
-			this.s.add('}');
+			if (target_language == "MATLAB") {
+				this.s.add(id, '(:) = ', value, ';');
+			}
+			else {
+				this.s.add("for (int i = 0; i < ", size, "; i++) { \n");
+				this.s.add('\t', id, keys.array_indexer_l, 'i', keys.array_indexer_r, ' = ', value, ';\n');
+				this.s.add('}');
+			}
 
 			this.toString = function () {
 				return this.s.toString();
 			}
 		};
 		funcs.Declaration = function (isStatic, isConst, type, isPointer, id, lonely) {
+			this.kind = "declaration";
+			this.id = id;
+			this.lonely = lonely;
 			this.s = new LazyString();
+			if (target_language == "MATLAB") {
+				if (lonely)
+					this.s.add(id, ' = 0;');
+				else
+					this.s.add(id);
+				this.toString = function () {
+					return this.s.toString();
+				};
+				return;
+			}
 			if (isStatic)
 				this.s.add(funcs.getStaticKey(), ' ');
 			if (isConst)
@@ -3487,6 +3646,11 @@ if (typeof module !== 'undefined' && require.main === module) {
 			};
 		};
 		funcs.Assignment = function (l, r, declaration) {
+			this.kind = "assignment";
+			this.l = l;
+			this.r = r;
+			this.declaration = declaration;
+
 			if (declaration) {
 				this.s = declaration.s;
 				this.s.add(' = ', r, ';');
@@ -3500,68 +3664,68 @@ if (typeof module !== 'undefined' && require.main === module) {
 				return this.s.toString();
 			};
 		};
-		funcs.ParWrapper = function (s, parLevelOp, parLevelB) {
-			this.s = new LazyString();
-			if (parLevelB <= parLevelOp)
-				this.s.add('(', s, ')');
-			else
-				this.s.add(s);
-			this.toString = function () {
-				return this.s.toString();
-			};
+		// Parentheses preserve the expression tree; formatting never rewrites it.
+		funcs.ParWrapper = function (s) {
+			this.toString = () => '(' + s.toString() + ')';
 		};
 		funcs.Statements = function () {
-			this.s = new LazyString();
+			this.items = [];
 			this.add = function (...x) {
-				this.s.add.apply(this.s, x);
-				this.s.add('\n');
+				for (let k of x) {
+					if (k == undefined)
+						throw new Error(k);
+					this.items.push(k);
+				}
 				return this;
 			};
 			this.toString = function (tabLevel = 0) {
-				return prependTabs(this.s, tabLevel);
+				const r = this.items
+					.map(k => typeof k.toString == "function" ? k.toString() : (k + ""))
+					.filter(k => k.trim().length > 0)
+					.join('\n');
+				return prependTabs(r, tabLevel);
 			};
 		};
 		funcs.IfBlock = function () {
+			this.kind = "if";
 			this.condition = new LazyString();
-			this.start = new LazyString('if ( ', this.condition, ' ) { \n');
+			if (target_language == "MATLAB")
+				this.start = new LazyString('if ', this.condition, '\n');
+			else
+				this.start = new LazyString('if ( ', this.condition, ' ) { \n');
 			this.body = new funcs.Statements();
-			this.end = new LazyString('\n} \n');
+			if (target_language == "MATLAB")
+				this.end = new LazyString('\nend\n');
+			else
+				this.end = new LazyString('\n} \n');
 
 			this.toString = function (tabLevel = 0) {
 				const r = this.start.toString() + this.body.toString(1) + this.end.toString();
 				return prependTabs(r, tabLevel);
 			};
 		};
-		funcs.ControlCoeffsGroup = function (control_dependencies) {
-			this.control_dependencies = control_dependencies;
-			this.equals = (s) => Set.checkEquality(this.control_dependencies, s);
-			
-			this.s = new funcs.IfBlock();
-			this.s.condition.add(Array.from(control_dependencies).map(x => funcs.getObjectPrefix() + x + '_CHANGED').join(' | '));
-
-			this.add = function (...x) {
-				this.s.body.add.apply(this.s.body, x);
-			};
+		funcs.IfElseBlock = function () {
+			this.kind = "ifelse";
+			this.condition = new LazyString();
+			if (target_language == "MATLAB") {
+				this.start = new LazyString('if ', this.condition, '\n');
+				this.mid = new LazyString('\nelse\n');
+				this.end = new LazyString('\nend\n');
+			}
+			else {
+				this.start = new LazyString('if ( ', this.condition, ' ) { \n');
+				this.mid = new LazyString('\n} else { \n');
+				this.end = new LazyString('\n} \n');
+			}
+			this.then_body = new funcs.Statements();
+			this.else_body = new funcs.Statements();
 			this.toString = function (tabLevel = 0) {
-				return this.s.toString(tabLevel);
-			};
-		};
-		funcs.ControlCoeffs = function () {
-			this.groups = [];
-			this.getOrAddGroup = function (control_dependencies) {
-				var g = this.groups.find(g => g.equals(control_dependencies));
-				if (g == undefined) {
-					g = new funcs.ControlCoeffsGroup(control_dependencies);
-					this.groups.push(g);
-				}
-				return g;
-			};
-			this.add = function (s, control_dependencies) {
-				const g = this.getOrAddGroup(control_dependencies);
-				g.add(s);
-			};
-			this.toString = function (tabLevel = 0) {
-				return this.groups.map(g => g.toString(tabLevel)).join('\n');
+				const r = this.start.toString() +
+					this.then_body.toString(1) +
+					this.mid.toString() +
+					this.else_body.toString(1) +
+					this.end.toString();
+				return prependTabs(r, tabLevel);
 			};
 		};
 
@@ -3573,6 +3737,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 		const t = options.target_language;
 		const funcs = get_funcs(t);
+		const initial_values = options.initial_values || {};
 
 		const program = {
 
@@ -3587,7 +3752,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 			parameters_initialValues: {},
 
 			// Instance properties // Declarations
-			parameter_states: new funcs.Statements(), // p, p_z1, p_CHANGED
+			parameter_states: new funcs.Statements(),
 			memory_declarations: new funcs.Statements(),
 			states: new funcs.Statements(),
 			coefficients: new funcs.Statements(),
@@ -3602,9 +3767,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 			reset: new funcs.Statements(),
 			constants: new funcs.Statements(),
 			fs_update: new funcs.Statements(),
-			control_coeffs_update: new funcs.ControlCoeffs(),
-			update_coeffs_ctrl: new funcs.Statements(),
-			update_coeffs_audio: new funcs.Statements(),
+			control_coeffs_update: new funcs.Statements(),
 			audio_update: new funcs.Statements(),
 			memory_updates: new funcs.Statements(),
 
@@ -3630,57 +3793,48 @@ if (typeof module !== 'undefined' && require.main === module) {
 			if (b.ref.coeffs)
 				program.identifiers.add(b.ref.coeffs);
 		});
-		bdef.i_ports.filter(p => p.updaterate() == us.UpdateRateControl).forEach(p => {
+		bdef.i_ports.filter(p => p.updaterate() == RATES.Control).forEach(p => {
 			const id = program.identifiers.add(p.id);
 			const code = funcs.getObjectPrefix() + id;
 			program.parameters.push(id);
 			p.code = code;
-			program.parameters_initialValues[id] = options.initial_values[p.id]
-				? funcs.getFloat(options.initial_values[p.id])
+			program.parameters_initialValues[id] = Object.prototype.hasOwnProperty.call(initial_values, p.id)
+				? funcs.getFloat(initial_values[p.id])
 				: funcs.getFloat(0.5);
 		});
 		program.parameters.forEach(p => {
-			const id = program.identifiers.add(p + '_z1');
-			const d = new funcs.Declaration(false, false, ts.DataTypeFloat32, false, id, true);
-			program.parameter_states.add(d);
+			if (t != "MATLAB")
+				program.identifiers.add('p_' + p);
 		});
 		program.parameters.forEach(p => {
-			const id = program.identifiers.add(p + '_CHANGED');
-			const d = new funcs.Declaration(false, false, ts.DataTypeBool, false, id, true);
-			program.parameter_states.add(d);
-		});	
-		program.parameters.forEach(p => {
-			program.identifiers.add('p_' + p);
-		});
-		program.parameters.forEach(p => {
-			const id = p;
-			const d = new funcs.Declaration(false, false, ts.DataTypeFloat32, false, id, true);
-			program.parameter_states.add(d);
+			if (t != "MATLAB") {
+				const id = p;
+				const d = new funcs.Declaration(false, false, TYPES.Float32, false, id, true);
+				program.parameter_states.add(d);
+			}
 		});
 		program.name = program.identifiers.add(bdef.id);
 		program.identifiers.add('_' + bdef.id);
-		bdef.i_ports.filter(p => p.updaterate() == us.UpdateRateAudio).forEach(p => {
-			const id = program.identifiers.add(p.id);
+		bdef.i_ports.filter(p => p.updaterate() == RATES.Audio).forEach(p => {
+			const id = program.identifiers.add(p.id + '0');
 			const code = new LazyString(id, funcs.getArrayIndexer('i'));
 			program.audio_inputs.push(id);
 			p.code = code;
 		});
-		bdef.i_ports.filter(p => p.updaterate() == us.UpdateRateFs).forEach(p => {
+		bdef.i_ports.filter(p => p.updaterate() == RATES.Fs).forEach(p => {
 			const id = program.identifiers.add(p.id);
 			const code = funcs.getObjectPrefix() + id;
 			p.code = code;
 		});
 		bdef.o_ports.forEach(p => {
-			const id = program.identifiers.add(p.id);
+			const id = program.identifiers.add(p.id + '0');
 			const code = new LazyString(id, funcs.getArrayIndexer('i'));
 			program.audio_outputs.push(id);
 			p.code = code;
 		});
-		
 
-		schedule.forEach(b => {
-			convert_block(b);
-		});
+
+		schedule.forEach(convert_block);
 
 		bdef.o_ports.forEach(p => {
 			const c = bdef.connections.find(c => c.out == p);
@@ -3688,7 +3842,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 		});
 
 
-		doT.templateSettings.strip = false
+		doT.templateSettings.strip = false;
 	
 		if (t == 'C') {
 			return [
@@ -3730,58 +3884,71 @@ if (typeof module !== 'undefined' && require.main === module) {
 			];
 		}
 
-		throw new Error("Not recognized target language");
-
-		function dispatch (b, ur, control_dependencies) {
-			const outblocks = bdef.connections.filter(c => c.in.block == b).map(c => c.out.block);
-			
-			var locality = undefined; // 0 = constant, 1 = object, 2 = local
-			var whereDec = undefined;
-			var whereAss = undefined;
-
-			const outblockurs = outblocks.map(bb => us.max.apply(null, bb.i_ports.concat(bb.o_ports)));
-			const maxour = us.max.apply(null, outblockurs);
-
-			locality = maxour.level <= ur.level ? 2 : 1;
-
-			if (ur == us.UpdateRateConstant) {
-				locality = 0;
-				whereDec = program.constants;
-				whereAss = program.init;
-			}
-			if (ur == us.UpdateRateFs) {
-				if (locality == 2)
-					whereDec = program.fs_update;
-				else
-					whereDec = program.coefficients;
-				whereAss = program.fs_update;
-			}
-			if (ur == us.UpdateRateControl) {
-				const g = program.control_coeffs_update.getOrAddGroup(control_dependencies);
-				if (locality == 2) {
-					locality = outblocks.every(bb => Set.checkEquality(control_dependencies, bb.control_dependencies)) ? 2 : 1;
-				}
-				if (locality == 2) {
-					whereDec = g;
-				}
-				else {
-					whereDec = program.coefficients;
-				}
-				whereAss = g;
-			}
-			if (ur == us.UpdateRateAudio) {
-				locality = 2;
-				whereDec = program.audio_update;
-				whereAss = program.audio_update;
-			}
-
-			return {
-				locality: locality,
-				whereDec: whereDec,
-				whereAss: whereAss
+		if (t == 'MATLAB') {
+			const cleanMatlab = (s) => {
+				let out = s.replace(/[ \t]+\n/g, '\n');
+				out = out.replace(/\n{3,}/g, '\n\n');
+				return out.trimEnd() + '\n';
 			};
+			return [
+				{
+					path: '.',
+					name: bdef.id + ".m",
+					str: cleanMatlab(doT.template(templates["matlab"])(program))
+				},
+			];
 		}
 
+		throw new Error("Unrecognized target language: " + t);
+
+		function dispatch (b, rate) {
+			// Values needed by another phase live in the instance. Avoid guessing
+			// their lifetime from consumers or regrouping the dependency schedule.
+			const locality = rate == RATES.Audio ? 2 : rate == RATES.Constant ? 0 : 1;
+			const whereAss = rate == RATES.Audio ? program.audio_update
+				: rate == RATES.Control ? program.control_coeffs_update
+				: rate == RATES.Reset ? program.reset
+				: rate == RATES.Fs ? program.fs_update : program.init;
+			const whereDec = locality == 2 ? program.audio_update
+				: locality == 1 ? program.coefficients : program.constants;
+			return { locality, whereDec, whereAss: guarded(whereAss, b) };
+		}
+
+
+		function guarded(destination, block) {
+			if (!block.guard_ports.length)
+				return destination;
+			return { add(...statements) {
+				let body = destination;
+				for (const guard of block.guard_ports) {
+					const branch = new funcs.IfBlock();
+					const source = bdef.connections.find(c => c.out == guard).in;
+					branch.condition.add(guard.negated ? (t == 'MATLAB' ? '~(' : '!(') : '(', source.code, ')');
+					body.add(branch);
+					body = branch.body;
+				}
+				body.add(...statements);
+			} };
+		}
+
+		function value_name(block, type, rate, preferred) {
+			const where = dispatch(block, rate);
+			const id = program.identifiers.add(preferred || block.id || 'v');
+			where.whereDec.add(new funcs.Declaration(false, false, type, false, id, true));
+			return { name: where.locality == 1 ? funcs.getObjectPrefix() + id : id, where };
+		}
+
+		function emit_value(block, expression) {
+			const port = block.o_ports[0];
+			const rate = port.updaterate();
+			if (rate == RATES.Constant) {
+				port.code = expression;
+				return;
+			}
+			const value = value_name(block, port.datatype(), rate);
+			value.where.whereAss.add(new funcs.Assignment(value.name, expression, null));
+			port.code = new LazyString(value.name);
+		}
 
 		function convert_block (b) {
 			
@@ -3792,63 +3959,38 @@ if (typeof module !== 'undefined' && require.main === module) {
 			const op0 = b.o_ports[0];
 
 			if (bs.VarBlock.isPrototypeOf(b)) {
-				
-				const ur = b.o_ports[0].updaterate();
-				const r = dispatch(b, ur, b.control_dependencies);
-				const locality = r.locality;
-				const whereDec = r.whereDec;
-				const whereAss = r.whereAss;
-
-				const id = program.identifiers.add(b.id);
-
-				if (locality == 0) {
-					op0.code.add(id);
-					const d = new funcs.Declaration(false, false, b.datatype(), false, id, true);
-					const a = new funcs.Assignment(id, input_codes[0], null);
-					whereDec.add(d);
-					whereAss.add(a);
-				}
-				else if (locality == 1) {
-					const refid = funcs.getObjectPrefix() + id;
-					op0.code.add(refid);
-					const d = new funcs.Declaration(false, false, b.datatype(), false, id, true);
-					const a = new funcs.Assignment(refid, input_codes[0], null);
-					whereDec.add(d);
-					whereAss.add(a);
-				}
-				else if (locality == 2) {
-					op0.code.add(id);
-					const d = new funcs.Declaration(false, true, b.datatype(), false, id, false);
-					const a = new funcs.Assignment(null, input_codes[0], d);
-					whereAss.add(a);	
-				}
+				emit_value(b, input_codes[0]);
 				return;
 			}
 			if (bs.MemoryBlock.isPrototypeOf(b)) {
+				if (!b.static_size)
+					throw new Error("Memory size must be constant: " + b.id);
 				const id = program.identifiers.add(b.id);
 				const d = new funcs.MemoryDeclaration(b.datatype(), id, input_codes[0]);
-				b.code.add(funcs.getObjectPrefix(), id);
+				b.code.s = [funcs.getObjectPrefix(), id];
 
 				program.memory_declarations.add(d);
 
 				const i = new funcs.MemoryInit(b.code, input_codes[0], input_codes[1]);
-				program.init.add(i);
 				program.reset.add(i);
 
 				return;
 			}
 			if (bs.MemoryReaderBlock.isPrototypeOf(b)) {
-				const c = op0.code;
-				c.add(b.memoryblock.code);
-				c.add(funcs.getArrayIndexer(input_codes[0]));
+				// Read once, before any writes. Users of this value cannot observe
+				// state committed later in the sample.
+				emit_value(b, new LazyString(b.memoryblock.code, funcs.getMemoryArrayIndexer(input_codes[0])));
 				return;
 			}
 			if (bs.MemoryWriterBlock.isPrototypeOf(b)) {
-				const c = new LazyString();
-				c.add(b.memoryblock.code);
-				c.add(funcs.getArrayIndexer(input_codes[0]));
-				const a = new funcs.Assignment(c, input_codes[1], null);
-				program.memory_updates.add(a); // TODO: Might not be always the case
+				// Snapshot the destination index and next value before committing any
+				// memory writes, including writes to another element of this memory.
+				const index = value_name(b, TYPES.Int32, RATES.Audio, 'index');
+				const next = value_name(b, b.memoryblock.datatype(), RATES.Audio, 'next');
+				index.where.whereAss.add(new funcs.Assignment(index.name, input_codes[0], null));
+				next.where.whereAss.add(new funcs.Assignment(next.name, input_codes[1], null));
+				const destination = new LazyString(b.memoryblock.code, funcs.getMemoryArrayIndexer(index.name));
+				guarded(program.memory_updates, b).add(new funcs.Assignment(destination, new LazyString(next.name), null));
 				return;
 			}
 			if (bs.ConstantBlock.isPrototypeOf(b)) {
@@ -3856,20 +3998,24 @@ if (typeof module !== 'undefined' && require.main === module) {
 				return;
 			}
 			if (bs.MaxBlock.isPrototypeOf(b)) {
-				op0.code.add("__max__(");
-				op0.code.add(input_codes[0]);
-				for (let i = 1; i < input_codes.length; i++)
-					op0.code.add( ', ', input_codes[1]);
-				op0.code.add(')');
+				let expression = input_codes[0] || new LazyString('0');
+				for (const input of input_codes.slice(1))
+					expression = t == 'MATLAB'
+						? new LazyString('max(', expression, ', ', input, ')')
+						: new LazyString('(', expression, ' > ', input, ' ? ', expression, ' : ', input, ')');
+				emit_value(b, expression);
 				return;
 			}
 			if (bs.CallBlock.isPrototypeOf(b) && b.type == "cdef") {
+				if (t == "MATLAB")
+					throw new Error("MATLAB target does not support include/cdef blocks");
 				const cdef = b.ref;
 
 				// Include
 				program.includes.add(cdef.header);
 
-				var state, coeffs;
+				let state;
+				let coeffs;
 
 				// Sub components declaration
 				if (cdef.state) {
@@ -3885,247 +4031,73 @@ if (typeof module !== 'undefined' && require.main === module) {
 					coeffs = '&' + funcs.getObjectPrefix() + id;
 				}
 
-				// functions dispatching
-	
-				function get_decls_assignments (locality, f) {
-
-					const prefix = locality == 1 ? funcs.getObjectPrefix() : "";
-
-					const inputs = [];
-					const outputs = [];
-					const decls = [];
-
-					for (let i = 0; i < f.f_inputs.length; i++) {
-						const input = f.f_inputs[i];
-						if (input == 'state') {
-							inputs.push(state);
+				// Setup is unconditional. Runtime callbacks execute together, in the
+				// scheduled position and on the same clock as the module's process call.
+				function emit_call(f, declarations, statements, persistent) {
+					if (!f) return;
+					function output(index) {
+						const port = b.o_ports[index];
+						if (!port.code.toString()) {
+							const id = program.identifiers.add('result');
+							declarations.add(new funcs.Declaration(false, false, port.datatype(), false, id, true));
+							port.code.add(persistent ? funcs.getObjectPrefix() + id : id);
 						}
-						if (input == "coeffs") {
-							inputs.push(coeffs);
-						}
-						if (input[0] == 'i') {
-							inputs.push(input_codes[input[1]]);
-						}
-						if (input[0] == 'o') {
-							const type = b.o_ports[input[1]].datatype();
-							const id = program.identifiers.add('_x_');
-							const pid = prefix + id;
-							const decl = new funcs.Declaration(false, false, type, false, id, true);
-							const ref = '&' + pid;
-							decls.push(decl);
-							inputs.push(ref);
-							b.o_ports[input[1]].code.add(pid);
-						}
+						return port.code;
 					}
-					var alone = false;
-					if (decls.length > 0) {
-						alone = true;
-					}
-					if (f.f_outputs.length == 0) {
-						alone = true;
-					}
-					else {
-						const output = f.f_outputs[0];
-						if (true) { //(decls.length > 0) {
-							const type = b.o_ports[output[1]].datatype();
-							const id = program.identifiers.add('_x_');
-							const pid = prefix + id;
-							const decl = new funcs.Declaration(false, false, type, false, id, true);
-							decls.push(decl);
-							b.o_ports[output[1]].code.add(pid);
-							outputs.push(pid);
-						}
-						else {
-
-						}
-					}
-
-					alone = true; // tmp
-					const stmt = new LazyString();
-					if (alone) {
-						if (outputs.length > 0) {
-							stmt.add(outputs[0], ' = ');
-						}
-						stmt.add(f.f_name, '(');
-						for (let i = 0; i < inputs.length; i++) {
-							stmt.add(inputs[i]);
-							if (i != inputs.length - 1)
-								stmt.add(', ');
-						}
-						stmt.add(');');
-					}
-					else {
-
-					}
-
-					return {
-						decls: decls,
-						assignments: [stmt]
-					};
+					const args = f.f_inputs.map(arg => {
+						if (arg == 'state') return state;
+						if (arg == 'coeffs') return coeffs;
+						if (/^i[0-9]+$/.test(arg)) return input_codes[Number(arg.slice(1))];
+						if (/^o[0-9]+$/.test(arg)) return new LazyString('&', output(Number(arg.slice(1))));
+						throw new Error('Unknown C function argument: ' + arg);
+					});
+					const statement = new LazyString();
+					if (f.f_outputs.length > 1)
+						throw new Error('A C function can return only one value: ' + f.f_name);
+					if (f.f_outputs.length)
+						statement.add(output(Number(f.f_outputs[0].slice(1))), ' = ');
+					statement.add(f.f_name, '(');
+					args.forEach((arg, i) => statement.add(i ? ', ' : '', arg));
+					statement.add(');');
+					statements.add(statement);
 				}
 
+				emit_call(cdef.funcs.init, program.coefficients, program.init, true);
+				emit_call(cdef.funcs.set_sample_rate, program.coefficients, program.fs_update, true);
+				emit_call(cdef.funcs.reset_coeffs, program.coefficients, program.reset, true);
+				emit_call(cdef.funcs.reset_state, program.coefficients, program.reset, true);
 
-				if (cdef.funcs.init) {
-					const f = cdef.funcs.init;
+				if (cdef.funcs.mem_req)
+					program.mem_reqs.push(cdef.funcs.mem_req.f_name + '(' + coeffs + ')');
+				if (cdef.funcs.mem_set)
+					program.mem_sets.push(cdef.funcs.mem_set.f_name + '(' + coeffs + ', ' + state + ', m)');
 
-					const locality = 1;
-					const whereDec = program.constants;
-					const whereAss = program.init;
-
-					const rr = get_decls_assignments(locality, f);
-					const decls = rr.decls;
-					const assignments = rr.assignments;
-				
-					decls.forEach(d => whereDec.add(d));
-					assignments.forEach(a => whereAss.add(a));
-				}
-
-				if (cdef.funcs.mem_req) {
-					const f = cdef.funcs.mem_req;
-
-					program.mem_reqs.push(
-						f.f_name + '(' + coeffs + ')'
-					);
-				}
-
-				if (cdef.funcs.mem_set) {
-					const f = cdef.funcs.mem_set;
-
-					program.mem_sets.push(
-						f.f_name + '(' + coeffs + ', ' + state + ', m)'
-					);
-				}
-
-				if (cdef.funcs.set_sample_rate) {
-					const f = cdef.funcs.set_sample_rate;
-
-					const locality = 1;
-					const whereDec = program.coefficients;
-					const whereAss = program.fs_update;
-
-					const rr = get_decls_assignments(locality, f);
-					const decls = rr.decls;
-					const assignments = rr.assignments;
-					decls.forEach(d => whereDec.add(d));
-					assignments.forEach(a => whereAss.add(a));
-				}
-
-				if (cdef.funcs.reset_coeffs) {
-					const f = cdef.funcs.reset_coeffs;
-
-					const locality = 1;
-					const whereDec = program.coefficients; // TODO: program.reset_coeffs and reset_state
-					const whereAss = program.reset;
-
-					const rr = get_decls_assignments(locality, f);
-					const decls = rr.decls;
-					const assignments = rr.assignments;
-					decls.forEach(d => whereDec.add(d));
-					assignments.forEach(a => whereAss.add(a));
-				}
-
-				if (cdef.funcs.reset_state) {
-					const f = cdef.funcs.reset_state;
-
-					const locality = 1;
-					const whereDec = program.coefficients; // TODO: program.reset_coeffs and reset_state
-					const whereAss = program.reset;
-
-					const rr = get_decls_assignments(locality, f);
-					const decls = rr.decls;
-					const assignments = rr.assignments;
-					decls.forEach(d => whereDec.add(d));
-					assignments.forEach(a => whereAss.add(a));
-				}
-				
-				if (cdef.funcs.update_coeffs_ctrl) {
-					const f = cdef.funcs.update_coeffs_ctrl;
-
-					const i_ports = [];
-					for (let i = 0; i < f.f_inputs.length; i++) {
-						const input = f.f_inputs[i];
-						if (input[0] == 'i') {
-							i_ports.push(b.i_ports[input[1]]);
-						}
-					}
-					const ur = us.max.apply(null, i_ports.map(p => p.updaterate()));
-
-					const locality = 1;
-					const whereDec = program.coefficients;
-					const whereAss = ur == us.UpdateRateAudio ? program.update_coeffs_audio : program.update_coeffs_ctrl;
-
-					const rr = get_decls_assignments(locality, f);
-					const decls = rr.decls;
-					const assignments = rr.assignments;
-					decls.forEach(d => whereDec.add(d));
-					assignments.forEach(a => whereAss.add(a));
-				}
-
-				if (cdef.funcs.update_coeffs_audio) {
-					const f = cdef.funcs.update_coeffs_audio;
-
-					const locality = 1;
-					const whereDec = program.coefficients;
-					const whereAss = program.update_coeffs_audio;
-
-					const rr = get_decls_assignments(locality, f);
-					const decls = rr.decls;
-					const assignments = rr.assignments;
-					decls.forEach(d => whereDec.add(d));
-					assignments.forEach(a => whereAss.add(a));
-				}
-
-				cdef.funcs.setters.forEach(setter => {
-					const f = setter;
-					
-					const valueinputport = b.i_ports[f.f_inputs[1][1]];
-					const inb = bdef.connections.find(c => c.out == valueinputport).in.block;
-					const r = dispatch(b, valueinputport.updaterate(), inb.control_dependencies);
-					const locality = r.locality;
-					const whereDec = r.whereDec;
-					const whereAss = r.whereAss;
-
-					const rr = get_decls_assignments(locality, f);
-					const decls = rr.decls;
-					const assignments = rr.assignments;
-				
-					decls.forEach(d => whereDec.add(d));
-					assignments.forEach(a => whereAss.add(a));
-				});
-
-				if (cdef.funcs.process1) {
-					const f = cdef.funcs.process1;
-
-					// Simplification: outputs might be declared in different places
-					const ur = us.max.apply(null, b.i_ports.concat(b.o_ports).map(p => p.updaterate()));
-					const r = dispatch(b, ur, b.control_dependencies);
-					const locality = r.locality;
-					const whereDec = r.whereDec;
-					const whereAss = r.whereAss;
-
-					const rr = get_decls_assignments(locality, f);
-					const decls = rr.decls;
-					const assignments = rr.assignments;
-				
-					decls.forEach(d => whereDec.add(d));
-					assignments.forEach(a => whereAss.add(a));
-				}
-				else {
-					throw new Error("process1 is required");
-				}
+				if (!cdef.funcs.process1)
+					throw new Error('process1 is required');
+				const runtime = guarded(program.audio_update, b);
+				for (const f of [...cdef.funcs.setters, cdef.funcs.update_coeffs_ctrl,
+					cdef.funcs.update_coeffs_audio, cdef.funcs.process1])
+					emit_call(f, program.audio_update, runtime, false);
 
 				return;
 			}
 
-			// Regular expressions now
+			// Standard expressions now
 
-			var w0, w1;
+			let w0;
+			let w1;
+			let w2;
 			if (b.i_ports.length == 1) {
 				w0 = new funcs.ParWrapper(input_codes[0], input_blocks[0].parLevel, b.parLevel);
 			}
 			if (b.i_ports.length == 2) {
 				w0 = new funcs.ParWrapper(input_codes[0], input_blocks[0].parLevel, b.parLevel);
 				w1 = new funcs.ParWrapper(input_codes[1], input_blocks[1].parLevel, b.parLevel);
+			}
+			if (b.i_ports.length == 3) {
+				w0 = new funcs.ParWrapper(input_codes[0], input_blocks[0].parLevel, b.parLevel);
+				w1 = new funcs.ParWrapper(input_codes[1], input_blocks[1].parLevel, b.parLevel);
+				w2 = new funcs.ParWrapper(input_codes[2], input_blocks[2].parLevel, b.parLevel);
 			}
 
 			if (bs.LogicalAndBlock.isPrototypeOf(b)) {
@@ -4135,7 +4107,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 				op0.code.add(w0, ' || ', w1);
 			}
 			else if (bs.LogicalNotBlock.isPrototypeOf(b)) {
-				op0.code.add('!', w0);
+				op0.code.add(t == 'MATLAB' ? '~(' : '!(', w0, ')');
 			}
 			else if (bs.BitwiseOrBlock.isPrototypeOf(b)) {
 				op0.code.add(w0, ' | ', w1);
@@ -4153,7 +4125,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 				op0.code.add(w0, ' == ', w1);
 			}
 			else if (bs.InequalityBlock.isPrototypeOf(b)) {
-				op0.code.add(w0, ' != ', w1);
+				op0.code.add(w0, t == 'MATLAB' ? ' ~= ' : ' != ', w1);
 			}
 			else if (bs.LessBlock.isPrototypeOf(b)) {
 				op0.code.add(w0, ' < ', w1);
@@ -4183,34 +4155,67 @@ if (typeof module !== 'undefined' && require.main === module) {
 				op0.code.add(w0, ' * ', w1);
 			}
 			else if (bs.DivisionBlock.isPrototypeOf(b)) {
-				op0.code.add(w0, ' / ', w1);
+				if (t == 'MATLAB' && op0.datatype() == TYPES.Int32)
+					op0.code.add('int32(fix(double(', w0, ') / double(', w1, ')))');
+				else
+					op0.code.add(w0, ' / ', w1);
 			}
 			else if (bs.UminusBlock.isPrototypeOf(b)) {
 				op0.code.add('-', w0);
 			}
 			else if (bs.ModuloBlock.isPrototypeOf(b)) {
-				op0.code.add(w0, ' % ', w1);
+				if (t == "MATLAB")
+					op0.code.add('rem(', w0, ', ', w1, ')');
+				else
+					op0.code.add(w0, ' % ', w1);
 			}
 			else if (bs.CastF32Block.isPrototypeOf(b)) {
-				op0.code.add('(float)', w0);
+				if (t == "MATLAB")
+					op0.code.add('single(', w0, ')');
+				else
+					op0.code.add('(float)', w0);
 			}
 			else if (bs.CastI32Block.isPrototypeOf(b)) {
-				op0.code.add('(int)', w0);
+				if (t == "MATLAB")
+					op0.code.add('int32(fix(', w0, '))');
+				else
+					op0.code.add('(int)', w0);
 			}
 			else if (bs.CastBoolBlock.isPrototypeOf(b)) {
-				op0.code.add('(char)', w0);
+				if (t == "MATLAB")
+					op0.code.add('logical(', w0, ')');
+				else
+					op0.code.add('(', w0, ' != 0)');
 			}
-			
+			else if (bs.SelectBlock.isPrototypeOf(b)) {
+				if (t != 'MATLAB' && op0.updaterate() == RATES.Constant) {
+					op0.code.add('(', w0, ' ? ', w1, ' : ', w2, ')');
+					return;
+				}
+				const value = value_name(b, op0.datatype(), op0.updaterate());
+				const branch = new funcs.IfElseBlock();
+				branch.condition.add(input_codes[0]);
+				branch.then_body.add(new funcs.Assignment(value.name, input_codes[1], null));
+				branch.else_body.add(new funcs.Assignment(value.name, input_codes[2], null));
+				value.where.whereAss.add(branch);
+				op0.code = new LazyString(value.name);
+				return;
+			}
+
 			else {
-				throw new Error("Unexpected block type: " + b + b.ref.id + b.type);
+				const refId = b && b.ref ? b.ref.id : "N/A";
+				const btype = b && b.type ? b.type : "N/A";
+				throw new Error("Unexpected block type: " + b + " ref=" + refId + " type=" + btype);
 			}
+			emit_value(b, op0.code);
 		};
 	};
 
 	exports["convert"] = convert;
 }());
+
 }).call(this)}).call(this,require("buffer").Buffer)
-},{"./blocks":1,"./types":8,"./uprates":9,"./util":10,"buffer":16,"dot":12,"path":34}],5:[function(require,module,exports){
+},{"./blocks":2,"./types":10,"./uprates":11,"buffer":16,"dot":1,"path":18}],7:[function(require,module,exports){
 /*
 	Copyright (C) 2021, 2022, 2023 Orastron Srl
 
@@ -4228,14 +4233,13 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 (function() {
 
+	'use strict';
+
 	function parse_include (s) {
-		s = s.substr(8).replace(/[; \t]+$/, '');
-		var id = s.match(/[_a-zA-Z0-9]*/);
-		if (id)
-			id = id[0];
-		if (!id || s.length != id.length)
-			throw new Error("Bad include line");
-		return id;
+		const match = s.match(/^include[ \t]+([_a-zA-Z0-9]+)[; \t]*$/);
+		if (!match)
+			throw new Error("Bad include line: " + s);
+		return match[1];
 	}
 
 	function detach_includes (str) {
@@ -4251,7 +4255,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 				continue;
 			if (l[0] == '#')
 				continue;
-			if (l.startsWith('include ')) {
+			if (/^include[ \t]/.test(l)) {
 				includes.push(parse_include(l));
 				continue;
 			}
@@ -4278,13 +4282,15 @@ if (typeof module !== 'undefined' && require.main === module) {
 			program += '\n' + r[0];
 
 			r[1].forEach(include => {
+				if (typeof filereader != "function")
+					throw new Error("Cannot resolve include without a file reader: " + include);
 				var filename;
 				var s;
 				filename = include + '.crm';
 				if (included_files.includes(filename))
 					return;
 				s = filereader(filename);
-				if (s) {
+				if (s != null) {
 					included_files.push(filename);
 					toparse.push(s);
 					return;
@@ -4293,7 +4299,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 				if (included_files.includes(filename))
 					return;
 				s = filereader(filename);
-				if (s) {
+				if (s != null) {
 					included_files.push(filename);
 					const j = JSON.parse(s);
 					if (j.wrapper)
@@ -4301,7 +4307,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 					jsons.push(j);
 					return;
 				}
-				throw new Error("Invalid/Not found included file");
+				throw new Error("Included file not found: " + include + ".crm or " + include + ".json");
 			});
 		}
 
@@ -4310,7 +4316,8 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 	exports["preprocess"] = preprocess;
 }());
-},{}],6:[function(require,module,exports){
+
+},{}],8:[function(require,module,exports){
 /*
 	Copyright (C) 2021, 2022, 2023 Orastron Srl
 
@@ -4327,6 +4334,8 @@ if (typeof module !== 'undefined' && require.main === module) {
 */
 
 (function() {
+
+	'use strict';
 
 	const bs = require("./blocks").BlockTypes;
 	
@@ -4363,7 +4372,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 				mwriters.forEach(mw => roots.push(mw));
 			}
 
-			b.i_ports.forEach(p => {
+			b.inputs().forEach(p => {
 				const bb = bdef.connections.find(c => c.out == p).in.block;
 				schedule_block(bb, nstack);
 			});
@@ -4377,7 +4386,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 	exports["schedule"] = schedule;
 }());
 
-},{"./blocks":1}],7:[function(require,module,exports){
+},{"./blocks":2}],9:[function(require,module,exports){
 /*
 	Copyright (C) 2021, 2022, 2023 Orastron Srl
 
@@ -4399,7 +4408,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 (function() {
 
-	const util = require("util");
+	'use strict';
 
 	function ScopeTable (father) {
 		this.elements = [];
@@ -4508,14 +4517,14 @@ if (typeof module !== 'undefined' && require.main === module) {
 			}
 
 			if (reserved_variables.includes(o.id))
-				err("Cannot use reserved_variables in assignments");
+				err("Cannot use reserved variables in assignments");
 			
 			if (o.name == 'VARIABLE') {
 				let elements = scope.findLocally(o.id);
 				if (elements.filter(e => e.name == 'BLOCK_DEFINITION').length > 0)
 					err("ID already used for a BLOCK_DEFINITION");
 				if (elements.filter(e => e.name == 'MEMORY_DECLARATION').length > 0)
-					err("use [] operator to access memory");
+					err("Use [] operator to access memory");
 				elements = elements.filter(e => e.name == 'VARIABLE');
 				if (elements.length == 0) {
 					o.assigned = true;
@@ -4537,14 +4546,17 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 				function check_property_left (p) {
 					if (p.expr.name == 'VARIABLE') {
+						if (reserved_variables.includes(p.expr.id))
+							err("Cannot set properties of reserved variables");
 						let elements = scope.findLocally(p.expr.id);
-						if (elements.length != 1)
+						if (elements.length == 0)
 							err("Property of undefined");
-						if (!['VARIABLE', 'MEMORY_DECLARATION'].includes(elements[0].name))
+						const e = elements[0];
+						if (!['VARIABLE', 'MEMORY_DECLARATION'].includes(e.name))
 							err("You can assign properties only to VARIABLEs and MEMORY_DECLARATIONs");
-						if (elements[0].is_input)
+						if (e.is_input)
 							err("Cannot set properties of inputs");
-						elements[0][p.property_id] = p;
+						e[p.property_id] = p;
 					}
 					else if (p.expr.name == 'PROPERTY') {
 						check_property_left(p.expr);
@@ -4571,7 +4583,7 @@ if (typeof module !== 'undefined' && require.main === module) {
 			if (assignment.expr.name == 'ARRAY_CONST') {
 				const o = assignment.outputs[0];
 				if (o.name != 'PROPERTY' || o.property_id != 'init')
-					err("Array can be assigned to init propety only");
+					err("Array can be assigned to init property only");
 			}
 			analyze_expr(assignment.expr, scope, assignment.outputs.length, true);
 		}
@@ -4645,14 +4657,14 @@ if (typeof module !== 'undefined' && require.main === module) {
 				break;
 			}
 			if (!found)
-				err("ID not found" + expr.id +  vs.join(',,'));
+				err("ID not found: " + expr.id);
 			break;
 		}
 		case "PROPERTY":
 		{
 			if (expr.expr.name == 'VARIABLE') {
 				if (reserved_variables.includes(expr.expr.id))
-					err("Cannot access properties of reserved_variables");
+					err("Cannot access properties of reserved variables");
 				analyze_expr({ name: "VARIABLE", id: expr.expr.id }, scope, 1, false);
 			}
 			else if (expr.expr.name == 'MEMORY_ELEMENT') {
@@ -4687,11 +4699,13 @@ if (typeof module !== 'undefined' && require.main === module) {
 		}
 		case "CALL_EXPR":
 		{
-			let bdefs = scope.findGlobally(expr.id);
+			const bdefs = scope.findGlobally(expr.id);
 			let found = false;
-			for (let b of bdefs) {
+			let foundWithSameId = false;
+			for (const b of bdefs) {
 				if (b.name != "BLOCK_DEFINITION")
 					err("Calling something that is not callable");
+				foundWithSameId = true;
 				if (b.inputs.length != expr.args.length)
 					continue;
 				expr_outputsN = b.outputs.length;
@@ -4701,6 +4715,8 @@ if (typeof module !== 'undefined' && require.main === module) {
 			}
 			if (found)
 				break;
+			if (foundWithSameId)
+				err("No matching block definition for call");
 
 			// Might be a C block call
 			expr.outputs_N = outputsN;
@@ -4732,233 +4748,101 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 	exports["validateAST"] = validateAST;
 }());
-},{"util":38}],8:[function(require,module,exports){
-/*
-	Copyright (C) 2021, 2022, 2023 Orastron Srl
 
-	Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is 
-	hereby granted, provided that the above copyright notice and this permission notice appear in all copies.
-
-	THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE 
-	INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE 
-	FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM 
-	LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, 
-	ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-
-	Author: Paolo Marrone
-*/
-
-(function() {
-
-	const DataTypeGeneric = {};
-	DataTypeGeneric.toString = () => "GenericType";
-	
-	const DataTypeFloat32 = Object.create(DataTypeGeneric);
-	DataTypeFloat32.toString = () => "float32";
-	
-	const DataTypeInt32 = Object.create(DataTypeGeneric);
-	DataTypeInt32.toString = () => "int32";
-	
-	const DataTypeBool = Object.create(DataTypeGeneric);
-	DataTypeBool.toString = () => "bool";
-
-	exports["DataTypeGeneric"] = DataTypeGeneric;
-	exports["DataTypeFloat32"] = DataTypeFloat32;
-	exports["DataTypeInt32"] = DataTypeInt32;
-	exports["DataTypeBool"] = DataTypeBool;
-
-}());
-},{}],9:[function(require,module,exports){
-/*
-	Copyright (C) 2021, 2022, 2023 Orastron Srl
-
-	Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is 
-	hereby granted, provided that the above copyright notice and this permission notice appear in all copies.
-
-	THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE 
-	INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE 
-	FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM 
-	LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, 
-	ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-
-	Author: Paolo Marrone
-*/
-
-(function() {
-
-	const UpdateRateGeneric = {};
-	UpdateRateGeneric.level = undefined;
-	UpdateRateGeneric.toString = () => "UpdateRateGeneric";
-
-	const UpdateRateConstant = Object.create(UpdateRateGeneric);
-	UpdateRateConstant.level = 0;
-	UpdateRateConstant.toString = () => "UpdateRateConstant";
-
-	const UpdateRateFs = Object.create(UpdateRateGeneric);
-	UpdateRateFs.level = 1;
-	UpdateRateFs.toString = () => "UpdateRateFs";
-
-	const UpdateRateControl = Object.create(UpdateRateGeneric);
-	UpdateRateControl.level = 2;
-	UpdateRateControl.toString = () => "UpdateRateControl";
-	
-	const UpdateRateAudio = Object.create(UpdateRateGeneric);
-	UpdateRateAudio.level = 3;
-	UpdateRateAudio.toString = () => "UpdateRateAudio";
-
-	function max (...x) {
-		var r = x[0];
-		for (let k of x) {
-			//if (k == UpdateRateGeneric)
-			//	throw new Error("UpdateRateGeneric");
-			if (k.level > r.level)
-				r = k;
-		}
-		return r;
-	}
-
-	function min (...x) {
-		var r = x[0];
-		for (let k of x) {
-			//if (k == UpdateRateGeneric)
-			//	throw new Error("UpdateRateGeneric");
-			if (k.level < r.level)
-				r = k;
-		}
-		return r;
-	}
-
-	function equal (...x) {
-		var r = x[0];
-		for (let k of x) {
-			if (k != r)
-				return false;
-		}
-		return true;
-	}
-
-	exports["UpdateRateGeneric"] = UpdateRateGeneric;
-	exports["UpdateRateConstant"] = UpdateRateConstant;
-	exports["UpdateRateFs"] = UpdateRateFs;
-	exports["UpdateRateControl"] = UpdateRateControl;
-	exports["UpdateRateAudio"] = UpdateRateAudio;
-
-	exports["max"] = max;
-	exports["min"] = min;
-	exports["equal"] = equal;
-
-}());
 },{}],10:[function(require,module,exports){
 (function() {
 
-	Array.checkInclusion = function (A, B) {
-		return A.every(a => B.some(b => a == b));
+	'use strict';
+
+	const TYPES = {
+		Generic: { toString: () => "GenericType" },
+		Float32: { toString: () => "float32" },
+		Int32:   { toString: () => "int32" },
+		Bool:    { toString: () => "bool" },
+
+		parse: (x) => {
+			if (x == "float32")
+				return TYPES.Float32;
+			if (x == "int32")
+				return TYPES.Int32;
+			if (x == "bool")
+				return TYPES.Bool;
+			throw new Error("Unrecognized datatype: " + x);
+		}
 	};
-	Set.checkInclusion = function (A, B) { // if A is included in B
-		return Array.checkInclusion(Array.from(A), Array.from(B));
+
+	module.exports = TYPES;
+
+}());
+
+},{}],11:[function(require,module,exports){
+(function() {
+
+	'use strict';
+
+	const RATES = {
+		Generic:  { level: undefined, toString: () => "UpdateRateGeneric" },
+		Constant: { level: 0, toString: () => "UpdateRateConstant" },
+		Fs:       { level: 1, toString: () => "UpdateRateFs" },
+		Control:  { level: 2, toString: () => "UpdateRateControl" },
+		Reset:    { level: 2.5, toString: () => "UpdateRateReset" },
+		Audio:    { level: 3, toString: () => "UpdateRateAudio" },
+
+		max: (...x) => {
+			var r = x[0];
+			for (let k of x)
+				if (k.level > r.level)
+					r = k;
+			return r;
+		},
+		min: (...x) => {
+			var r = x[0];
+			for (let k of x)
+				if (k.level < r.level)
+					r = k;
+			return r;
+		},
+		equal: (...x) => {
+			var r = x[0];
+			for (let k of x)
+				if (k != r)
+					return false;
+			return true;
+		},
+		parse: (x) => {
+			if (x == "const")
+				return RATES.Constant;
+			if (x == "fs")
+				return RATES.Fs;
+			if (x == "control")
+				return RATES.Control;
+			if (x == "audio")
+				return RATES.Audio;
+			throw new Error("Unrecognized update rate: " + x);
+		}
 	};
-	Set.checkEquality = function (A, B) {
-		A = Array.from(A);
-		B = Array.from(B);
-		return Array.checkInclusion(A, B) && Array.checkInclusion(B, A);
-	};
 
-	function graphToGraphviz (g, path) {
-		let ui = 0;
-		function getUID () {
-			return "A" + ui++;
-		}
-		function convertCompositeBlock (bdef) {
-			let s = "";
-			let conns = "";
-			let props = "";
-			s += "subgraph cluster" + getUID() + " { \n";
-			s += "label = \"" + bdef.id + "\"; \n";
-			bdef.i_ports.forEach((p, i) => {
-				s += p.__gvizid__ + "[ label = \"i_" + i + "\" style=filled,color=lightgrey ]; \n";
-			});
-			bdef.blocks.forEach(b => {
-				s += convertBlock(b);
-			});
-			bdef.bdefs.forEach(bd => {
-				let r = convertCompositeBlock(bd);
-				s += r[0];
-				conns += r[1];
-				props += r[2];
-			});
-			bdef.o_ports.forEach((p, i) => {
-				s += p.__gvizid__ + "[ label = \"o_" + i + "\" style=filled,color=darkgrey ]; \n";
-			});
-			bdef.connections.forEach(c => {
-				if (!c.in || !c.out || !c.in.__gvizid__ || !c.out.__gvizid__)
-					console.warn("Invalid connection, ", c.toString());
-				conns += c.in.__gvizid__ + " -> " + c.out.__gvizid__ + ";\n";
-			});
-			bdef.properties.forEach(p => {
-				if (!bdef.blocks.includes(p.of) || !bdef.blocks.includes(p.block)) {
-					//console.warn("Invalid property, ", p.of.toString(), p.block.toString() );
-					return
-				}
-				props += (p.block.o_ports[0] || p.block.i_ports[0]).__gvizid__ + " -> " + (p.of.o_ports[0] || p.of.i_ports[0]).__gvizid__ + "[style=\"dotted\", color=\"purple\", arrowhead=none];\n";
-			});
-			s += "} \n";
-			return [s, conns, props];
-		}
-		function convertBlock (b) {
-			let s = "";
-			// same uid for every port
-			let u = (b.o_ports[0] || b.i_ports[0]).__gvizid__;
-			b.i_ports.forEach(p => p.__gvizid__ = u);
-			b.o_ports.forEach(p => p.__gvizid__ = u);
+	module.exports = RATES;
 
-			const ur = b.i_ports.concat(b.o_ports).map(x =>  {
-				try {
-					return x.updaterate();
-				}
-				catch (e) {
-					return { level: undefined };
-				}
-			}).reduce((a, b) => b.level > a.level ? b : a);
-			const urc = ur.level == undefined ? "red" : (ur.level == 0 ? "green" : (ur.level == 1 ? "yellow" : (ur.level == 2 ? "orange" : "blue"))); 
-			s += u + "[" + "label = \"" + (b.id || (b.value != undefined ? " " + b.value : null ) || b.operation || ".") + "\"" + "color=" + urc + "]; \n";
-			return s;
-		}
+}());
 
-		function bdefsetUID (bdef) {
-			bdef.i_ports.forEach(p => p.__gvizid__ = getUID());
-			bdef.o_ports.forEach(p => p.__gvizid__ = getUID());
-			bdef.blocks.forEach(b => {
-				b.i_ports.forEach(p => p.__gvizid__ = getUID());
-				b.o_ports.forEach(p => p.__gvizid__ = getUID());
-			})
-			bdef.bdefs.forEach(bd => bdefsetUID(bd));
-		}
-		function bdefremUID (bdef) {
-			bdef.i_ports.forEach(p => delete p.__gvizid__);
-			bdef.o_ports.forEach(p => delete p.__gvizid__);
-			bdef.blocks.forEach(b => {
-				b.i_ports.forEach(p => delete p.__gvizid__);
-				b.o_ports.forEach(p => delete p.__gvizid__);
-			})
-			bdef.bdefs.forEach(bd => bdefremUID(bd));
-		}
+},{}],12:[function(require,module,exports){
+(function() {
 
-		bdefsetUID(g);
+	'use strict';
 
-		let s = "";
-		s += "digraph D {\n";
-		s += "rankdir=LR; \n";
-		s += "compound=true \n";
-		s += "node [shape=record];\n";
-		let r = convertCompositeBlock(g);
-		s += r[0];
-		s += r[1];
-		s += r[2];
-		s += "\n}\n";
+	function arrayIncludedIn (A, B) {
+		return A.every(a => B.some(b => a === b));
+	}
 
-		bdefremUID(g);
+	function setIncludedIn (A, B) { // if A is included in B
+		return arrayIncludedIn(Array.from(A), Array.from(B));
+	}
 
-		return s;
+	function setsEqual (A, B) {
+		const arrayA = Array.from(A);
+		const arrayB = Array.from(B);
+		return arrayIncludedIn(arrayA, arrayB) && arrayIncludedIn(arrayB, arrayA);
 	}
 
 
@@ -4972,14 +4856,14 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 		return function (filename) {
 
-			for (var i = 0; i < dirs.length; i++) {
+			for (let i = 0; i < dirs.length; i++) {
 				const d = dirs[i];
 				try {
 					const p = path.join(d, filename);
 					const data = fs.readFileSync(p, 'utf8');
 					return data;
 				} catch (err) {
-			  		// Not in this dir;
+					// Not in this dir;
 				}
 			}
 			return null;
@@ -4992,11 +4876,14 @@ if (typeof module !== 'undefined' && require.main === module) {
 		console.log("***Warning***", msg);
 	}
 
-	exports["graphToGraphviz"] = graphToGraphviz;
 	exports["get_filereader"] = get_filereader;
+	exports["setsEqual"] = setsEqual;
+	exports["setIncludedIn"] = setIncludedIn;
+	exports["arrayIncludedIn"] = arrayIncludedIn;
 
 }());
-},{"fs":13,"path":34}],11:[function(require,module,exports){
+
+},{"fs":15,"path":18}],13:[function(require,module,exports){
 /*
 	Copyright (C) 2021, 2022, 2023 Orastron Srl
 
@@ -5014,37 +4901,32 @@ if (typeof module !== 'undefined' && require.main === module) {
 
 (function() {
 
+	'use strict';
+
 	const prepro = require("../src/preprocessor");
 	const parser = require("../src/grammar");
 	const syntax = require("../src/syntax");
 	const graph  = require("../src/graph");
 	const schdlr = require("../src/scheduler");
 	const outgen = require("../src/outgen");
-	const util   = require("../src/util");
+	const dbg    = require("../src/debug");
+	const path   = require("path");
 
 	
+	const steps = ["preprocess", "parse", "syntax", "ast_to_graph", "flatten", "optimize", "schedule", "outgen", "all"];
+
 	const options_descr = `
-		
-		debug_mode: true/false
-		initial_block_id: unspaced string
+		initial_block_id: string without spaces
 		initial_block_inputs_n: number
 		control_inputs: array of strings
-		initial_values: array of { id: string, value: string } objects
-		target_language: simpleC/bw
-		optimizations: object of properties
-			{
-				remove_dead_graph: true,
-				negative_negative: true,
-				negative_consts: true,
-				unify_consts: true,
-				remove_useless_vars: true,
-				merge_max_blocks: true,
-				simplifly_max_blocks1: true,
-				simplifly_max_blocks2: true,
-				lazyfy_subexpressions_rates: true,
-				lazyfy_subexpressions_controls: true,
-			}
-
+		initial_values: object mapping input IDs to initial values
+		target_language: C/bw/MATLAB
+		optimizations: { remove_dead_graph, negative_negative, negative_consts, unify_consts }
+		debug_mode: true/false
+		debug_output_dir: optional path where debug artifacts are written
+		debug_emit_outputs: true/false (write generated target files into debug artifacts)
+		debug_return_intermediates: true/false (return AST/graph/schedule/files instead of files only)
+		debug_last_step: ${steps.join('/')}
 	`;
 
 	function compile (code, filereader, options_ = {}) {
@@ -5054,228 +4936,139 @@ if (typeof module !== 'undefined' && require.main === module) {
 			initial_block_id: "",
 			initial_block_inputs_n: -1, // Optional (and not checked) if there's a unique bdef with that id. All input types must be float32
 			control_inputs: [], // List of ids. Inputs with such ids will carry UpdateRateControl
-			initial_values: [],
+			initial_values: {},
 			target_language: "",
 			optimizations: {
 				remove_dead_graph: true,
 				negative_negative: true,
 				negative_consts: true,
 				unify_consts: true,
-				remove_useless_vars: true,
-				merge_max_blocks: true,
-				simplifly_max_blocks1: true,
-				simplifly_max_blocks2: true,
-				lazyfy_subexpressions_rates: true,
-				lazyfy_subexpressions_controls: true,
 			},
+			debug_output_dir: "",
+			debug_emit_outputs: true,
+			debug_return_intermediates: false,
+			debug_last_step: "all",
 		};
 
 		for (let p in options_) {
 			options[p] = options_[p];
 		}
+		if (!steps.includes(options.debug_last_step))
+			throw new Error("Invalid debug_last_step: " + options.debug_last_step);
+
+		function shouldStop (step) {
+			if (options.debug_last_step == "all")
+				return false;
+			return options.debug_last_step == step;
+		}
+		const ret = {
+			stage: "start",
+			files: [],
+		};
+		function maybeReturnAt(stage) {
+			ret.stage = stage;
+			if (options.debug_return_intermediates)
+				return ret;
+			return [];
+		}
 
 
+		const debug = dbg.createDebugReporter(options);
+		debug.log("compile start");
+		if (debug.outdir)
+			debug.log("writing debug artifacts to: " + debug.outdir);
+
+		/***** PREPROCESS *****/
 		const r = prepro.preprocess(code, filereader);
 		code = r[0];
 		const jsons = r[1];
+		ret.preprocessed_code = code;
+		ret.jsons = jsons;
+		debug.log("preprocess complete");
+		debug.writeFile("00_preprocessed.crm", code);
+		debug.writeJSON("00_includes.json", jsons);
+		if (shouldStop("preprocess"))
+			return maybeReturnAt("preprocess");
 
+		/***** PARSE *****/
 		const AST = parser.parse(code);
+		ret.AST = AST;
+		debug.log("parse complete");
+		debug.writeJSON("01_ast.json", AST);
+		if (shouldStop("parse"))
+			return maybeReturnAt("parse");
+
+		/***** SYNTAX VALIDATION *****/
 		syntax.validateAST(AST);
+		debug.log("syntax validation complete");
+		if (shouldStop("syntax"))
+			return maybeReturnAt("syntax");
 
+		/***** AST -> GRAPH *****/
 		const g = graph.ASTToGraph(AST, options, jsons);
+		ret.graph = g;
+		debug.log("graph build complete");
+		if (debug.enabled && debug.outdir)
+			debug.writeFile("02_graph_initial.dot", dbg.graphToGraphviz(g));
+		if (shouldStop("ast_to_graph"))
+			return maybeReturnAt("ast_to_graph");
+
+		/***** GRAPH FLATTEN *****/
 		graph.flatten(g, options);
+		debug.log("graph flatten complete");
+		if (debug.enabled && debug.outdir)
+			debug.writeFile("03_graph_flattened.dot", dbg.graphToGraphviz(g));
+		if (shouldStop("flatten"))
+			return maybeReturnAt("flatten");
+
+		/***** GRAPH OPTIMIZE *****/
 		graph.optimize(g, options);
+		debug.log("graph optimize complete");
+		if (debug.enabled && debug.outdir)
+			debug.writeFile("04_graph_optimized.dot", dbg.graphToGraphviz(g));
+		if (shouldStop("optimize"))
+			return maybeReturnAt("optimize");
 
+		/***** SCHEDULE *****/
 		const s = schdlr.schedule(g, options);
+		ret.schedule = s;
+		debug.log("schedule complete");
+		debug.writeFile("05_schedule.txt",
+			s.map((b, i) => {
+				const id = b.id || b.operation || b.type || "block";
+				const ref = b.ref && b.ref.id ? b.ref.id : "";
+				const ur = b.o_ports && b.o_ports.length > 0
+					? b.o_ports[0].updaterate().toString()
+					: (b.i_ports && b.i_ports.length > 0 ? b.i_ports[0].updaterate().toString() : "N/A");
+				return (i + "").padStart(4, "0") + " | " + id + (ref ? (" (" + ref + ")") : "") + " | " + ur;
+			}).join("\n") + "\n");
+		if (shouldStop("schedule"))
+			return maybeReturnAt("schedule");
 
+		/***** OUTGEN *****/
 		const o = outgen.convert(g, s, options);
+		ret.files = o;
+		debug.log("outgen complete");
+		debug.writeJSON("06_outputs_manifest.json", o.map(f => ({ path: f.path, name: f.name, bytes: f.str.length })));
+		if (debug.emitOutputs) {
+			o.forEach(f => {
+				debug.writeFile(path.join("06_outputs", f.path, f.name), f.str);
+			});
+		}
+		debug.log("compile done");
 
+		if (options.debug_return_intermediates) {
+			ret.stage = "outgen";
+			return ret;
+		}
 		return o;
 	}
 
 	exports.compile = compile;
 
 }());
-},{"../src/grammar":2,"../src/graph":3,"../src/outgen":4,"../src/preprocessor":5,"../src/scheduler":6,"../src/syntax":7,"../src/util":10}],12:[function(require,module,exports){
-// doT.js
-// 2011-2014, Laura Doktorova, https://github.com/olado/doT
-// Licensed under the MIT license.
 
-(function () {
-	"use strict";
-
-	var doT = {
-		name: "doT",
-		version: "1.1.1",
-		templateSettings: {
-			evaluate:    /\{\{([\s\S]+?(\}?)+)\}\}/g,
-			interpolate: /\{\{=([\s\S]+?)\}\}/g,
-			encode:      /\{\{!([\s\S]+?)\}\}/g,
-			use:         /\{\{#([\s\S]+?)\}\}/g,
-			useParams:   /(^|[^\w$])def(?:\.|\[[\'\"])([\w$\.]+)(?:[\'\"]\])?\s*\:\s*([\w$\.]+|\"[^\"]+\"|\'[^\']+\'|\{[^\}]+\})/g,
-			define:      /\{\{##\s*([\w\.$]+)\s*(\:|=)([\s\S]+?)#\}\}/g,
-			defineParams:/^\s*([\w$]+):([\s\S]+)/,
-			conditional: /\{\{\?(\?)?\s*([\s\S]*?)\s*\}\}/g,
-			iterate:     /\{\{~\s*(?:\}\}|([\s\S]+?)\s*\:\s*([\w$]+)\s*(?:\:\s*([\w$]+))?\s*\}\})/g,
-			varname:	"it",
-			strip:		true,
-			append:		true,
-			selfcontained: false,
-			doNotSkipEncoded: false
-		},
-		template: undefined, //fn, compile template
-		compile:  undefined, //fn, for express
-		log: true
-	}, _globals;
-
-	doT.encodeHTMLSource = function(doNotSkipEncoded) {
-		var encodeHTMLRules = { "&": "&#38;", "<": "&#60;", ">": "&#62;", '"': "&#34;", "'": "&#39;", "/": "&#47;" },
-			matchHTML = doNotSkipEncoded ? /[&<>"'\/]/g : /&(?!#?\w+;)|<|>|"|'|\//g;
-		return function(code) {
-			return code ? code.toString().replace(matchHTML, function(m) {return encodeHTMLRules[m] || m;}) : "";
-		};
-	};
-
-	_globals = (function(){ return this || (0,eval)("this"); }());
-
-	/* istanbul ignore else */
-	if (typeof module !== "undefined" && module.exports) {
-		module.exports = doT;
-	} else if (typeof define === "function" && define.amd) {
-		define(function(){return doT;});
-	} else {
-		_globals.doT = doT;
-	}
-
-	var startend = {
-		append: { start: "'+(",      end: ")+'",      startencode: "'+encodeHTML(" },
-		split:  { start: "';out+=(", end: ");out+='", startencode: "';out+=encodeHTML(" }
-	}, skip = /$^/;
-
-	function resolveDefs(c, block, def) {
-		return ((typeof block === "string") ? block : block.toString())
-		.replace(c.define || skip, function(m, code, assign, value) {
-			if (code.indexOf("def.") === 0) {
-				code = code.substring(4);
-			}
-			if (!(code in def)) {
-				if (assign === ":") {
-					if (c.defineParams) value.replace(c.defineParams, function(m, param, v) {
-						def[code] = {arg: param, text: v};
-					});
-					if (!(code in def)) def[code]= value;
-				} else {
-					new Function("def", "def['"+code+"']=" + value)(def);
-				}
-			}
-			return "";
-		})
-		.replace(c.use || skip, function(m, code) {
-			if (c.useParams) code = code.replace(c.useParams, function(m, s, d, param) {
-				if (def[d] && def[d].arg && param) {
-					var rw = (d+":"+param).replace(/'|\\/g, "_");
-					def.__exp = def.__exp || {};
-					def.__exp[rw] = def[d].text.replace(new RegExp("(^|[^\\w$])" + def[d].arg + "([^\\w$])", "g"), "$1" + param + "$2");
-					return s + "def.__exp['"+rw+"']";
-				}
-			});
-			var v = new Function("def", "return " + code)(def);
-			return v ? resolveDefs(c, v, def) : v;
-		});
-	}
-
-	function unescape(code) {
-		return code.replace(/\\('|\\)/g, "$1").replace(/[\r\t\n]/g, " ");
-	}
-
-	doT.template = function(tmpl, c, def) {
-		c = c || doT.templateSettings;
-		var cse = c.append ? startend.append : startend.split, needhtmlencode, sid = 0, indv,
-			str  = (c.use || c.define) ? resolveDefs(c, tmpl, def || {}) : tmpl;
-
-		str = ("var out='" + (c.strip ? str.replace(/(^|\r|\n)\t* +| +\t*(\r|\n|$)/g," ")
-					.replace(/\r|\n|\t|\/\*[\s\S]*?\*\//g,""): str)
-			.replace(/'|\\/g, "\\$&")
-			.replace(c.interpolate || skip, function(m, code) {
-				return cse.start + unescape(code) + cse.end;
-			})
-			.replace(c.encode || skip, function(m, code) {
-				needhtmlencode = true;
-				return cse.startencode + unescape(code) + cse.end;
-			})
-			.replace(c.conditional || skip, function(m, elsecase, code) {
-				return elsecase ?
-					(code ? "';}else if(" + unescape(code) + "){out+='" : "';}else{out+='") :
-					(code ? "';if(" + unescape(code) + "){out+='" : "';}out+='");
-			})
-			.replace(c.iterate || skip, function(m, iterate, vname, iname) {
-				if (!iterate) return "';} } out+='";
-				sid+=1; indv=iname || "i"+sid; iterate=unescape(iterate);
-				return "';var arr"+sid+"="+iterate+";if(arr"+sid+"){var "+vname+","+indv+"=-1,l"+sid+"=arr"+sid+".length-1;while("+indv+"<l"+sid+"){"
-					+vname+"=arr"+sid+"["+indv+"+=1];out+='";
-			})
-			.replace(c.evaluate || skip, function(m, code) {
-				return "';" + unescape(code) + "out+='";
-			})
-			+ "';return out;")
-			.replace(/\n/g, "\\n").replace(/\t/g, '\\t').replace(/\r/g, "\\r")
-			.replace(/(\s|;|\}|^|\{)out\+='';/g, '$1').replace(/\+''/g, "");
-			//.replace(/(\s|;|\}|^|\{)out\+=''\+/g,'$1out+=');
-
-		if (needhtmlencode) {
-			if (!c.selfcontained && _globals && !_globals._encodeHTML) _globals._encodeHTML = doT.encodeHTMLSource(c.doNotSkipEncoded);
-			str = "var encodeHTML = typeof _encodeHTML !== 'undefined' ? _encodeHTML : ("
-				+ doT.encodeHTMLSource.toString() + "(" + (c.doNotSkipEncoded || '') + "));"
-				+ str;
-		}
-		try {
-			return new Function(c.varname, str);
-		} catch (e) {
-			/* istanbul ignore else */
-			if (typeof console !== "undefined") console.log("Could not create a template function: " + str);
-			throw e;
-		}
-	};
-
-	doT.compile = function(tmpl, def) {
-		return doT.template(tmpl, null, def);
-	};
-}());
-
-},{}],13:[function(require,module,exports){
-
-},{}],14:[function(require,module,exports){
-(function (global){(function (){
-'use strict';
-
-var possibleNames = [
-	'BigInt64Array',
-	'BigUint64Array',
-	'Float32Array',
-	'Float64Array',
-	'Int16Array',
-	'Int32Array',
-	'Int8Array',
-	'Uint16Array',
-	'Uint32Array',
-	'Uint8Array',
-	'Uint8ClampedArray'
-];
-
-var g = typeof globalThis === 'undefined' ? global : globalThis;
-
-module.exports = function availableTypedArrays() {
-	var out = [];
-	for (var i = 0; i < possibleNames.length; i++) {
-		if (typeof g[possibleNames[i]] === 'function') {
-			out[out.length] = possibleNames[i];
-		}
-	}
-	return out;
-};
-
-}).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],15:[function(require,module,exports){
+},{"../src/debug":3,"../src/grammar":4,"../src/graph":5,"../src/outgen":6,"../src/preprocessor":7,"../src/scheduler":8,"../src/syntax":9,"path":18}],14:[function(require,module,exports){
 'use strict'
 
 exports.byteLength = byteLength
@@ -5426,6 +5219,8 @@ function fromByteArray (uint8) {
 
   return parts.join('')
 }
+
+},{}],15:[function(require,module,exports){
 
 },{}],16:[function(require,module,exports){
 (function (Buffer){(function (){
@@ -7208,637 +7003,7 @@ function numberIsNaN (obj) {
 }
 
 }).call(this)}).call(this,require("buffer").Buffer)
-},{"base64-js":15,"buffer":16,"ieee754":28}],17:[function(require,module,exports){
-'use strict';
-
-var GetIntrinsic = require('get-intrinsic');
-
-var callBind = require('./');
-
-var $indexOf = callBind(GetIntrinsic('String.prototype.indexOf'));
-
-module.exports = function callBoundIntrinsic(name, allowMissing) {
-	var intrinsic = GetIntrinsic(name, !!allowMissing);
-	if (typeof intrinsic === 'function' && $indexOf(name, '.prototype.') > -1) {
-		return callBind(intrinsic);
-	}
-	return intrinsic;
-};
-
-},{"./":18,"get-intrinsic":22}],18:[function(require,module,exports){
-'use strict';
-
-var bind = require('function-bind');
-var GetIntrinsic = require('get-intrinsic');
-
-var $apply = GetIntrinsic('%Function.prototype.apply%');
-var $call = GetIntrinsic('%Function.prototype.call%');
-var $reflectApply = GetIntrinsic('%Reflect.apply%', true) || bind.call($call, $apply);
-
-var $gOPD = GetIntrinsic('%Object.getOwnPropertyDescriptor%', true);
-var $defineProperty = GetIntrinsic('%Object.defineProperty%', true);
-var $max = GetIntrinsic('%Math.max%');
-
-if ($defineProperty) {
-	try {
-		$defineProperty({}, 'a', { value: 1 });
-	} catch (e) {
-		// IE 8 has a broken defineProperty
-		$defineProperty = null;
-	}
-}
-
-module.exports = function callBind(originalFunction) {
-	var func = $reflectApply(bind, $call, arguments);
-	if ($gOPD && $defineProperty) {
-		var desc = $gOPD(func, 'length');
-		if (desc.configurable) {
-			// original length, plus the receiver, minus any additional arguments (after the receiver)
-			$defineProperty(
-				func,
-				'length',
-				{ value: 1 + $max(0, originalFunction.length - (arguments.length - 1)) }
-			);
-		}
-	}
-	return func;
-};
-
-var applyBind = function applyBind() {
-	return $reflectApply(bind, $apply, arguments);
-};
-
-if ($defineProperty) {
-	$defineProperty(module.exports, 'apply', { value: applyBind });
-} else {
-	module.exports.apply = applyBind;
-}
-
-},{"function-bind":21,"get-intrinsic":22}],19:[function(require,module,exports){
-'use strict';
-
-var isCallable = require('is-callable');
-
-var toStr = Object.prototype.toString;
-var hasOwnProperty = Object.prototype.hasOwnProperty;
-
-var forEachArray = function forEachArray(array, iterator, receiver) {
-    for (var i = 0, len = array.length; i < len; i++) {
-        if (hasOwnProperty.call(array, i)) {
-            if (receiver == null) {
-                iterator(array[i], i, array);
-            } else {
-                iterator.call(receiver, array[i], i, array);
-            }
-        }
-    }
-};
-
-var forEachString = function forEachString(string, iterator, receiver) {
-    for (var i = 0, len = string.length; i < len; i++) {
-        // no such thing as a sparse string.
-        if (receiver == null) {
-            iterator(string.charAt(i), i, string);
-        } else {
-            iterator.call(receiver, string.charAt(i), i, string);
-        }
-    }
-};
-
-var forEachObject = function forEachObject(object, iterator, receiver) {
-    for (var k in object) {
-        if (hasOwnProperty.call(object, k)) {
-            if (receiver == null) {
-                iterator(object[k], k, object);
-            } else {
-                iterator.call(receiver, object[k], k, object);
-            }
-        }
-    }
-};
-
-var forEach = function forEach(list, iterator, thisArg) {
-    if (!isCallable(iterator)) {
-        throw new TypeError('iterator must be a function');
-    }
-
-    var receiver;
-    if (arguments.length >= 3) {
-        receiver = thisArg;
-    }
-
-    if (toStr.call(list) === '[object Array]') {
-        forEachArray(list, iterator, receiver);
-    } else if (typeof list === 'string') {
-        forEachString(list, iterator, receiver);
-    } else {
-        forEachObject(list, iterator, receiver);
-    }
-};
-
-module.exports = forEach;
-
-},{"is-callable":31}],20:[function(require,module,exports){
-'use strict';
-
-/* eslint no-invalid-this: 1 */
-
-var ERROR_MESSAGE = 'Function.prototype.bind called on incompatible ';
-var slice = Array.prototype.slice;
-var toStr = Object.prototype.toString;
-var funcType = '[object Function]';
-
-module.exports = function bind(that) {
-    var target = this;
-    if (typeof target !== 'function' || toStr.call(target) !== funcType) {
-        throw new TypeError(ERROR_MESSAGE + target);
-    }
-    var args = slice.call(arguments, 1);
-
-    var bound;
-    var binder = function () {
-        if (this instanceof bound) {
-            var result = target.apply(
-                this,
-                args.concat(slice.call(arguments))
-            );
-            if (Object(result) === result) {
-                return result;
-            }
-            return this;
-        } else {
-            return target.apply(
-                that,
-                args.concat(slice.call(arguments))
-            );
-        }
-    };
-
-    var boundLength = Math.max(0, target.length - args.length);
-    var boundArgs = [];
-    for (var i = 0; i < boundLength; i++) {
-        boundArgs.push('$' + i);
-    }
-
-    bound = Function('binder', 'return function (' + boundArgs.join(',') + '){ return binder.apply(this,arguments); }')(binder);
-
-    if (target.prototype) {
-        var Empty = function Empty() {};
-        Empty.prototype = target.prototype;
-        bound.prototype = new Empty();
-        Empty.prototype = null;
-    }
-
-    return bound;
-};
-
-},{}],21:[function(require,module,exports){
-'use strict';
-
-var implementation = require('./implementation');
-
-module.exports = Function.prototype.bind || implementation;
-
-},{"./implementation":20}],22:[function(require,module,exports){
-'use strict';
-
-var undefined;
-
-var $SyntaxError = SyntaxError;
-var $Function = Function;
-var $TypeError = TypeError;
-
-// eslint-disable-next-line consistent-return
-var getEvalledConstructor = function (expressionSyntax) {
-	try {
-		return $Function('"use strict"; return (' + expressionSyntax + ').constructor;')();
-	} catch (e) {}
-};
-
-var $gOPD = Object.getOwnPropertyDescriptor;
-if ($gOPD) {
-	try {
-		$gOPD({}, '');
-	} catch (e) {
-		$gOPD = null; // this is IE 8, which has a broken gOPD
-	}
-}
-
-var throwTypeError = function () {
-	throw new $TypeError();
-};
-var ThrowTypeError = $gOPD
-	? (function () {
-		try {
-			// eslint-disable-next-line no-unused-expressions, no-caller, no-restricted-properties
-			arguments.callee; // IE 8 does not throw here
-			return throwTypeError;
-		} catch (calleeThrows) {
-			try {
-				// IE 8 throws on Object.getOwnPropertyDescriptor(arguments, '')
-				return $gOPD(arguments, 'callee').get;
-			} catch (gOPDthrows) {
-				return throwTypeError;
-			}
-		}
-	}())
-	: throwTypeError;
-
-var hasSymbols = require('has-symbols')();
-
-var getProto = Object.getPrototypeOf || function (x) { return x.__proto__; }; // eslint-disable-line no-proto
-
-var needsEval = {};
-
-var TypedArray = typeof Uint8Array === 'undefined' ? undefined : getProto(Uint8Array);
-
-var INTRINSICS = {
-	'%AggregateError%': typeof AggregateError === 'undefined' ? undefined : AggregateError,
-	'%Array%': Array,
-	'%ArrayBuffer%': typeof ArrayBuffer === 'undefined' ? undefined : ArrayBuffer,
-	'%ArrayIteratorPrototype%': hasSymbols ? getProto([][Symbol.iterator]()) : undefined,
-	'%AsyncFromSyncIteratorPrototype%': undefined,
-	'%AsyncFunction%': needsEval,
-	'%AsyncGenerator%': needsEval,
-	'%AsyncGeneratorFunction%': needsEval,
-	'%AsyncIteratorPrototype%': needsEval,
-	'%Atomics%': typeof Atomics === 'undefined' ? undefined : Atomics,
-	'%BigInt%': typeof BigInt === 'undefined' ? undefined : BigInt,
-	'%BigInt64Array%': typeof BigInt64Array === 'undefined' ? undefined : BigInt64Array,
-	'%BigUint64Array%': typeof BigUint64Array === 'undefined' ? undefined : BigUint64Array,
-	'%Boolean%': Boolean,
-	'%DataView%': typeof DataView === 'undefined' ? undefined : DataView,
-	'%Date%': Date,
-	'%decodeURI%': decodeURI,
-	'%decodeURIComponent%': decodeURIComponent,
-	'%encodeURI%': encodeURI,
-	'%encodeURIComponent%': encodeURIComponent,
-	'%Error%': Error,
-	'%eval%': eval, // eslint-disable-line no-eval
-	'%EvalError%': EvalError,
-	'%Float32Array%': typeof Float32Array === 'undefined' ? undefined : Float32Array,
-	'%Float64Array%': typeof Float64Array === 'undefined' ? undefined : Float64Array,
-	'%FinalizationRegistry%': typeof FinalizationRegistry === 'undefined' ? undefined : FinalizationRegistry,
-	'%Function%': $Function,
-	'%GeneratorFunction%': needsEval,
-	'%Int8Array%': typeof Int8Array === 'undefined' ? undefined : Int8Array,
-	'%Int16Array%': typeof Int16Array === 'undefined' ? undefined : Int16Array,
-	'%Int32Array%': typeof Int32Array === 'undefined' ? undefined : Int32Array,
-	'%isFinite%': isFinite,
-	'%isNaN%': isNaN,
-	'%IteratorPrototype%': hasSymbols ? getProto(getProto([][Symbol.iterator]())) : undefined,
-	'%JSON%': typeof JSON === 'object' ? JSON : undefined,
-	'%Map%': typeof Map === 'undefined' ? undefined : Map,
-	'%MapIteratorPrototype%': typeof Map === 'undefined' || !hasSymbols ? undefined : getProto(new Map()[Symbol.iterator]()),
-	'%Math%': Math,
-	'%Number%': Number,
-	'%Object%': Object,
-	'%parseFloat%': parseFloat,
-	'%parseInt%': parseInt,
-	'%Promise%': typeof Promise === 'undefined' ? undefined : Promise,
-	'%Proxy%': typeof Proxy === 'undefined' ? undefined : Proxy,
-	'%RangeError%': RangeError,
-	'%ReferenceError%': ReferenceError,
-	'%Reflect%': typeof Reflect === 'undefined' ? undefined : Reflect,
-	'%RegExp%': RegExp,
-	'%Set%': typeof Set === 'undefined' ? undefined : Set,
-	'%SetIteratorPrototype%': typeof Set === 'undefined' || !hasSymbols ? undefined : getProto(new Set()[Symbol.iterator]()),
-	'%SharedArrayBuffer%': typeof SharedArrayBuffer === 'undefined' ? undefined : SharedArrayBuffer,
-	'%String%': String,
-	'%StringIteratorPrototype%': hasSymbols ? getProto(''[Symbol.iterator]()) : undefined,
-	'%Symbol%': hasSymbols ? Symbol : undefined,
-	'%SyntaxError%': $SyntaxError,
-	'%ThrowTypeError%': ThrowTypeError,
-	'%TypedArray%': TypedArray,
-	'%TypeError%': $TypeError,
-	'%Uint8Array%': typeof Uint8Array === 'undefined' ? undefined : Uint8Array,
-	'%Uint8ClampedArray%': typeof Uint8ClampedArray === 'undefined' ? undefined : Uint8ClampedArray,
-	'%Uint16Array%': typeof Uint16Array === 'undefined' ? undefined : Uint16Array,
-	'%Uint32Array%': typeof Uint32Array === 'undefined' ? undefined : Uint32Array,
-	'%URIError%': URIError,
-	'%WeakMap%': typeof WeakMap === 'undefined' ? undefined : WeakMap,
-	'%WeakRef%': typeof WeakRef === 'undefined' ? undefined : WeakRef,
-	'%WeakSet%': typeof WeakSet === 'undefined' ? undefined : WeakSet
-};
-
-try {
-	null.error; // eslint-disable-line no-unused-expressions
-} catch (e) {
-	// https://github.com/tc39/proposal-shadowrealm/pull/384#issuecomment-1364264229
-	var errorProto = getProto(getProto(e));
-	INTRINSICS['%Error.prototype%'] = errorProto;
-}
-
-var doEval = function doEval(name) {
-	var value;
-	if (name === '%AsyncFunction%') {
-		value = getEvalledConstructor('async function () {}');
-	} else if (name === '%GeneratorFunction%') {
-		value = getEvalledConstructor('function* () {}');
-	} else if (name === '%AsyncGeneratorFunction%') {
-		value = getEvalledConstructor('async function* () {}');
-	} else if (name === '%AsyncGenerator%') {
-		var fn = doEval('%AsyncGeneratorFunction%');
-		if (fn) {
-			value = fn.prototype;
-		}
-	} else if (name === '%AsyncIteratorPrototype%') {
-		var gen = doEval('%AsyncGenerator%');
-		if (gen) {
-			value = getProto(gen.prototype);
-		}
-	}
-
-	INTRINSICS[name] = value;
-
-	return value;
-};
-
-var LEGACY_ALIASES = {
-	'%ArrayBufferPrototype%': ['ArrayBuffer', 'prototype'],
-	'%ArrayPrototype%': ['Array', 'prototype'],
-	'%ArrayProto_entries%': ['Array', 'prototype', 'entries'],
-	'%ArrayProto_forEach%': ['Array', 'prototype', 'forEach'],
-	'%ArrayProto_keys%': ['Array', 'prototype', 'keys'],
-	'%ArrayProto_values%': ['Array', 'prototype', 'values'],
-	'%AsyncFunctionPrototype%': ['AsyncFunction', 'prototype'],
-	'%AsyncGenerator%': ['AsyncGeneratorFunction', 'prototype'],
-	'%AsyncGeneratorPrototype%': ['AsyncGeneratorFunction', 'prototype', 'prototype'],
-	'%BooleanPrototype%': ['Boolean', 'prototype'],
-	'%DataViewPrototype%': ['DataView', 'prototype'],
-	'%DatePrototype%': ['Date', 'prototype'],
-	'%ErrorPrototype%': ['Error', 'prototype'],
-	'%EvalErrorPrototype%': ['EvalError', 'prototype'],
-	'%Float32ArrayPrototype%': ['Float32Array', 'prototype'],
-	'%Float64ArrayPrototype%': ['Float64Array', 'prototype'],
-	'%FunctionPrototype%': ['Function', 'prototype'],
-	'%Generator%': ['GeneratorFunction', 'prototype'],
-	'%GeneratorPrototype%': ['GeneratorFunction', 'prototype', 'prototype'],
-	'%Int8ArrayPrototype%': ['Int8Array', 'prototype'],
-	'%Int16ArrayPrototype%': ['Int16Array', 'prototype'],
-	'%Int32ArrayPrototype%': ['Int32Array', 'prototype'],
-	'%JSONParse%': ['JSON', 'parse'],
-	'%JSONStringify%': ['JSON', 'stringify'],
-	'%MapPrototype%': ['Map', 'prototype'],
-	'%NumberPrototype%': ['Number', 'prototype'],
-	'%ObjectPrototype%': ['Object', 'prototype'],
-	'%ObjProto_toString%': ['Object', 'prototype', 'toString'],
-	'%ObjProto_valueOf%': ['Object', 'prototype', 'valueOf'],
-	'%PromisePrototype%': ['Promise', 'prototype'],
-	'%PromiseProto_then%': ['Promise', 'prototype', 'then'],
-	'%Promise_all%': ['Promise', 'all'],
-	'%Promise_reject%': ['Promise', 'reject'],
-	'%Promise_resolve%': ['Promise', 'resolve'],
-	'%RangeErrorPrototype%': ['RangeError', 'prototype'],
-	'%ReferenceErrorPrototype%': ['ReferenceError', 'prototype'],
-	'%RegExpPrototype%': ['RegExp', 'prototype'],
-	'%SetPrototype%': ['Set', 'prototype'],
-	'%SharedArrayBufferPrototype%': ['SharedArrayBuffer', 'prototype'],
-	'%StringPrototype%': ['String', 'prototype'],
-	'%SymbolPrototype%': ['Symbol', 'prototype'],
-	'%SyntaxErrorPrototype%': ['SyntaxError', 'prototype'],
-	'%TypedArrayPrototype%': ['TypedArray', 'prototype'],
-	'%TypeErrorPrototype%': ['TypeError', 'prototype'],
-	'%Uint8ArrayPrototype%': ['Uint8Array', 'prototype'],
-	'%Uint8ClampedArrayPrototype%': ['Uint8ClampedArray', 'prototype'],
-	'%Uint16ArrayPrototype%': ['Uint16Array', 'prototype'],
-	'%Uint32ArrayPrototype%': ['Uint32Array', 'prototype'],
-	'%URIErrorPrototype%': ['URIError', 'prototype'],
-	'%WeakMapPrototype%': ['WeakMap', 'prototype'],
-	'%WeakSetPrototype%': ['WeakSet', 'prototype']
-};
-
-var bind = require('function-bind');
-var hasOwn = require('has');
-var $concat = bind.call(Function.call, Array.prototype.concat);
-var $spliceApply = bind.call(Function.apply, Array.prototype.splice);
-var $replace = bind.call(Function.call, String.prototype.replace);
-var $strSlice = bind.call(Function.call, String.prototype.slice);
-var $exec = bind.call(Function.call, RegExp.prototype.exec);
-
-/* adapted from https://github.com/lodash/lodash/blob/4.17.15/dist/lodash.js#L6735-L6744 */
-var rePropName = /[^%.[\]]+|\[(?:(-?\d+(?:\.\d+)?)|(["'])((?:(?!\2)[^\\]|\\.)*?)\2)\]|(?=(?:\.|\[\])(?:\.|\[\]|%$))/g;
-var reEscapeChar = /\\(\\)?/g; /** Used to match backslashes in property paths. */
-var stringToPath = function stringToPath(string) {
-	var first = $strSlice(string, 0, 1);
-	var last = $strSlice(string, -1);
-	if (first === '%' && last !== '%') {
-		throw new $SyntaxError('invalid intrinsic syntax, expected closing `%`');
-	} else if (last === '%' && first !== '%') {
-		throw new $SyntaxError('invalid intrinsic syntax, expected opening `%`');
-	}
-	var result = [];
-	$replace(string, rePropName, function (match, number, quote, subString) {
-		result[result.length] = quote ? $replace(subString, reEscapeChar, '$1') : number || match;
-	});
-	return result;
-};
-/* end adaptation */
-
-var getBaseIntrinsic = function getBaseIntrinsic(name, allowMissing) {
-	var intrinsicName = name;
-	var alias;
-	if (hasOwn(LEGACY_ALIASES, intrinsicName)) {
-		alias = LEGACY_ALIASES[intrinsicName];
-		intrinsicName = '%' + alias[0] + '%';
-	}
-
-	if (hasOwn(INTRINSICS, intrinsicName)) {
-		var value = INTRINSICS[intrinsicName];
-		if (value === needsEval) {
-			value = doEval(intrinsicName);
-		}
-		if (typeof value === 'undefined' && !allowMissing) {
-			throw new $TypeError('intrinsic ' + name + ' exists, but is not available. Please file an issue!');
-		}
-
-		return {
-			alias: alias,
-			name: intrinsicName,
-			value: value
-		};
-	}
-
-	throw new $SyntaxError('intrinsic ' + name + ' does not exist!');
-};
-
-module.exports = function GetIntrinsic(name, allowMissing) {
-	if (typeof name !== 'string' || name.length === 0) {
-		throw new $TypeError('intrinsic name must be a non-empty string');
-	}
-	if (arguments.length > 1 && typeof allowMissing !== 'boolean') {
-		throw new $TypeError('"allowMissing" argument must be a boolean');
-	}
-
-	if ($exec(/^%?[^%]*%?$/, name) === null) {
-		throw new $SyntaxError('`%` may not be present anywhere but at the beginning and end of the intrinsic name');
-	}
-	var parts = stringToPath(name);
-	var intrinsicBaseName = parts.length > 0 ? parts[0] : '';
-
-	var intrinsic = getBaseIntrinsic('%' + intrinsicBaseName + '%', allowMissing);
-	var intrinsicRealName = intrinsic.name;
-	var value = intrinsic.value;
-	var skipFurtherCaching = false;
-
-	var alias = intrinsic.alias;
-	if (alias) {
-		intrinsicBaseName = alias[0];
-		$spliceApply(parts, $concat([0, 1], alias));
-	}
-
-	for (var i = 1, isOwn = true; i < parts.length; i += 1) {
-		var part = parts[i];
-		var first = $strSlice(part, 0, 1);
-		var last = $strSlice(part, -1);
-		if (
-			(
-				(first === '"' || first === "'" || first === '`')
-				|| (last === '"' || last === "'" || last === '`')
-			)
-			&& first !== last
-		) {
-			throw new $SyntaxError('property names with quotes must have matching quotes');
-		}
-		if (part === 'constructor' || !isOwn) {
-			skipFurtherCaching = true;
-		}
-
-		intrinsicBaseName += '.' + part;
-		intrinsicRealName = '%' + intrinsicBaseName + '%';
-
-		if (hasOwn(INTRINSICS, intrinsicRealName)) {
-			value = INTRINSICS[intrinsicRealName];
-		} else if (value != null) {
-			if (!(part in value)) {
-				if (!allowMissing) {
-					throw new $TypeError('base intrinsic for ' + name + ' exists, but the property is not available.');
-				}
-				return void undefined;
-			}
-			if ($gOPD && (i + 1) >= parts.length) {
-				var desc = $gOPD(value, part);
-				isOwn = !!desc;
-
-				// By convention, when a data property is converted to an accessor
-				// property to emulate a data property that does not suffer from
-				// the override mistake, that accessor's getter is marked with
-				// an `originalValue` property. Here, when we detect this, we
-				// uphold the illusion by pretending to see that original data
-				// property, i.e., returning the value rather than the getter
-				// itself.
-				if (isOwn && 'get' in desc && !('originalValue' in desc.get)) {
-					value = desc.get;
-				} else {
-					value = value[part];
-				}
-			} else {
-				isOwn = hasOwn(value, part);
-				value = value[part];
-			}
-
-			if (isOwn && !skipFurtherCaching) {
-				INTRINSICS[intrinsicRealName] = value;
-			}
-		}
-	}
-	return value;
-};
-
-},{"function-bind":21,"has":27,"has-symbols":24}],23:[function(require,module,exports){
-'use strict';
-
-var GetIntrinsic = require('get-intrinsic');
-
-var $gOPD = GetIntrinsic('%Object.getOwnPropertyDescriptor%', true);
-
-if ($gOPD) {
-	try {
-		$gOPD([], 'length');
-	} catch (e) {
-		// IE 8 has a broken gOPD
-		$gOPD = null;
-	}
-}
-
-module.exports = $gOPD;
-
-},{"get-intrinsic":22}],24:[function(require,module,exports){
-'use strict';
-
-var origSymbol = typeof Symbol !== 'undefined' && Symbol;
-var hasSymbolSham = require('./shams');
-
-module.exports = function hasNativeSymbols() {
-	if (typeof origSymbol !== 'function') { return false; }
-	if (typeof Symbol !== 'function') { return false; }
-	if (typeof origSymbol('foo') !== 'symbol') { return false; }
-	if (typeof Symbol('bar') !== 'symbol') { return false; }
-
-	return hasSymbolSham();
-};
-
-},{"./shams":25}],25:[function(require,module,exports){
-'use strict';
-
-/* eslint complexity: [2, 18], max-statements: [2, 33] */
-module.exports = function hasSymbols() {
-	if (typeof Symbol !== 'function' || typeof Object.getOwnPropertySymbols !== 'function') { return false; }
-	if (typeof Symbol.iterator === 'symbol') { return true; }
-
-	var obj = {};
-	var sym = Symbol('test');
-	var symObj = Object(sym);
-	if (typeof sym === 'string') { return false; }
-
-	if (Object.prototype.toString.call(sym) !== '[object Symbol]') { return false; }
-	if (Object.prototype.toString.call(symObj) !== '[object Symbol]') { return false; }
-
-	// temp disabled per https://github.com/ljharb/object.assign/issues/17
-	// if (sym instanceof Symbol) { return false; }
-	// temp disabled per https://github.com/WebReflection/get-own-property-symbols/issues/4
-	// if (!(symObj instanceof Symbol)) { return false; }
-
-	// if (typeof Symbol.prototype.toString !== 'function') { return false; }
-	// if (String(sym) !== Symbol.prototype.toString.call(sym)) { return false; }
-
-	var symVal = 42;
-	obj[sym] = symVal;
-	for (sym in obj) { return false; } // eslint-disable-line no-restricted-syntax, no-unreachable-loop
-	if (typeof Object.keys === 'function' && Object.keys(obj).length !== 0) { return false; }
-
-	if (typeof Object.getOwnPropertyNames === 'function' && Object.getOwnPropertyNames(obj).length !== 0) { return false; }
-
-	var syms = Object.getOwnPropertySymbols(obj);
-	if (syms.length !== 1 || syms[0] !== sym) { return false; }
-
-	if (!Object.prototype.propertyIsEnumerable.call(obj, sym)) { return false; }
-
-	if (typeof Object.getOwnPropertyDescriptor === 'function') {
-		var descriptor = Object.getOwnPropertyDescriptor(obj, sym);
-		if (descriptor.value !== symVal || descriptor.enumerable !== true) { return false; }
-	}
-
-	return true;
-};
-
-},{}],26:[function(require,module,exports){
-'use strict';
-
-var hasSymbols = require('has-symbols/shams');
-
-module.exports = function hasToStringTagShams() {
-	return hasSymbols() && !!Symbol.toStringTag;
-};
-
-},{"has-symbols/shams":25}],27:[function(require,module,exports){
-'use strict';
-
-var bind = require('function-bind');
-
-module.exports = bind.call(Function.call, Object.prototype.hasOwnProperty);
-
-},{"function-bind":21}],28:[function(require,module,exports){
+},{"base64-js":14,"buffer":16,"ieee754":17}],17:[function(require,module,exports){
 /*! ieee754. BSD-3-Clause License. Feross Aboukhadijeh <https://feross.org/opensource> */
 exports.read = function (buffer, offset, isLE, mLen, nBytes) {
   var e, m
@@ -7925,278 +7090,7 @@ exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
   buffer[offset + i - d] |= s * 128
 }
 
-},{}],29:[function(require,module,exports){
-if (typeof Object.create === 'function') {
-  // implementation from standard node.js 'util' module
-  module.exports = function inherits(ctor, superCtor) {
-    if (superCtor) {
-      ctor.super_ = superCtor
-      ctor.prototype = Object.create(superCtor.prototype, {
-        constructor: {
-          value: ctor,
-          enumerable: false,
-          writable: true,
-          configurable: true
-        }
-      })
-    }
-  };
-} else {
-  // old school shim for old browsers
-  module.exports = function inherits(ctor, superCtor) {
-    if (superCtor) {
-      ctor.super_ = superCtor
-      var TempCtor = function () {}
-      TempCtor.prototype = superCtor.prototype
-      ctor.prototype = new TempCtor()
-      ctor.prototype.constructor = ctor
-    }
-  }
-}
-
-},{}],30:[function(require,module,exports){
-'use strict';
-
-var hasToStringTag = require('has-tostringtag/shams')();
-var callBound = require('call-bind/callBound');
-
-var $toString = callBound('Object.prototype.toString');
-
-var isStandardArguments = function isArguments(value) {
-	if (hasToStringTag && value && typeof value === 'object' && Symbol.toStringTag in value) {
-		return false;
-	}
-	return $toString(value) === '[object Arguments]';
-};
-
-var isLegacyArguments = function isArguments(value) {
-	if (isStandardArguments(value)) {
-		return true;
-	}
-	return value !== null &&
-		typeof value === 'object' &&
-		typeof value.length === 'number' &&
-		value.length >= 0 &&
-		$toString(value) !== '[object Array]' &&
-		$toString(value.callee) === '[object Function]';
-};
-
-var supportsStandardArguments = (function () {
-	return isStandardArguments(arguments);
-}());
-
-isStandardArguments.isLegacyArguments = isLegacyArguments; // for tests
-
-module.exports = supportsStandardArguments ? isStandardArguments : isLegacyArguments;
-
-},{"call-bind/callBound":17,"has-tostringtag/shams":26}],31:[function(require,module,exports){
-'use strict';
-
-var fnToStr = Function.prototype.toString;
-var reflectApply = typeof Reflect === 'object' && Reflect !== null && Reflect.apply;
-var badArrayLike;
-var isCallableMarker;
-if (typeof reflectApply === 'function' && typeof Object.defineProperty === 'function') {
-	try {
-		badArrayLike = Object.defineProperty({}, 'length', {
-			get: function () {
-				throw isCallableMarker;
-			}
-		});
-		isCallableMarker = {};
-		// eslint-disable-next-line no-throw-literal
-		reflectApply(function () { throw 42; }, null, badArrayLike);
-	} catch (_) {
-		if (_ !== isCallableMarker) {
-			reflectApply = null;
-		}
-	}
-} else {
-	reflectApply = null;
-}
-
-var constructorRegex = /^\s*class\b/;
-var isES6ClassFn = function isES6ClassFunction(value) {
-	try {
-		var fnStr = fnToStr.call(value);
-		return constructorRegex.test(fnStr);
-	} catch (e) {
-		return false; // not a function
-	}
-};
-
-var tryFunctionObject = function tryFunctionToStr(value) {
-	try {
-		if (isES6ClassFn(value)) { return false; }
-		fnToStr.call(value);
-		return true;
-	} catch (e) {
-		return false;
-	}
-};
-var toStr = Object.prototype.toString;
-var objectClass = '[object Object]';
-var fnClass = '[object Function]';
-var genClass = '[object GeneratorFunction]';
-var ddaClass = '[object HTMLAllCollection]'; // IE 11
-var ddaClass2 = '[object HTML document.all class]';
-var ddaClass3 = '[object HTMLCollection]'; // IE 9-10
-var hasToStringTag = typeof Symbol === 'function' && !!Symbol.toStringTag; // better: use `has-tostringtag`
-
-var isIE68 = !(0 in [,]); // eslint-disable-line no-sparse-arrays, comma-spacing
-
-var isDDA = function isDocumentDotAll() { return false; };
-if (typeof document === 'object') {
-	// Firefox 3 canonicalizes DDA to undefined when it's not accessed directly
-	var all = document.all;
-	if (toStr.call(all) === toStr.call(document.all)) {
-		isDDA = function isDocumentDotAll(value) {
-			/* globals document: false */
-			// in IE 6-8, typeof document.all is "object" and it's truthy
-			if ((isIE68 || !value) && (typeof value === 'undefined' || typeof value === 'object')) {
-				try {
-					var str = toStr.call(value);
-					return (
-						str === ddaClass
-						|| str === ddaClass2
-						|| str === ddaClass3 // opera 12.16
-						|| str === objectClass // IE 6-8
-					) && value('') == null; // eslint-disable-line eqeqeq
-				} catch (e) { /**/ }
-			}
-			return false;
-		};
-	}
-}
-
-module.exports = reflectApply
-	? function isCallable(value) {
-		if (isDDA(value)) { return true; }
-		if (!value) { return false; }
-		if (typeof value !== 'function' && typeof value !== 'object') { return false; }
-		try {
-			reflectApply(value, null, badArrayLike);
-		} catch (e) {
-			if (e !== isCallableMarker) { return false; }
-		}
-		return !isES6ClassFn(value) && tryFunctionObject(value);
-	}
-	: function isCallable(value) {
-		if (isDDA(value)) { return true; }
-		if (!value) { return false; }
-		if (typeof value !== 'function' && typeof value !== 'object') { return false; }
-		if (hasToStringTag) { return tryFunctionObject(value); }
-		if (isES6ClassFn(value)) { return false; }
-		var strClass = toStr.call(value);
-		if (strClass !== fnClass && strClass !== genClass && !(/^\[object HTML/).test(strClass)) { return false; }
-		return tryFunctionObject(value);
-	};
-
-},{}],32:[function(require,module,exports){
-'use strict';
-
-var toStr = Object.prototype.toString;
-var fnToStr = Function.prototype.toString;
-var isFnRegex = /^\s*(?:function)?\*/;
-var hasToStringTag = require('has-tostringtag/shams')();
-var getProto = Object.getPrototypeOf;
-var getGeneratorFunc = function () { // eslint-disable-line consistent-return
-	if (!hasToStringTag) {
-		return false;
-	}
-	try {
-		return Function('return function*() {}')();
-	} catch (e) {
-	}
-};
-var GeneratorFunction;
-
-module.exports = function isGeneratorFunction(fn) {
-	if (typeof fn !== 'function') {
-		return false;
-	}
-	if (isFnRegex.test(fnToStr.call(fn))) {
-		return true;
-	}
-	if (!hasToStringTag) {
-		var str = toStr.call(fn);
-		return str === '[object GeneratorFunction]';
-	}
-	if (!getProto) {
-		return false;
-	}
-	if (typeof GeneratorFunction === 'undefined') {
-		var generatorFunc = getGeneratorFunc();
-		GeneratorFunction = generatorFunc ? getProto(generatorFunc) : false;
-	}
-	return getProto(fn) === GeneratorFunction;
-};
-
-},{"has-tostringtag/shams":26}],33:[function(require,module,exports){
-(function (global){(function (){
-'use strict';
-
-var forEach = require('for-each');
-var availableTypedArrays = require('available-typed-arrays');
-var callBound = require('call-bind/callBound');
-
-var $toString = callBound('Object.prototype.toString');
-var hasToStringTag = require('has-tostringtag/shams')();
-var gOPD = require('gopd');
-
-var g = typeof globalThis === 'undefined' ? global : globalThis;
-var typedArrays = availableTypedArrays();
-
-var $indexOf = callBound('Array.prototype.indexOf', true) || function indexOf(array, value) {
-	for (var i = 0; i < array.length; i += 1) {
-		if (array[i] === value) {
-			return i;
-		}
-	}
-	return -1;
-};
-var $slice = callBound('String.prototype.slice');
-var toStrTags = {};
-var getPrototypeOf = Object.getPrototypeOf; // require('getprototypeof');
-if (hasToStringTag && gOPD && getPrototypeOf) {
-	forEach(typedArrays, function (typedArray) {
-		var arr = new g[typedArray]();
-		if (Symbol.toStringTag in arr) {
-			var proto = getPrototypeOf(arr);
-			var descriptor = gOPD(proto, Symbol.toStringTag);
-			if (!descriptor) {
-				var superProto = getPrototypeOf(proto);
-				descriptor = gOPD(superProto, Symbol.toStringTag);
-			}
-			toStrTags[typedArray] = descriptor.get;
-		}
-	});
-}
-
-var tryTypedArrays = function tryAllTypedArrays(value) {
-	var anyTrue = false;
-	forEach(toStrTags, function (getter, typedArray) {
-		if (!anyTrue) {
-			try {
-				anyTrue = getter.call(value) === typedArray;
-			} catch (e) { /**/ }
-		}
-	});
-	return anyTrue;
-};
-
-module.exports = function isTypedArray(value) {
-	if (!value || typeof value !== 'object') { return false; }
-	if (!hasToStringTag || !(Symbol.toStringTag in value)) {
-		var tag = $slice($toString(value), 8, -1);
-		return $indexOf(typedArrays, tag) > -1;
-	}
-	if (!gOPD) { return false; }
-	return tryTypedArrays(value);
-};
-
-}).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"available-typed-arrays":14,"call-bind/callBound":17,"for-each":19,"gopd":23,"has-tostringtag/shams":26}],34:[function(require,module,exports){
+},{}],18:[function(require,module,exports){
 (function (process){(function (){
 // 'path' module extracted from Node.js v8.11.1 (only the posix part)
 // transplited with Babel
@@ -8729,7 +7623,7 @@ posix.posix = posix;
 module.exports = posix;
 
 }).call(this)}).call(this,require('_process'))
-},{"_process":35}],35:[function(require,module,exports){
+},{"_process":19}],19:[function(require,module,exports){
 // shim for using process in browser
 var process = module.exports = {};
 
@@ -8915,1126 +7809,5 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}],36:[function(require,module,exports){
-module.exports = function isBuffer(arg) {
-  return arg && typeof arg === 'object'
-    && typeof arg.copy === 'function'
-    && typeof arg.fill === 'function'
-    && typeof arg.readUInt8 === 'function';
-}
-},{}],37:[function(require,module,exports){
-// Currently in sync with Node.js lib/internal/util/types.js
-// https://github.com/nodejs/node/commit/112cc7c27551254aa2b17098fb774867f05ed0d9
-
-'use strict';
-
-var isArgumentsObject = require('is-arguments');
-var isGeneratorFunction = require('is-generator-function');
-var whichTypedArray = require('which-typed-array');
-var isTypedArray = require('is-typed-array');
-
-function uncurryThis(f) {
-  return f.call.bind(f);
-}
-
-var BigIntSupported = typeof BigInt !== 'undefined';
-var SymbolSupported = typeof Symbol !== 'undefined';
-
-var ObjectToString = uncurryThis(Object.prototype.toString);
-
-var numberValue = uncurryThis(Number.prototype.valueOf);
-var stringValue = uncurryThis(String.prototype.valueOf);
-var booleanValue = uncurryThis(Boolean.prototype.valueOf);
-
-if (BigIntSupported) {
-  var bigIntValue = uncurryThis(BigInt.prototype.valueOf);
-}
-
-if (SymbolSupported) {
-  var symbolValue = uncurryThis(Symbol.prototype.valueOf);
-}
-
-function checkBoxedPrimitive(value, prototypeValueOf) {
-  if (typeof value !== 'object') {
-    return false;
-  }
-  try {
-    prototypeValueOf(value);
-    return true;
-  } catch(e) {
-    return false;
-  }
-}
-
-exports.isArgumentsObject = isArgumentsObject;
-exports.isGeneratorFunction = isGeneratorFunction;
-exports.isTypedArray = isTypedArray;
-
-// Taken from here and modified for better browser support
-// https://github.com/sindresorhus/p-is-promise/blob/cda35a513bda03f977ad5cde3a079d237e82d7ef/index.js
-function isPromise(input) {
-	return (
-		(
-			typeof Promise !== 'undefined' &&
-			input instanceof Promise
-		) ||
-		(
-			input !== null &&
-			typeof input === 'object' &&
-			typeof input.then === 'function' &&
-			typeof input.catch === 'function'
-		)
-	);
-}
-exports.isPromise = isPromise;
-
-function isArrayBufferView(value) {
-  if (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView) {
-    return ArrayBuffer.isView(value);
-  }
-
-  return (
-    isTypedArray(value) ||
-    isDataView(value)
-  );
-}
-exports.isArrayBufferView = isArrayBufferView;
-
-
-function isUint8Array(value) {
-  return whichTypedArray(value) === 'Uint8Array';
-}
-exports.isUint8Array = isUint8Array;
-
-function isUint8ClampedArray(value) {
-  return whichTypedArray(value) === 'Uint8ClampedArray';
-}
-exports.isUint8ClampedArray = isUint8ClampedArray;
-
-function isUint16Array(value) {
-  return whichTypedArray(value) === 'Uint16Array';
-}
-exports.isUint16Array = isUint16Array;
-
-function isUint32Array(value) {
-  return whichTypedArray(value) === 'Uint32Array';
-}
-exports.isUint32Array = isUint32Array;
-
-function isInt8Array(value) {
-  return whichTypedArray(value) === 'Int8Array';
-}
-exports.isInt8Array = isInt8Array;
-
-function isInt16Array(value) {
-  return whichTypedArray(value) === 'Int16Array';
-}
-exports.isInt16Array = isInt16Array;
-
-function isInt32Array(value) {
-  return whichTypedArray(value) === 'Int32Array';
-}
-exports.isInt32Array = isInt32Array;
-
-function isFloat32Array(value) {
-  return whichTypedArray(value) === 'Float32Array';
-}
-exports.isFloat32Array = isFloat32Array;
-
-function isFloat64Array(value) {
-  return whichTypedArray(value) === 'Float64Array';
-}
-exports.isFloat64Array = isFloat64Array;
-
-function isBigInt64Array(value) {
-  return whichTypedArray(value) === 'BigInt64Array';
-}
-exports.isBigInt64Array = isBigInt64Array;
-
-function isBigUint64Array(value) {
-  return whichTypedArray(value) === 'BigUint64Array';
-}
-exports.isBigUint64Array = isBigUint64Array;
-
-function isMapToString(value) {
-  return ObjectToString(value) === '[object Map]';
-}
-isMapToString.working = (
-  typeof Map !== 'undefined' &&
-  isMapToString(new Map())
-);
-
-function isMap(value) {
-  if (typeof Map === 'undefined') {
-    return false;
-  }
-
-  return isMapToString.working
-    ? isMapToString(value)
-    : value instanceof Map;
-}
-exports.isMap = isMap;
-
-function isSetToString(value) {
-  return ObjectToString(value) === '[object Set]';
-}
-isSetToString.working = (
-  typeof Set !== 'undefined' &&
-  isSetToString(new Set())
-);
-function isSet(value) {
-  if (typeof Set === 'undefined') {
-    return false;
-  }
-
-  return isSetToString.working
-    ? isSetToString(value)
-    : value instanceof Set;
-}
-exports.isSet = isSet;
-
-function isWeakMapToString(value) {
-  return ObjectToString(value) === '[object WeakMap]';
-}
-isWeakMapToString.working = (
-  typeof WeakMap !== 'undefined' &&
-  isWeakMapToString(new WeakMap())
-);
-function isWeakMap(value) {
-  if (typeof WeakMap === 'undefined') {
-    return false;
-  }
-
-  return isWeakMapToString.working
-    ? isWeakMapToString(value)
-    : value instanceof WeakMap;
-}
-exports.isWeakMap = isWeakMap;
-
-function isWeakSetToString(value) {
-  return ObjectToString(value) === '[object WeakSet]';
-}
-isWeakSetToString.working = (
-  typeof WeakSet !== 'undefined' &&
-  isWeakSetToString(new WeakSet())
-);
-function isWeakSet(value) {
-  return isWeakSetToString(value);
-}
-exports.isWeakSet = isWeakSet;
-
-function isArrayBufferToString(value) {
-  return ObjectToString(value) === '[object ArrayBuffer]';
-}
-isArrayBufferToString.working = (
-  typeof ArrayBuffer !== 'undefined' &&
-  isArrayBufferToString(new ArrayBuffer())
-);
-function isArrayBuffer(value) {
-  if (typeof ArrayBuffer === 'undefined') {
-    return false;
-  }
-
-  return isArrayBufferToString.working
-    ? isArrayBufferToString(value)
-    : value instanceof ArrayBuffer;
-}
-exports.isArrayBuffer = isArrayBuffer;
-
-function isDataViewToString(value) {
-  return ObjectToString(value) === '[object DataView]';
-}
-isDataViewToString.working = (
-  typeof ArrayBuffer !== 'undefined' &&
-  typeof DataView !== 'undefined' &&
-  isDataViewToString(new DataView(new ArrayBuffer(1), 0, 1))
-);
-function isDataView(value) {
-  if (typeof DataView === 'undefined') {
-    return false;
-  }
-
-  return isDataViewToString.working
-    ? isDataViewToString(value)
-    : value instanceof DataView;
-}
-exports.isDataView = isDataView;
-
-// Store a copy of SharedArrayBuffer in case it's deleted elsewhere
-var SharedArrayBufferCopy = typeof SharedArrayBuffer !== 'undefined' ? SharedArrayBuffer : undefined;
-function isSharedArrayBufferToString(value) {
-  return ObjectToString(value) === '[object SharedArrayBuffer]';
-}
-function isSharedArrayBuffer(value) {
-  if (typeof SharedArrayBufferCopy === 'undefined') {
-    return false;
-  }
-
-  if (typeof isSharedArrayBufferToString.working === 'undefined') {
-    isSharedArrayBufferToString.working = isSharedArrayBufferToString(new SharedArrayBufferCopy());
-  }
-
-  return isSharedArrayBufferToString.working
-    ? isSharedArrayBufferToString(value)
-    : value instanceof SharedArrayBufferCopy;
-}
-exports.isSharedArrayBuffer = isSharedArrayBuffer;
-
-function isAsyncFunction(value) {
-  return ObjectToString(value) === '[object AsyncFunction]';
-}
-exports.isAsyncFunction = isAsyncFunction;
-
-function isMapIterator(value) {
-  return ObjectToString(value) === '[object Map Iterator]';
-}
-exports.isMapIterator = isMapIterator;
-
-function isSetIterator(value) {
-  return ObjectToString(value) === '[object Set Iterator]';
-}
-exports.isSetIterator = isSetIterator;
-
-function isGeneratorObject(value) {
-  return ObjectToString(value) === '[object Generator]';
-}
-exports.isGeneratorObject = isGeneratorObject;
-
-function isWebAssemblyCompiledModule(value) {
-  return ObjectToString(value) === '[object WebAssembly.Module]';
-}
-exports.isWebAssemblyCompiledModule = isWebAssemblyCompiledModule;
-
-function isNumberObject(value) {
-  return checkBoxedPrimitive(value, numberValue);
-}
-exports.isNumberObject = isNumberObject;
-
-function isStringObject(value) {
-  return checkBoxedPrimitive(value, stringValue);
-}
-exports.isStringObject = isStringObject;
-
-function isBooleanObject(value) {
-  return checkBoxedPrimitive(value, booleanValue);
-}
-exports.isBooleanObject = isBooleanObject;
-
-function isBigIntObject(value) {
-  return BigIntSupported && checkBoxedPrimitive(value, bigIntValue);
-}
-exports.isBigIntObject = isBigIntObject;
-
-function isSymbolObject(value) {
-  return SymbolSupported && checkBoxedPrimitive(value, symbolValue);
-}
-exports.isSymbolObject = isSymbolObject;
-
-function isBoxedPrimitive(value) {
-  return (
-    isNumberObject(value) ||
-    isStringObject(value) ||
-    isBooleanObject(value) ||
-    isBigIntObject(value) ||
-    isSymbolObject(value)
-  );
-}
-exports.isBoxedPrimitive = isBoxedPrimitive;
-
-function isAnyArrayBuffer(value) {
-  return typeof Uint8Array !== 'undefined' && (
-    isArrayBuffer(value) ||
-    isSharedArrayBuffer(value)
-  );
-}
-exports.isAnyArrayBuffer = isAnyArrayBuffer;
-
-['isProxy', 'isExternal', 'isModuleNamespaceObject'].forEach(function(method) {
-  Object.defineProperty(exports, method, {
-    enumerable: false,
-    value: function() {
-      throw new Error(method + ' is not supported in userland');
-    }
-  });
-});
-
-},{"is-arguments":30,"is-generator-function":32,"is-typed-array":33,"which-typed-array":39}],38:[function(require,module,exports){
-(function (process){(function (){
-// Copyright Joyent, Inc. and other Node contributors.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to permit
-// persons to whom the Software is furnished to do so, subject to the
-// following conditions:
-//
-// The above copyright notice and this permission notice shall be included
-// in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
-// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
-// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
-// USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-var getOwnPropertyDescriptors = Object.getOwnPropertyDescriptors ||
-  function getOwnPropertyDescriptors(obj) {
-    var keys = Object.keys(obj);
-    var descriptors = {};
-    for (var i = 0; i < keys.length; i++) {
-      descriptors[keys[i]] = Object.getOwnPropertyDescriptor(obj, keys[i]);
-    }
-    return descriptors;
-  };
-
-var formatRegExp = /%[sdj%]/g;
-exports.format = function(f) {
-  if (!isString(f)) {
-    var objects = [];
-    for (var i = 0; i < arguments.length; i++) {
-      objects.push(inspect(arguments[i]));
-    }
-    return objects.join(' ');
-  }
-
-  var i = 1;
-  var args = arguments;
-  var len = args.length;
-  var str = String(f).replace(formatRegExp, function(x) {
-    if (x === '%%') return '%';
-    if (i >= len) return x;
-    switch (x) {
-      case '%s': return String(args[i++]);
-      case '%d': return Number(args[i++]);
-      case '%j':
-        try {
-          return JSON.stringify(args[i++]);
-        } catch (_) {
-          return '[Circular]';
-        }
-      default:
-        return x;
-    }
-  });
-  for (var x = args[i]; i < len; x = args[++i]) {
-    if (isNull(x) || !isObject(x)) {
-      str += ' ' + x;
-    } else {
-      str += ' ' + inspect(x);
-    }
-  }
-  return str;
-};
-
-
-// Mark that a method should not be used.
-// Returns a modified function which warns once by default.
-// If --no-deprecation is set, then it is a no-op.
-exports.deprecate = function(fn, msg) {
-  if (typeof process !== 'undefined' && process.noDeprecation === true) {
-    return fn;
-  }
-
-  // Allow for deprecating things in the process of starting up.
-  if (typeof process === 'undefined') {
-    return function() {
-      return exports.deprecate(fn, msg).apply(this, arguments);
-    };
-  }
-
-  var warned = false;
-  function deprecated() {
-    if (!warned) {
-      if (process.throwDeprecation) {
-        throw new Error(msg);
-      } else if (process.traceDeprecation) {
-        console.trace(msg);
-      } else {
-        console.error(msg);
-      }
-      warned = true;
-    }
-    return fn.apply(this, arguments);
-  }
-
-  return deprecated;
-};
-
-
-var debugs = {};
-var debugEnvRegex = /^$/;
-
-if (process.env.NODE_DEBUG) {
-  var debugEnv = process.env.NODE_DEBUG;
-  debugEnv = debugEnv.replace(/[|\\{}()[\]^$+?.]/g, '\\$&')
-    .replace(/\*/g, '.*')
-    .replace(/,/g, '$|^')
-    .toUpperCase();
-  debugEnvRegex = new RegExp('^' + debugEnv + '$', 'i');
-}
-exports.debuglog = function(set) {
-  set = set.toUpperCase();
-  if (!debugs[set]) {
-    if (debugEnvRegex.test(set)) {
-      var pid = process.pid;
-      debugs[set] = function() {
-        var msg = exports.format.apply(exports, arguments);
-        console.error('%s %d: %s', set, pid, msg);
-      };
-    } else {
-      debugs[set] = function() {};
-    }
-  }
-  return debugs[set];
-};
-
-
-/**
- * Echos the value of a value. Trys to print the value out
- * in the best way possible given the different types.
- *
- * @param {Object} obj The object to print out.
- * @param {Object} opts Optional options object that alters the output.
- */
-/* legacy: obj, showHidden, depth, colors*/
-function inspect(obj, opts) {
-  // default options
-  var ctx = {
-    seen: [],
-    stylize: stylizeNoColor
-  };
-  // legacy...
-  if (arguments.length >= 3) ctx.depth = arguments[2];
-  if (arguments.length >= 4) ctx.colors = arguments[3];
-  if (isBoolean(opts)) {
-    // legacy...
-    ctx.showHidden = opts;
-  } else if (opts) {
-    // got an "options" object
-    exports._extend(ctx, opts);
-  }
-  // set default options
-  if (isUndefined(ctx.showHidden)) ctx.showHidden = false;
-  if (isUndefined(ctx.depth)) ctx.depth = 2;
-  if (isUndefined(ctx.colors)) ctx.colors = false;
-  if (isUndefined(ctx.customInspect)) ctx.customInspect = true;
-  if (ctx.colors) ctx.stylize = stylizeWithColor;
-  return formatValue(ctx, obj, ctx.depth);
-}
-exports.inspect = inspect;
-
-
-// http://en.wikipedia.org/wiki/ANSI_escape_code#graphics
-inspect.colors = {
-  'bold' : [1, 22],
-  'italic' : [3, 23],
-  'underline' : [4, 24],
-  'inverse' : [7, 27],
-  'white' : [37, 39],
-  'grey' : [90, 39],
-  'black' : [30, 39],
-  'blue' : [34, 39],
-  'cyan' : [36, 39],
-  'green' : [32, 39],
-  'magenta' : [35, 39],
-  'red' : [31, 39],
-  'yellow' : [33, 39]
-};
-
-// Don't use 'blue' not visible on cmd.exe
-inspect.styles = {
-  'special': 'cyan',
-  'number': 'yellow',
-  'boolean': 'yellow',
-  'undefined': 'grey',
-  'null': 'bold',
-  'string': 'green',
-  'date': 'magenta',
-  // "name": intentionally not styling
-  'regexp': 'red'
-};
-
-
-function stylizeWithColor(str, styleType) {
-  var style = inspect.styles[styleType];
-
-  if (style) {
-    return '\u001b[' + inspect.colors[style][0] + 'm' + str +
-           '\u001b[' + inspect.colors[style][1] + 'm';
-  } else {
-    return str;
-  }
-}
-
-
-function stylizeNoColor(str, styleType) {
-  return str;
-}
-
-
-function arrayToHash(array) {
-  var hash = {};
-
-  array.forEach(function(val, idx) {
-    hash[val] = true;
-  });
-
-  return hash;
-}
-
-
-function formatValue(ctx, value, recurseTimes) {
-  // Provide a hook for user-specified inspect functions.
-  // Check that value is an object with an inspect function on it
-  if (ctx.customInspect &&
-      value &&
-      isFunction(value.inspect) &&
-      // Filter out the util module, it's inspect function is special
-      value.inspect !== exports.inspect &&
-      // Also filter out any prototype objects using the circular check.
-      !(value.constructor && value.constructor.prototype === value)) {
-    var ret = value.inspect(recurseTimes, ctx);
-    if (!isString(ret)) {
-      ret = formatValue(ctx, ret, recurseTimes);
-    }
-    return ret;
-  }
-
-  // Primitive types cannot have properties
-  var primitive = formatPrimitive(ctx, value);
-  if (primitive) {
-    return primitive;
-  }
-
-  // Look up the keys of the object.
-  var keys = Object.keys(value);
-  var visibleKeys = arrayToHash(keys);
-
-  if (ctx.showHidden) {
-    keys = Object.getOwnPropertyNames(value);
-  }
-
-  // IE doesn't make error fields non-enumerable
-  // http://msdn.microsoft.com/en-us/library/ie/dww52sbt(v=vs.94).aspx
-  if (isError(value)
-      && (keys.indexOf('message') >= 0 || keys.indexOf('description') >= 0)) {
-    return formatError(value);
-  }
-
-  // Some type of object without properties can be shortcutted.
-  if (keys.length === 0) {
-    if (isFunction(value)) {
-      var name = value.name ? ': ' + value.name : '';
-      return ctx.stylize('[Function' + name + ']', 'special');
-    }
-    if (isRegExp(value)) {
-      return ctx.stylize(RegExp.prototype.toString.call(value), 'regexp');
-    }
-    if (isDate(value)) {
-      return ctx.stylize(Date.prototype.toString.call(value), 'date');
-    }
-    if (isError(value)) {
-      return formatError(value);
-    }
-  }
-
-  var base = '', array = false, braces = ['{', '}'];
-
-  // Make Array say that they are Array
-  if (isArray(value)) {
-    array = true;
-    braces = ['[', ']'];
-  }
-
-  // Make functions say that they are functions
-  if (isFunction(value)) {
-    var n = value.name ? ': ' + value.name : '';
-    base = ' [Function' + n + ']';
-  }
-
-  // Make RegExps say that they are RegExps
-  if (isRegExp(value)) {
-    base = ' ' + RegExp.prototype.toString.call(value);
-  }
-
-  // Make dates with properties first say the date
-  if (isDate(value)) {
-    base = ' ' + Date.prototype.toUTCString.call(value);
-  }
-
-  // Make error with message first say the error
-  if (isError(value)) {
-    base = ' ' + formatError(value);
-  }
-
-  if (keys.length === 0 && (!array || value.length == 0)) {
-    return braces[0] + base + braces[1];
-  }
-
-  if (recurseTimes < 0) {
-    if (isRegExp(value)) {
-      return ctx.stylize(RegExp.prototype.toString.call(value), 'regexp');
-    } else {
-      return ctx.stylize('[Object]', 'special');
-    }
-  }
-
-  ctx.seen.push(value);
-
-  var output;
-  if (array) {
-    output = formatArray(ctx, value, recurseTimes, visibleKeys, keys);
-  } else {
-    output = keys.map(function(key) {
-      return formatProperty(ctx, value, recurseTimes, visibleKeys, key, array);
-    });
-  }
-
-  ctx.seen.pop();
-
-  return reduceToSingleString(output, base, braces);
-}
-
-
-function formatPrimitive(ctx, value) {
-  if (isUndefined(value))
-    return ctx.stylize('undefined', 'undefined');
-  if (isString(value)) {
-    var simple = '\'' + JSON.stringify(value).replace(/^"|"$/g, '')
-                                             .replace(/'/g, "\\'")
-                                             .replace(/\\"/g, '"') + '\'';
-    return ctx.stylize(simple, 'string');
-  }
-  if (isNumber(value))
-    return ctx.stylize('' + value, 'number');
-  if (isBoolean(value))
-    return ctx.stylize('' + value, 'boolean');
-  // For some reason typeof null is "object", so special case here.
-  if (isNull(value))
-    return ctx.stylize('null', 'null');
-}
-
-
-function formatError(value) {
-  return '[' + Error.prototype.toString.call(value) + ']';
-}
-
-
-function formatArray(ctx, value, recurseTimes, visibleKeys, keys) {
-  var output = [];
-  for (var i = 0, l = value.length; i < l; ++i) {
-    if (hasOwnProperty(value, String(i))) {
-      output.push(formatProperty(ctx, value, recurseTimes, visibleKeys,
-          String(i), true));
-    } else {
-      output.push('');
-    }
-  }
-  keys.forEach(function(key) {
-    if (!key.match(/^\d+$/)) {
-      output.push(formatProperty(ctx, value, recurseTimes, visibleKeys,
-          key, true));
-    }
-  });
-  return output;
-}
-
-
-function formatProperty(ctx, value, recurseTimes, visibleKeys, key, array) {
-  var name, str, desc;
-  desc = Object.getOwnPropertyDescriptor(value, key) || { value: value[key] };
-  if (desc.get) {
-    if (desc.set) {
-      str = ctx.stylize('[Getter/Setter]', 'special');
-    } else {
-      str = ctx.stylize('[Getter]', 'special');
-    }
-  } else {
-    if (desc.set) {
-      str = ctx.stylize('[Setter]', 'special');
-    }
-  }
-  if (!hasOwnProperty(visibleKeys, key)) {
-    name = '[' + key + ']';
-  }
-  if (!str) {
-    if (ctx.seen.indexOf(desc.value) < 0) {
-      if (isNull(recurseTimes)) {
-        str = formatValue(ctx, desc.value, null);
-      } else {
-        str = formatValue(ctx, desc.value, recurseTimes - 1);
-      }
-      if (str.indexOf('\n') > -1) {
-        if (array) {
-          str = str.split('\n').map(function(line) {
-            return '  ' + line;
-          }).join('\n').slice(2);
-        } else {
-          str = '\n' + str.split('\n').map(function(line) {
-            return '   ' + line;
-          }).join('\n');
-        }
-      }
-    } else {
-      str = ctx.stylize('[Circular]', 'special');
-    }
-  }
-  if (isUndefined(name)) {
-    if (array && key.match(/^\d+$/)) {
-      return str;
-    }
-    name = JSON.stringify('' + key);
-    if (name.match(/^"([a-zA-Z_][a-zA-Z_0-9]*)"$/)) {
-      name = name.slice(1, -1);
-      name = ctx.stylize(name, 'name');
-    } else {
-      name = name.replace(/'/g, "\\'")
-                 .replace(/\\"/g, '"')
-                 .replace(/(^"|"$)/g, "'");
-      name = ctx.stylize(name, 'string');
-    }
-  }
-
-  return name + ': ' + str;
-}
-
-
-function reduceToSingleString(output, base, braces) {
-  var numLinesEst = 0;
-  var length = output.reduce(function(prev, cur) {
-    numLinesEst++;
-    if (cur.indexOf('\n') >= 0) numLinesEst++;
-    return prev + cur.replace(/\u001b\[\d\d?m/g, '').length + 1;
-  }, 0);
-
-  if (length > 60) {
-    return braces[0] +
-           (base === '' ? '' : base + '\n ') +
-           ' ' +
-           output.join(',\n  ') +
-           ' ' +
-           braces[1];
-  }
-
-  return braces[0] + base + ' ' + output.join(', ') + ' ' + braces[1];
-}
-
-
-// NOTE: These type checking functions intentionally don't use `instanceof`
-// because it is fragile and can be easily faked with `Object.create()`.
-exports.types = require('./support/types');
-
-function isArray(ar) {
-  return Array.isArray(ar);
-}
-exports.isArray = isArray;
-
-function isBoolean(arg) {
-  return typeof arg === 'boolean';
-}
-exports.isBoolean = isBoolean;
-
-function isNull(arg) {
-  return arg === null;
-}
-exports.isNull = isNull;
-
-function isNullOrUndefined(arg) {
-  return arg == null;
-}
-exports.isNullOrUndefined = isNullOrUndefined;
-
-function isNumber(arg) {
-  return typeof arg === 'number';
-}
-exports.isNumber = isNumber;
-
-function isString(arg) {
-  return typeof arg === 'string';
-}
-exports.isString = isString;
-
-function isSymbol(arg) {
-  return typeof arg === 'symbol';
-}
-exports.isSymbol = isSymbol;
-
-function isUndefined(arg) {
-  return arg === void 0;
-}
-exports.isUndefined = isUndefined;
-
-function isRegExp(re) {
-  return isObject(re) && objectToString(re) === '[object RegExp]';
-}
-exports.isRegExp = isRegExp;
-exports.types.isRegExp = isRegExp;
-
-function isObject(arg) {
-  return typeof arg === 'object' && arg !== null;
-}
-exports.isObject = isObject;
-
-function isDate(d) {
-  return isObject(d) && objectToString(d) === '[object Date]';
-}
-exports.isDate = isDate;
-exports.types.isDate = isDate;
-
-function isError(e) {
-  return isObject(e) &&
-      (objectToString(e) === '[object Error]' || e instanceof Error);
-}
-exports.isError = isError;
-exports.types.isNativeError = isError;
-
-function isFunction(arg) {
-  return typeof arg === 'function';
-}
-exports.isFunction = isFunction;
-
-function isPrimitive(arg) {
-  return arg === null ||
-         typeof arg === 'boolean' ||
-         typeof arg === 'number' ||
-         typeof arg === 'string' ||
-         typeof arg === 'symbol' ||  // ES6 symbol
-         typeof arg === 'undefined';
-}
-exports.isPrimitive = isPrimitive;
-
-exports.isBuffer = require('./support/isBuffer');
-
-function objectToString(o) {
-  return Object.prototype.toString.call(o);
-}
-
-
-function pad(n) {
-  return n < 10 ? '0' + n.toString(10) : n.toString(10);
-}
-
-
-var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep',
-              'Oct', 'Nov', 'Dec'];
-
-// 26 Feb 16:19:34
-function timestamp() {
-  var d = new Date();
-  var time = [pad(d.getHours()),
-              pad(d.getMinutes()),
-              pad(d.getSeconds())].join(':');
-  return [d.getDate(), months[d.getMonth()], time].join(' ');
-}
-
-
-// log is just a thin wrapper to console.log that prepends a timestamp
-exports.log = function() {
-  console.log('%s - %s', timestamp(), exports.format.apply(exports, arguments));
-};
-
-
-/**
- * Inherit the prototype methods from one constructor into another.
- *
- * The Function.prototype.inherits from lang.js rewritten as a standalone
- * function (not on Function.prototype). NOTE: If this file is to be loaded
- * during bootstrapping this function needs to be rewritten using some native
- * functions as prototype setup using normal JavaScript does not work as
- * expected during bootstrapping (see mirror.js in r114903).
- *
- * @param {function} ctor Constructor function which needs to inherit the
- *     prototype.
- * @param {function} superCtor Constructor function to inherit prototype from.
- */
-exports.inherits = require('inherits');
-
-exports._extend = function(origin, add) {
-  // Don't do anything if add isn't an object
-  if (!add || !isObject(add)) return origin;
-
-  var keys = Object.keys(add);
-  var i = keys.length;
-  while (i--) {
-    origin[keys[i]] = add[keys[i]];
-  }
-  return origin;
-};
-
-function hasOwnProperty(obj, prop) {
-  return Object.prototype.hasOwnProperty.call(obj, prop);
-}
-
-var kCustomPromisifiedSymbol = typeof Symbol !== 'undefined' ? Symbol('util.promisify.custom') : undefined;
-
-exports.promisify = function promisify(original) {
-  if (typeof original !== 'function')
-    throw new TypeError('The "original" argument must be of type Function');
-
-  if (kCustomPromisifiedSymbol && original[kCustomPromisifiedSymbol]) {
-    var fn = original[kCustomPromisifiedSymbol];
-    if (typeof fn !== 'function') {
-      throw new TypeError('The "util.promisify.custom" argument must be of type Function');
-    }
-    Object.defineProperty(fn, kCustomPromisifiedSymbol, {
-      value: fn, enumerable: false, writable: false, configurable: true
-    });
-    return fn;
-  }
-
-  function fn() {
-    var promiseResolve, promiseReject;
-    var promise = new Promise(function (resolve, reject) {
-      promiseResolve = resolve;
-      promiseReject = reject;
-    });
-
-    var args = [];
-    for (var i = 0; i < arguments.length; i++) {
-      args.push(arguments[i]);
-    }
-    args.push(function (err, value) {
-      if (err) {
-        promiseReject(err);
-      } else {
-        promiseResolve(value);
-      }
-    });
-
-    try {
-      original.apply(this, args);
-    } catch (err) {
-      promiseReject(err);
-    }
-
-    return promise;
-  }
-
-  Object.setPrototypeOf(fn, Object.getPrototypeOf(original));
-
-  if (kCustomPromisifiedSymbol) Object.defineProperty(fn, kCustomPromisifiedSymbol, {
-    value: fn, enumerable: false, writable: false, configurable: true
-  });
-  return Object.defineProperties(
-    fn,
-    getOwnPropertyDescriptors(original)
-  );
-}
-
-exports.promisify.custom = kCustomPromisifiedSymbol
-
-function callbackifyOnRejected(reason, cb) {
-  // `!reason` guard inspired by bluebird (Ref: https://goo.gl/t5IS6M).
-  // Because `null` is a special error value in callbacks which means "no error
-  // occurred", we error-wrap so the callback consumer can distinguish between
-  // "the promise rejected with null" or "the promise fulfilled with undefined".
-  if (!reason) {
-    var newReason = new Error('Promise was rejected with a falsy value');
-    newReason.reason = reason;
-    reason = newReason;
-  }
-  return cb(reason);
-}
-
-function callbackify(original) {
-  if (typeof original !== 'function') {
-    throw new TypeError('The "original" argument must be of type Function');
-  }
-
-  // We DO NOT return the promise as it gives the user a false sense that
-  // the promise is actually somehow related to the callback's execution
-  // and that the callback throwing will reject the promise.
-  function callbackified() {
-    var args = [];
-    for (var i = 0; i < arguments.length; i++) {
-      args.push(arguments[i]);
-    }
-
-    var maybeCb = args.pop();
-    if (typeof maybeCb !== 'function') {
-      throw new TypeError('The last argument must be of type Function');
-    }
-    var self = this;
-    var cb = function() {
-      return maybeCb.apply(self, arguments);
-    };
-    // In true node style we process the callback on `nextTick` with all the
-    // implications (stack, `uncaughtException`, `async_hooks`)
-    original.apply(this, args)
-      .then(function(ret) { process.nextTick(cb.bind(null, null, ret)) },
-            function(rej) { process.nextTick(callbackifyOnRejected.bind(null, rej, cb)) });
-  }
-
-  Object.setPrototypeOf(callbackified, Object.getPrototypeOf(original));
-  Object.defineProperties(callbackified,
-                          getOwnPropertyDescriptors(original));
-  return callbackified;
-}
-exports.callbackify = callbackify;
-
-}).call(this)}).call(this,require('_process'))
-},{"./support/isBuffer":36,"./support/types":37,"_process":35,"inherits":29}],39:[function(require,module,exports){
-(function (global){(function (){
-'use strict';
-
-var forEach = require('for-each');
-var availableTypedArrays = require('available-typed-arrays');
-var callBound = require('call-bind/callBound');
-var gOPD = require('gopd');
-
-var $toString = callBound('Object.prototype.toString');
-var hasToStringTag = require('has-tostringtag/shams')();
-
-var g = typeof globalThis === 'undefined' ? global : globalThis;
-var typedArrays = availableTypedArrays();
-
-var $slice = callBound('String.prototype.slice');
-var toStrTags = {};
-var getPrototypeOf = Object.getPrototypeOf; // require('getprototypeof');
-if (hasToStringTag && gOPD && getPrototypeOf) {
-	forEach(typedArrays, function (typedArray) {
-		if (typeof g[typedArray] === 'function') {
-			var arr = new g[typedArray]();
-			if (Symbol.toStringTag in arr) {
-				var proto = getPrototypeOf(arr);
-				var descriptor = gOPD(proto, Symbol.toStringTag);
-				if (!descriptor) {
-					var superProto = getPrototypeOf(proto);
-					descriptor = gOPD(superProto, Symbol.toStringTag);
-				}
-				toStrTags[typedArray] = descriptor.get;
-			}
-		}
-	});
-}
-
-var tryTypedArrays = function tryAllTypedArrays(value) {
-	var foundName = false;
-	forEach(toStrTags, function (getter, typedArray) {
-		if (!foundName) {
-			try {
-				var name = getter.call(value);
-				if (name === typedArray) {
-					foundName = name;
-				}
-			} catch (e) {}
-		}
-	});
-	return foundName;
-};
-
-var isTypedArray = require('is-typed-array');
-
-module.exports = function whichTypedArray(value) {
-	if (!isTypedArray(value)) { return false; }
-	if (!hasToStringTag || !(Symbol.toStringTag in value)) { return $slice($toString(value), 8, -1); }
-	return tryTypedArrays(value);
-};
-
-}).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"available-typed-arrays":14,"call-bind/callBound":17,"for-each":19,"gopd":23,"has-tostringtag/shams":26,"is-typed-array":33}]},{},[11])(11)
+},{}]},{},[13])(13)
 });

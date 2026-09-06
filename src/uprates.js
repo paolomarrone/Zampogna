@@ -7,6 +7,7 @@
 		Constant: { level: 0, toString: () => "UpdateRateConstant" },
 		Fs:       { level: 1, toString: () => "UpdateRateFs" },
 		Control:  { level: 2, toString: () => "UpdateRateControl" },
+		Reset:    { level: 2.5, toString: () => "UpdateRateReset" },
 		Audio:    { level: 3, toString: () => "UpdateRateAudio" },
 
 		max: (...x) => {
