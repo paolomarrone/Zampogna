@@ -59,6 +59,8 @@ For `t = [10, 20, 30, 40]` and `enabled = [true, false, true, true]`, with zero 
 
 ### Compiler implementation
 
+Semantic analysis declares each lexical scope before checking expressions, resolves calls by their argument types, and records canonical types and symbol references on the AST. Omitted types mean `float32`, so `f(x)` and `f(float x)` cannot define separate overloads. A matching overload in the nearest scope wins; other input signatures remain available from enclosing scopes. Output count is checked after selecting the overload. Graph construction links these resolved symbols, including captures and external calls, without resolving names again. Branch outputs have separate symbols and inherit the enclosing output types.
+
 Branch guards are graph inputs, so cloning, reachability, and scheduling preserve them. Generated code snapshots memory reads and computes all write indices and values before committing writes. Code generation follows the dependency schedule without moving or merging branch computations.
 
 Four small graph optimizations are enabled by default: `remove_dead_graph`, `negative_negative`, `negative_consts`, and `unify_consts`. They remove unused computations, eliminate double floating-point or boolean negation on the same branch clock, fold representable negated constants, and share constants of the same type and value. Signed zero remains distinct; integer negations that may overflow are preserved. Pass an `optimizations` object to select these passes explicitly (omitted entries are disabled).

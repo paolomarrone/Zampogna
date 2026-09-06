@@ -372,7 +372,6 @@ postfix_expr        : primary_expr
                             $$ = {
                                 name: 'CALL_EXPR',
                                 id: $1,
-                                outputs_N: 0,
                                 args: []
                             }
                         }}
@@ -381,7 +380,6 @@ postfix_expr        : primary_expr
                             $$ = {
                                 name: 'CALL_EXPR',
                                 id: $1,
-                                outputs_N: 0,
                                 args: $3
                             }
                         }}

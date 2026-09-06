@@ -388,7 +388,6 @@ case 58:
                             this.$ = {
                                 name: 'CALL_EXPR',
                                 id: $$[$0-2],
-                                outputs_N: 0,
                                 args: []
                             }
                         
@@ -398,7 +397,6 @@ case 59:
                             this.$ = {
                                 name: 'CALL_EXPR',
                                 id: $$[$0-3],
-                                outputs_N: 0,
                                 args: $$[$0-1]
                             }
                         

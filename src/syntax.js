@@ -13,349 +13,273 @@
 	Author: Paolo Marrone
 */
 
-/*
-	TODO: Error messages / system
-*/
-
 (function() {
 
 	'use strict';
 
-	function ScopeTable (father) {
-		this.elements = [];
-		this.father = father;
-		this.findLocally = function (id) {
-			return this.elements.filter(e => e.id == id);
-		};
-		this.findGlobally = function (id) {
-			let r = this.findLocally(id);
-			if (this.father)
-				r = r.concat(this.father.findGlobally(id)); // Order matters
-			return r;
-		};
-		this.add = function (node) {
-			if (!['BLOCK_DEFINITION', 'VARIABLE', 'MEMORY_DECLARATION'].includes(node.name))
-				err("Only BLOCK_DEFINITIONs, VARIABLEs, and MEMORY_DECLARATIONs allowed in ScopeTable");
-			this.elements.push(node);
-		};
+	const TYPES = require('./types');
+	const callable = s => s.kind == 'block' || s.kind == 'external';
+	const sameTypes = (a, b) => a.length == b.length && a.every((t, i) => t == b[i]);
+
+	function Scope(parent) {
+		this.parent = parent;
+		this.locals = new Map();
+	}
+	Scope.prototype.add = function(symbol) {
+		const previous = this.locals.get(symbol.id) || [];
+		if (previous.length && (!callable(symbol) || previous.some(s => !callable(s))))
+			throw new Error('Identifier already declared: ' + symbol.id);
+		if (previous.some(s => sameTypes(s.input_types, symbol.input_types)))
+			throw new Error('Block definitions conflict: ' + symbol.id);
+		this.locals.set(symbol.id, previous.concat(symbol));
+	};
+	Scope.prototype.find = function(id) {
+		for (let scope = this; scope; scope = scope.parent) {
+			const symbols = scope.locals.get(id);
+			if (symbols) return symbols;
+		}
+		throw new Error('Unknown identifier: ' + id);
+	};
+	Scope.prototype.resolveCall = function(id, types) {
+		for (let scope = this; scope; scope = scope.parent) {
+			const symbols = scope.locals.get(id);
+			if (!symbols) continue;
+			if (symbols.some(s => !callable(s)))
+				throw new Error('Identifier is not callable: ' + id);
+			const match = symbols.find(s => sameTypes(s.input_types, types));
+			if (match) return match;
+		}
+		throw new Error('No matching block definition: ' + id + '(' + types.join(', ') + ')');
 	};
 
-	const reserved_variables = ["fs"];
-	const allowed_properties = ["fs", "init"];
-
-	const globalScope = new ScopeTable(null);
-	globalScope.add({ name: "VARIABLE", id: "fs" });
-	
-
-	function validateAST (root) {
-		let scope = new ScopeTable(globalScope);
-		analyze_block_statements(root.statements, scope);
+	function expectType(actual, expected, context) {
+		if (actual != expected)
+			throw new Error('Type mismatch in ' + context + ': expected ' + expected + ', got ' + actual);
 	}
 
-	function analyze_block_statements(statements, scope) {
-		statements.filter(s => s.name == 'BLOCK_DEFINITION').forEach(s => analyze_block_signature(s, scope));
-		statements.filter(s => s.name == 'MEMORY_DECLARATION').forEach(s => analyze_memory_declaration(s, scope));
-		statements.filter(s => s.name == "ASSIGNMENT").forEach(s => analyze_assignment_left(s, scope));
-		statements.filter(s => s.name == 'MEMORY_DECLARATION').forEach(s => analyze_memory_declaration_exprs(s, scope));
-		statements.filter(s => s.name == 'ASSIGNMENT').forEach(s => analyze_assignment_right(s, scope));
-		statements.filter(s => s.name == 'BLOCK_DEFINITION').forEach(s => analyze_block_body(s, scope));
+	// Symbols belong to one lexical scope. AST uses share those records; branch
+	// outputs get new records, so assignment tracking never changes an outer use.
+	function declareValue(node, scope, kind, datatype, input = false) {
+		if (node.name != 'VARIABLE' && node.name != 'MEMORY_DECLARATION')
+			throw new Error('Declaration requires an identifier');
+		if (node.id == 'fs')
+			throw new Error('Cannot declare reserved variable: fs');
+		const symbol = { kind, id: node.id, datatype, input, assigned: input, used: false };
+		scope.add(symbol);
+		node.symbol = symbol;
+		return symbol;
 	}
 
-	function analyze_block_signature (bdef, scope) {
-		if (bdef.inputs.some(i => i.name != 'VARIABLE'))
-			err("Block definition inputs must be IDs");
-		if (bdef.inputs.some(i => reserved_variables.includes(i.id)))
-			err("Cannot use reserved variables here");
-		if (bdef.outputs.some(o => o.name != 'VARIABLE'))
-			err("Block definition outputs must be IDs");
-		if (bdef.outputs.some(o => reserved_variables.includes(o.id)))
-			err("Cannot use reserved variables here");
-
-		scope.findLocally(bdef.id).forEach(e => {
-			if (e.name != 'BLOCK_DEFINITION')
-				err("Identifier used locally for both Block definition and variable");
-			if (compare_block_signatures(bdef, e) > 2) 
-				err("Block definitions conflict");
+	function validateAST(root, descriptors = []) {
+		const globals = new Scope(null);
+		root.fs_symbol = { kind: 'variable', id: 'fs', datatype: TYPES.Float32, input: true };
+		globals.add(root.fs_symbol);
+		root.externals = descriptors.map(descriptor => {
+			const symbol = {
+				kind: 'external', id: descriptor.block_name, descriptor,
+				input_types: descriptor.block_inputs.map(p => TYPES.parse(p.type)),
+				output_types: descriptor.block_outputs.map(p => TYPES.parse(p.type)),
+			};
+			globals.add(symbol);
+			return symbol;
 		});
-
-		scope.add(bdef);
+		analyzeStatements(root.statements, new Scope(globals));
 	}
 
-	function compare_block_signatures(bdef_A, bdef_B) {
-		if (bdef_A.id != bdef_B.id)
-			return 0;
-		if (bdef_A.inputs.length != bdef_B.inputs.length)
-			return 1;
-		for (let i = 0; i < bdef_A.inputs.length; i++) {
-			var dA = bdef_A.inputs[i].declaredType || 'FLOAT32';
-			var dB = bdef_B.inputs[i].declaredType || 'FLOAT32';
-			if (dA != dB)
-				return 2;
+	function analyzeStatements(statements, scope) {
+		// Declare the entire scope before resolving expressions, including captures
+		// from nested definitions and calls to definitions appearing later in source.
+		for (const s of statements.filter(s => s.name == 'BLOCK_DEFINITION')) {
+			if ([...s.inputs, ...s.outputs].some(p => p.name != 'VARIABLE'))
+				throw new Error('Block inputs and outputs must be identifiers');
+			s.symbol = {
+				kind: 'block', id: s.id,
+				input_types: s.inputs.map(p => TYPES.fromAST(p.declaredType)),
+				output_types: s.outputs.map(p => TYPES.fromAST(p.declaredType)),
+			};
+			scope.add(s.symbol);
 		}
-		if (bdef_A.outputs.length != bdef_B.outputs.length)
-			return 3;
-		for (let o = 0; o < bdef_A.outputs.length; o++)
-			if (bdef_A.outputs[o].declaredType != bdef_B.outputs[o].declaredType)
-				return 4;
-		return 5;
-	}
-
-	function analyze_memory_declaration (mdef, scope) {
-		if (scope.findLocally(mdef.id).length > 0)
-			err("ID used more than once");
-		scope.add(mdef);
-	}
-
-	function analyze_memory_declaration_exprs (mdef, scope) {
-		analyze_expr(mdef.size, scope, 1, false);
-	}
-
-	function analyze_assignment_left (assignment, scope) {
-
-		assignment.outputs.forEach(o => {
-			switch (assignment.type) {
-			case 'EXPR':
-				if (!['VARIABLE', 'DISCARD', 'PROPERTY', 'MEMORY_ELEMENT'].includes(o.name))
-					err("Only 'VARIABLE', 'DISCARD', 'PROPERTY', 'MEMORY_ELEMENT' allowed when assigning an EXPR");
-				break;
-			case 'ANONYMOUS_BLOCK':
-			case 'IF_THEN_ELSES':
-				if (!['VARIABLE'].includes(o.name))
-					err("Only 'VARIABLE' allowed when assigning an ANONYMOUS_BLOCK or IF_THEN_ELSES");
-				break;
-			default:
-				err("Unexpected Assignment type");
-			}
-
-			if (reserved_variables.includes(o.id))
-				err("Cannot use reserved variables in assignments");
-			
-			if (o.name == 'VARIABLE') {
-				let elements = scope.findLocally(o.id);
-				if (elements.filter(e => e.name == 'BLOCK_DEFINITION').length > 0)
-					err("ID already used for a BLOCK_DEFINITION");
-				if (elements.filter(e => e.name == 'MEMORY_DECLARATION').length > 0)
-					err("Use [] operator to access memory");
-				elements = elements.filter(e => e.name == 'VARIABLE');
-				if (elements.length == 0) {
-					o.assigned = true;
-					scope.add(o);
+		for (const s of statements.filter(s => s.name == 'MEMORY_DECLARATION'))
+			declareValue(s, scope, 'memory', TYPES.fromAST(s.type));
+		for (const s of statements.filter(s => s.name == 'ASSIGNMENT')) {
+			for (const o of s.outputs) {
+				if (s.type != 'EXPR' && o.name != 'VARIABLE')
+					throw new Error('Block and branch outputs must be variables');
+				if (o.name != 'VARIABLE') continue;
+				if (o.id == 'fs') throw new Error('Cannot assign reserved variable: fs');
+				const local = scope.locals.get(o.id);
+				if (!local) {
+					declareValue(o, scope, 'variable', TYPES.fromAST(o.declaredType));
+				} else {
+					if (local.length != 1 || local[0].kind != 'variable')
+						throw new Error('Assignment requires a variable: ' + o.id);
+					if (o.declaredType !== undefined)
+						throw new Error('Redeclaration: ' + o.id);
+					o.symbol = local[0];
 				}
-				else if (elements.length == 1) {
-					if (elements[0].assigned)
-						err("Variable assigned twice, or you are trying to assign an input");
-					if (o.declaredType != undefined)
-						err("Redeclaration");
-					elements[0].assigned = true;
+				if (o.symbol.assigned)
+					throw new Error('Variable assigned twice, or assignment to an input: ' + o.id);
+				o.symbol.assigned = true;
+			}
+		}
+		for (const s of statements) {
+			if (s.name == 'MEMORY_DECLARATION')
+				expectType(expression(s.size, scope)[0], TYPES.Int32, 'memory size');
+			if (s.name == 'ASSIGNMENT') analyzeAssignment(s, scope);
+			if (s.name == 'BLOCK_DEFINITION') {
+				const body = new Scope(scope);
+				s.inputs.forEach((p, i) => declareValue(p, body, 'variable', s.symbol.input_types[i], true));
+				s.outputs.forEach((p, i) => declareValue(p, body, 'variable', s.symbol.output_types[i]));
+				analyzeStatements(s.statements, body);
+				checkOutputs(s.outputs);
+				for (const p of s.inputs)
+					if (!p.symbol.used) console.warn('*** Warning *** Input not used: ' + p.id);
+			}
+		}
+	}
+
+	function checkOutputs(outputs) {
+		for (const o of outputs)
+			if (!o.symbol.assigned) throw new Error('Output not assigned: ' + o.id);
+	}
+
+	function analyzeAssignment(s, scope) {
+		if (s.type == 'EXPR') {
+			const array = s.expr.name == 'ARRAY_CONST';
+			if (array && (s.outputs.length != 1 || s.outputs[0].name != 'PROPERTY' || s.outputs[0].property_id != 'init'))
+				throw new Error('Array can be assigned to init property only');
+			const types = expression(s.expr, scope, s.outputs.length, array);
+			s.outputs.forEach((o, i) => {
+				let type;
+				switch (o.name) {
+				case 'VARIABLE': type = o.symbol.datatype; break;
+				case 'PROPERTY': type = property(o, scope, true); break;
+				case 'MEMORY_ELEMENT': type = memory(o, scope, true); break;
+				case 'DISCARD': return;
+				default: throw new Error('Invalid assignment target: ' + o.name);
 				}
-				else
-					err("Found ID multiple times");				
-			}
-			if (o.name == 'PROPERTY') {
-
-				check_property_left(o);
-
-				function check_property_left (p) {
-					if (p.expr.name == 'VARIABLE') {
-						if (reserved_variables.includes(p.expr.id))
-							err("Cannot set properties of reserved variables");
-						let elements = scope.findLocally(p.expr.id);
-						if (elements.length == 0)
-							err("Property of undefined");
-						const e = elements[0];
-						if (!['VARIABLE', 'MEMORY_DECLARATION'].includes(e.name))
-							err("You can assign properties only to VARIABLEs and MEMORY_DECLARATIONs");
-						if (e.is_input)
-							err("Cannot set properties of inputs");
-						e[p.property_id] = p;
-					}
-					else if (p.expr.name == 'PROPERTY') {
-						check_property_left(p.expr);
-					}
-					else {
-						err("Cannot assign property to this");
-					}
-					if (!allowed_properties.includes(p.property_id))
-						err("Property not allowed");
-				}
-			}
-			if (o.name == 'MEMORY_ELEMENT') {
-				let elements = scope.findLocally(o.id);
-				if (elements.length != 1)
-					err("Memory element not found");
-				if (elements[0].name != 'MEMORY_DECLARATION')
-					err("[] is allowed only for memory");
-			}
-		});
-	}
-
-	function analyze_assignment_right (assignment, scope) {
-		if (assignment.type == 'EXPR') {
-			if (assignment.expr.name == 'ARRAY_CONST') {
-				const o = assignment.outputs[0];
-				if (o.name != 'PROPERTY' || o.property_id != 'init')
-					err("Array can be assigned to init property only");
-			}
-			analyze_expr(assignment.expr, scope, assignment.outputs.length, true);
-		}
-		if (assignment.type == 'ANONYMOUS_BLOCK') {
-			const newscope = new ScopeTable(scope);
-			assignment.outputs.forEach(o => {
-				o.assigned = false;
-				newscope.add(o);
+				expectType(types[i], type, 'assignment to ' + (o.id || o.property_id));
 			});
-			analyze_block_statements(assignment.expr.statements, newscope);
-			assignment.outputs.forEach(o => {
-				if (o.assigned == false)
-					err("Output not assigned");
+			return;
+		}
+		const branches = s.type == 'IF_THEN_ELSES' ? s.expr.branches
+			: s.type == 'ANONYMOUS_BLOCK' ? [{ block: s.expr }] : null;
+		if (!branches) throw new Error('Unexpected assignment type: ' + s.type);
+		for (const branch of branches) {
+			if (branch.condition)
+				expectType(expression(branch.condition, scope)[0], TYPES.Bool, 'branch condition');
+			const body = new Scope(scope);
+			branch.outputs = s.outputs.map(o => {
+				const local = { name: 'VARIABLE', id: o.id };
+				declareValue(local, body, 'variable', o.symbol.datatype);
+				return local;
 			});
-		}
-		if (assignment.type == 'IF_THEN_ELSES') {
-			assignment.expr.branches.forEach(b => {
-				if (b.condition)
-					analyze_expr(b.condition, scope, 1, false);
-				const newscope = new ScopeTable(scope);
-				assignment.outputs.forEach(o => {
-					o.assigned = false;
-					newscope.add(o);
-				});
-				analyze_block_statements(b.block.statements, newscope);
-				assignment.outputs.forEach(o => {
-					if (o.assigned == false)
-						err("Output not assigned");
-				});
-			});
+			analyzeStatements(branch.block.statements, body);
+			checkOutputs(branch.outputs);
 		}
 	}
 
-	function analyze_block_body(bdef, scope) {
-		
-		const newscope = new ScopeTable(scope);
-		bdef.inputs.forEach(i => {
-			i.assigned = true;
-			i.is_input = true;
-			newscope.add(i);
-		});
-		bdef.outputs.forEach(o => {
-			o.assigned = false;
-			newscope.add(o);
-		});
-		analyze_block_statements(bdef.statements, newscope);
-		bdef.outputs.forEach(o => {
-			if (o.assigned == false)
-				err("Output not assigned");
-		});
-		bdef.inputs.forEach(i => {
-			if (!i.used)
-				warn("Input not used");
-		});
+	function bind(node, scope, kinds, local = false) {
+		const symbols = local ? scope.locals.get(node.id) : scope.find(node.id);
+		if (!symbols || symbols.length != 1 || !kinds.includes(symbols[0].kind))
+			throw new Error('Expected ' + kinds.join(' or ') + (local ? ' in this scope: ' : ': ') + node.id);
+		node.symbol = symbols[0];
+		return node.symbol;
 	}
 
-	function analyze_expr(expr, scope, outputsN, isRoot) {
-		let expr_outputsN = 1;
-		switch (expr.name) {
-		case "VARIABLE": 
-		{
-			if (expr.declaredType)
-				err("Unexpected type declaration in expression");
-			let vs = scope.findGlobally(expr.id);
-			let found = false;
-			for (let v of vs) {
-				if (v.name != 'VARIABLE')
-					err("Not a variable");
-				found = true;
-				v.used = true;
-				break;
-			}
-			if (!found)
-				err("ID not found: " + expr.id);
-			break;
-		}
-		case "PROPERTY":
-		{
-			if (expr.expr.name == 'VARIABLE') {
-				if (reserved_variables.includes(expr.expr.id))
-					err("Cannot access properties of reserved variables");
-				analyze_expr({ name: "VARIABLE", id: expr.expr.id }, scope, 1, false);
-			}
-			else if (expr.expr.name == 'MEMORY_ELEMENT') {
-				err("Cannot access properties of memory elements");
-			}
-			else {
-				analyze_expr(expr.expr, scope, 1, false);
-			}
-
-			if (!allowed_properties.includes(expr.property_id))
-				err("Property not allowed");
-			break;
-		}
-		case "MEMORY_ELEMENT":
-		{
-			let mdefs = scope.findGlobally(expr.id);
-			let found = false;
-			for (let m of mdefs) {
-				if (m.name != 'MEMORY_DECLARATION')
-					err("That's not memory");
-				found = true;
-				break;
-			}
-			if (!found)
-				err("ID not found");
-			break;
-		}
-		case "DISCARD":
-		{
-			err("DISCARD not allowed in expressions");
-			break;
-		}
-		case "CALL_EXPR":
-		{
-			const bdefs = scope.findGlobally(expr.id);
-			let found = false;
-			let foundWithSameId = false;
-			for (const b of bdefs) {
-				if (b.name != "BLOCK_DEFINITION")
-					err("Calling something that is not callable");
-				foundWithSameId = true;
-				if (b.inputs.length != expr.args.length)
-					continue;
-				expr_outputsN = b.outputs.length;
-				expr.outputs_N = expr_outputsN;
-				found = true;
-				break;
-			}
-			if (found)
-				break;
-			if (foundWithSameId)
-				err("No matching block definition for call");
-
-			// Might be a C block call
-			expr.outputs_N = outputsN;
-			expr_outputsN = outputsN;
-			break;
-		}
-		case "ARRAY_CONST":
-		{
-			if (!isRoot)
-				err("Cannot use array in subexpressions");
-			break;
-		}
-		}
-
-		if (expr_outputsN != outputsN)
-			err("Number of outputs accepted != number of block outputs: " + expr_outputsN + ", " + outputsN);
-
-		if (expr.args)
-			expr.args.forEach(arg => analyze_expr(arg, scope, 1, false));
+	function memory(node, scope, writing) {
+		const symbol = bind(node, scope, ['memory'], writing);
+		expectType(expression(node.args[0], scope)[0], TYPES.Int32, 'memory index');
+		return symbol.datatype;
 	}
 
-	function err (msg) {
-		throw new Error(msg);
+	function property(node, scope, writing) {
+		if (!['fs', 'init'].includes(node.property_id))
+			throw new Error('Property not allowed: ' + node.property_id);
+		const base = node.expr;
+		let type;
+		if (base.name == 'VARIABLE') {
+			if (base.declaredType !== undefined) throw new Error('Unexpected type declaration in property');
+			if (base.id == 'fs') throw new Error('Cannot access properties of reserved variable: fs');
+			const symbol = bind(base, scope, ['variable', 'memory'], writing);
+			if (writing && symbol.input) throw new Error('Cannot set properties of inputs');
+			symbol.used = true;
+			type = symbol.datatype;
+		} else if (base.name == 'PROPERTY') {
+			type = property(base, scope, writing);
+		} else {
+			if (writing || base.name == 'MEMORY_ELEMENT') throw new Error('Invalid property target');
+			type = expression(base, scope)[0];
+		}
+		node.result_types = [node.property_id == 'fs' ? TYPES.Float32 : type];
+		return node.result_types[0];
 	}
 
-	function warn (msg) {
-		console.warn("*** Warning *** " + msg);
+	function expression(node, scope, count = 1, allowArray = false) {
+		let types;
+		switch (node.name) {
+		case 'VARIABLE':
+			if (node.declaredType !== undefined) throw new Error('Unexpected type declaration in expression');
+			bind(node, scope, ['variable']).used = true;
+			types = [node.symbol.datatype];
+			break;
+		case 'CONSTANT': types = [TYPES.fromAST(node.type)]; break;
+		case 'PROPERTY': types = [property(node, scope, false)]; break;
+		case 'MEMORY_ELEMENT': types = [memory(node, scope, false)]; break;
+		case 'CALL_EXPR': {
+			const args = node.args.map(arg => expression(arg, scope)[0]);
+			node.symbol = scope.resolveCall(node.id, args);
+			types = node.symbol.output_types;
+			break;
+		}
+		case 'ARRAY_CONST': {
+			if (!allowArray) throw new Error('Array is only allowed as an initializer');
+			const args = node.args.map(arg => expression(arg, scope)[0]);
+			args.forEach(t => expectType(t, args[0], 'array element'));
+			types = [args[0]];
+			break;
+		}
+		default:
+			types = [operatorType(node, scope)];
+		}
+		if (types.length != count)
+			throw new Error('Number of outputs accepted != number of block outputs: ' + types.length + ', ' + count);
+		node.result_types = types;
+		return types;
 	}
 
-	exports["validateAST"] = validateAST;
+	function operatorType(node, scope) {
+		const unary = ['CAST_EXPR', 'UMINUS_EXPR', 'LOGICAL_NOT_EXPR', 'BITWISE_NOT_EXPR'];
+		const arity = node.name == 'INLINE_IF_THEN_ELSE' ? 3 : unary.includes(node.name) ? 1 : 2;
+		if (!node.args || node.args.length != arity)
+			throw new Error('Invalid expression arity: ' + node.name + ' requires ' + arity + ' argument(s)');
+		const args = node.args.map(arg => expression(arg, scope)[0]);
+		if (node.name == 'CAST_EXPR') return TYPES.fromAST(node.type);
+		if (node.name == 'INLINE_IF_THEN_ELSE') {
+			expectType(args[0], TYPES.Bool, 'conditional expression');
+			expectType(args[1], args[2], 'conditional branches');
+			return args[1];
+		}
+		args.forEach(t => expectType(t, args[0], node.name));
+		switch (node.name) {
+		case 'LOGICAL_OR_EXPR': case 'LOGICAL_AND_EXPR': case 'LOGICAL_NOT_EXPR':
+			expectType(args[0], TYPES.Bool, node.name);
+			return TYPES.Bool;
+		case 'BITWISE_INCLUSIVE_OR_EXPR': case 'BITWISE_EXCLUSIVE_OR_EXPR':
+		case 'BITWISE_AND_EXPR': case 'BITWISE_NOT_EXPR':
+		case 'SHIFT_LEFT_EXPR': case 'SHIFT_RIGHT_EXPR': case 'MODULO_EXPR':
+			expectType(args[0], TYPES.Int32, node.name);
+			return TYPES.Int32;
+		case 'EQUAL_EXPR': case 'NOTEQUAL_EXPR': return TYPES.Bool;
+		case 'LESS_EXPR': case 'LESSEQUAL_EXPR': case 'GREATER_EXPR': case 'GREATEREQUAL_EXPR':
+		case 'PLUS_EXPR': case 'MINUS_EXPR': case 'TIMES_EXPR': case 'DIV_EXPR': case 'UMINUS_EXPR':
+			if (![TYPES.Float32, TYPES.Int32].includes(args[0]))
+				throw new Error('Numeric operands required: ' + node.name);
+			return ['LESS_EXPR', 'LESSEQUAL_EXPR', 'GREATER_EXPR', 'GREATEREQUAL_EXPR'].includes(node.name)
+				? TYPES.Bool : args[0];
+		default: throw new Error('Unexpected expression: ' + node.name);
+		}
+	}
+
+	exports.validateAST = validateAST;
 }());

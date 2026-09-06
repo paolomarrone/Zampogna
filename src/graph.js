@@ -21,9 +21,20 @@
 	const bs = require("./blocks").BlockTypes;
 	const RATES = require("./uprates");
 	const util = require("./util");
-	let ifthenelse_branch_counter = 0;
 
-	function ASTToGraph (root, options, cblock_descs = []) {
+	function ASTToGraph (root, options) {
+
+		let ifthenelse_branch_counter = 0;
+		const bindings = new Map();
+		const calls = [];
+		function binding(node) {
+			const found = bindings.get(node.symbol);
+			if (!found) throw new Error("Missing resolved graph binding: " + node.id);
+			return found;
+		}
+		function set_output_types(block, types) {
+			types.forEach((type, i) => block.o_ports[i].datatype = () => type);
+		}
 
 		const bdef = Object.create(bs.CompositeBlock);
 		bdef.id = "0";
@@ -43,14 +54,16 @@
 			const c = Object.create(bs.CompositeBlock.Connection);
 			c.in = bdef.i_ports[0];
 			c.out = fs.i_ports[0];
+			bindings.set(root.fs_symbol, { r: fs, bd: bdef });
 			bdef.blocks.push(fs);
 			bdef.connections.push(c);
 		})(bdef);
 
 		(function register_cblocks (bdef) {
-			cblock_descs.forEach(d => {
+			root.externals.forEach(symbol => {
 				const c = Object.create(bs.CBlock);
-				c.init(d);
+				c.init(symbol.descriptor);
+				bindings.set(symbol, { r: c, bd: bdef });
 				bdef.cdefs.push(c);
 			});
 		})(bdef);
@@ -59,12 +72,12 @@
 
 		bdef.propagateDataTypes();
 
-		(function resolve_block_calls (bdef) {
-			bdef.blocks.filter(b => bs.CallBlock.isPrototypeOf(b)).forEach(b => {
-				resolve_block_call(b, bdef);
-			});
-			bdef.bdefs.forEach(bd => resolve_block_calls(bd));
-		})(bdef);
+		// Resolution has already selected a symbol. Linking waits until every
+		// definition has a graph, so forward and captured calls use the same path.
+		for (const { block, symbol } of calls) {
+			block.ref = bindings.get(symbol).r;
+			block.type = symbol.kind == 'external' ? 'cdef' : 'bdef';
+		}
 
 		(function validate (bdef) {
 			bdef.validate();
@@ -72,248 +85,406 @@
 		})(bdef);
 
 		return bdef;
-	}
 
-	function convert_block_definition (bdef_node, bdef_father) {
+		function create_definition (bdef_node, bdef_father) {
 		
-		const bdef = Object.create(bs.CompositeBlock);
-		bdef.id = bdef_node.id;
-		bdef.bdef_father = bdef_father;
-		bdef.inputs_N = bdef_node.inputs.length;
-		bdef.outputs_N = bdef_node.outputs.length;
-		bdef.init();
-		bdef_node.inputs.forEach((input, i) => {
-			const t = getDataType(input.declaredType);
-			bdef.i_ports[i].datatype = () => t;
-		});
-		bdef_node.outputs.forEach((output, i) => {
-			const t = getDataType(output.declaredType);
-			bdef.o_ports[i].datatype = () => t;
-		});
+			const bdef = Object.create(bs.CompositeBlock);
+			bdef.id = bdef_node.id;
+			bdef.bdef_father = bdef_father;
+			bdef.inputs_N = bdef_node.inputs.length;
+			bdef.outputs_N = bdef_node.outputs.length;
+			bdef.init();
+			bdef_node.inputs.forEach((input, i) => {
+				const t = input.symbol.datatype;
+				bdef.i_ports[i].datatype = () => t;
+			});
+			bdef_node.outputs.forEach((output, i) => {
+				const t = output.symbol.datatype;
+				bdef.o_ports[i].datatype = () => t;
+			});
 
-		// Adding input/outputs
-		bdef_node.inputs.forEach((p, i) => {
-			const v = Object.create(bs.VarBlock);
-			v.id = p.id;
-			const t = getDataType(p.declaredType);
-			v.datatype = () => t;
-			v.init();
-
-			const c = Object.create(bs.CompositeBlock.Connection);
-			c.in = bdef.i_ports[i];
-			c.out = v.i_ports[0];
-
-			bdef.i_ports[i].id = p.id;
-			bdef.blocks.push(v);
-			bdef.connections.push(c);
-		});
-		bdef_node.outputs.forEach((p, i) => {
-			const v = Object.create(bs.VarBlock);
-			v.id = p.id;
-			const t = getDataType(p.declaredType);
-			v.datatype = () => t;
-			v.init();
-
-			const c = Object.create(bs.CompositeBlock.Connection);
-			c.in = v.o_ports[0];
-			c.out = bdef.o_ports[i];
-
-			bdef.o_ports[i].id = p.id;
-			bdef.blocks.push(v);
-			bdef.connections.push(c);
-		});
-		convert_statements(bdef_node.statements, bdef);
-
-		return bdef;
-	}
-
-	function convert_statements (statements, bdef) {
-
-		// Adding variables
-		statements.filter(s => s.name == "ASSIGNMENT").forEach(s => {
-			s.outputs.filter(o => o.name == 'VARIABLE').forEach(o => {
-				if (bdef.blocks.some(bb => bb.id == o.id)) // is output
-					return;
+			// Adding input/outputs
+			bdef_node.inputs.forEach((p, i) => {
 				const v = Object.create(bs.VarBlock);
-				v.id = o.id
-				const t = getDataType(o.declaredType);
+				v.id = p.symbol.id;
+				bindings.set(p.symbol, { r: v, bd: bdef });
+				const t = p.symbol.datatype;
 				v.datatype = () => t;
 				v.init();
+
+				const c = Object.create(bs.CompositeBlock.Connection);
+				c.in = bdef.i_ports[i];
+				c.out = v.i_ports[0];
+
+				bdef.i_ports[i].id = p.id;
 				bdef.blocks.push(v);
+				bdef.connections.push(c);
 			});
-		});
-		
-		// Adding MEMORY DECLARATIONS blocks
-		statements.filter(s => s.name == 'MEMORY_DECLARATION').forEach(s => {
-			const m = Object.create(bs.MemoryBlock);
-			m.id = s.id;
-			const t = getDataType(s.type);
-			m.init();
-			m.datatype = () => t;
-			//m.i_ports[1].datatype = () => t;
-			bdef.blocks.push(m);
-		});
+			bdef_node.outputs.forEach((p, i) => {
+				const v = Object.create(bs.VarBlock);
+				v.id = p.symbol.id;
+				bindings.set(p.symbol, { r: v, bd: bdef });
+				const t = p.symbol.datatype;
+				v.datatype = () => t;
+				v.init();
 
-		// Adding inner block definitions
-		statements.filter(s => s.name == 'BLOCK_DEFINITION').forEach(bdef_n => {
-			bdef.bdefs.push(convert_block_definition(bdef_n, bdef));
-		});
+				const c = Object.create(bs.CompositeBlock.Connection);
+				c.in = v.o_ports[0];
+				c.out = bdef.o_ports[i];
 
-		// Connect memory size expr
-		statements.filter(s => s.name == 'MEMORY_DECLARATION').forEach(s => {
-			const m = findMemById(s.id, bdef).r;
-			const size_expr_ports = convert_expr(s.size, bdef);
-			const c = Object.create(bs.CompositeBlock.Connection);
-			c.in = size_expr_ports[1][0];
-			c.out = m.i_ports[0];
-			bdef.connections.push(c);
-		});
+				bdef.o_ports[i].id = p.id;
+				bdef.blocks.push(v);
+				bdef.connections.push(c);
+			});
+			if (bdef_node.symbol)
+				bindings.set(bdef_node.symbol, { r: bdef, bd: bdef_father });
+			return bdef;
+		}
 
-		// Adding expression blocks and connections
-		statements.filter(s => s.name == 'ASSIGNMENT').forEach((s) => {
-			switch (s.type) {
-			case 'ANONYMOUS_BLOCK': {
-				throw new Error("Anonymous blocks are not implemented yet");
-			}
-			case 'IF_THEN_ELSES': {
-				const expr_ports = convert_if_then_elses(s.expr, s.outputs, bdef);
-				s.outputs.forEach((o, oi) => {
-					if (o.name != 'VARIABLE')
-						throw new Error("Unexpected non-variable output in IF_THEN_ELSES assignment");
-					const v = findVarById(o.id, bdef).r;
-					const c = Object.create(bs.CompositeBlock.Connection);
-					c.in = expr_ports[1][oi];
-					c.out = v.i_ports[0];
-					bdef.connections.push(c);
+		function convert_statements (statements, bdef) {
+
+			// Adding variables
+			statements.filter(s => s.name == "ASSIGNMENT").forEach(s => {
+				s.outputs.filter(o => o.name == 'VARIABLE').forEach(o => {
+					if (bindings.has(o.symbol)) // already declared as an output
+						return;
+					const v = Object.create(bs.VarBlock);
+					v.id = o.symbol.id;
+					bindings.set(o.symbol, { r: v, bd: bdef });
+					const t = o.symbol.datatype;
+					v.datatype = () => t;
+					v.init();
+					bdef.blocks.push(v);
 				});
-				break;
-			}
-			case 'EXPR': {
-				const expr_ports = convert_expr(s.expr, bdef);
-				s.outputs.forEach((o, oi) => {
-					switch (o.name) {
-					case 'VARIABLE': {
-						const v = findVarById(o.id, bdef).r;
+			});
+		
+			// Adding MEMORY DECLARATIONS blocks
+			statements.filter(s => s.name == 'MEMORY_DECLARATION').forEach(s => {
+				const m = Object.create(bs.MemoryBlock);
+				m.id = s.symbol.id;
+				bindings.set(s.symbol, { r: m, bd: bdef });
+				const t = s.symbol.datatype;
+				m.init();
+				m.datatype = () => t;
+				//m.i_ports[1].datatype = () => t;
+				bdef.blocks.push(m);
+			});
+
+			const definitions = statements.filter(s => s.name == 'BLOCK_DEFINITION');
+			for (const node of definitions)
+				bdef.bdefs.push(create_definition(node, bdef));
+			for (const node of definitions)
+				convert_statements(node.statements, binding(node).r);
+
+			// Connect memory size expr
+			statements.filter(s => s.name == 'MEMORY_DECLARATION').forEach(s => {
+				const m = binding(s).r;
+				const size_expr_ports = convert_expr(s.size, bdef);
+				const c = Object.create(bs.CompositeBlock.Connection);
+				c.in = size_expr_ports[1][0];
+				c.out = m.i_ports[0];
+				bdef.connections.push(c);
+			});
+
+			// Adding expression blocks and connections
+			statements.filter(s => s.name == 'ASSIGNMENT').forEach((s) => {
+				switch (s.type) {
+				case 'ANONYMOUS_BLOCK': {
+					throw new Error("Anonymous blocks are not implemented yet");
+				}
+				case 'IF_THEN_ELSES': {
+					const expr_ports = convert_if_then_elses(s.expr, s.outputs, bdef);
+					s.outputs.forEach((o, oi) => {
+						if (o.name != 'VARIABLE')
+							throw new Error("Unexpected non-variable output in IF_THEN_ELSES assignment");
+						const v = binding(o).r;
 						const c = Object.create(bs.CompositeBlock.Connection);
 						c.in = expr_ports[1][oi];
 						c.out = v.i_ports[0];
 						bdef.connections.push(c);
-						break;
-					}
-					case 'DISCARD': {
-						// Nothing to do
-						break;
-					}
-					case 'PROPERTY': {
-						const r = convert_property_left(o, bdef);
-						if (bdef.connections.find(c => c.out == r.p.i_ports[0]))
-							throw new Error("Property assigned multiple times");
+					});
+					break;
+				}
+				case 'EXPR': {
+					const expr_ports = convert_expr(s.expr, bdef);
+					s.outputs.forEach((o, oi) => {
+						switch (o.name) {
+						case 'VARIABLE': {
+							const v = binding(o).r;
+							const c = Object.create(bs.CompositeBlock.Connection);
+							c.in = expr_ports[1][oi];
+							c.out = v.i_ports[0];
+							bdef.connections.push(c);
+							break;
+						}
+						case 'DISCARD': {
+							// Nothing to do
+							break;
+						}
+						case 'PROPERTY': {
+							const r = convert_property_left(o, bdef);
+							if (bdef.connections.find(c => c.out == r.p.i_ports[0]))
+								throw new Error("Property assigned multiple times");
+							const c = Object.create(bs.CompositeBlock.Connection);
+							c.in = expr_ports[1][oi];
+							c.out = r.p.i_ports[0];
+							bdef.connections.push(c);
+							break;
+						}
+						case 'MEMORY_ELEMENT': {
+							const m = binding(o).r;
+							const mw = Object.create(bs.MemoryWriterBlock);
+							mw.memoryblock = m;
+							mw.init();
+							const index_expr_ports = convert_expr(o.args[0], bdef);
+							const ci = Object.create(bs.CompositeBlock.Connection);
+							const cv = Object.create(bs.CompositeBlock.Connection);
+							ci.in  = index_expr_ports[1][0];
+							ci.out = mw.i_ports[0];
+							cv.in  = expr_ports[1][oi];
+							cv.out = mw.i_ports[1];
+							bdef.blocks.push(mw);
+							bdef.connections.push(ci);
+							bdef.connections.push(cv);
+							break;
+						}
+						}
+					});
+					break;
+				}
+				}
+			});
+		}
+
+		function convert_if_then_elses (if_node, outputs, bdef) {
+			const parents = outputs.map(o => binding(o).r);
+			function lower(index, owner) {
+				const current = if_node.branches[index];
+				const condition = convert_expr(current.condition, owner)[1][0];
+				const then_branch = convert_if_branch_bdef(current, parents, owner);
+				let else_branch;
+				if (index == if_node.branches.length - 2) {
+					else_branch = convert_if_branch_bdef(if_node.branches[index + 1], parents, owner);
+				} else {
+					// Later conditions execute inside the preceding else branch. This
+					// wrapper has no lexical bindings; source branches keep their symbols.
+					else_branch = Object.create(bs.CompositeBlock);
+					else_branch.id = 'if_else__' + ifthenelse_branch_counter++;
+					else_branch.bdef_father = owner;
+					else_branch.outputs_N = outputs.length;
+					else_branch.init();
+					const values = lower(index + 1, else_branch)[1];
+					values.forEach((value, i) => {
 						const c = Object.create(bs.CompositeBlock.Connection);
-						c.in = expr_ports[1][oi];
-						c.out = r.p.i_ports[0];
-						bdef.connections.push(c);
-						break;
-					}
-					case 'MEMORY_ELEMENT': {
-						const m = findMemById(o.id, bdef).r;
-						const mw = Object.create(bs.MemoryWriterBlock);
-						mw.memoryblock = m;
-						mw.init();
-						const index_expr_ports = convert_expr(o.args[0], bdef);
-						const ci = Object.create(bs.CompositeBlock.Connection);
-						const cv = Object.create(bs.CompositeBlock.Connection);
-						ci.in  = index_expr_ports[1][0];
-						ci.out = mw.i_ports[0];
-						cv.in  = expr_ports[1][oi];
-						cv.out = mw.i_ports[1];
-						bdef.blocks.push(mw);
-						bdef.connections.push(ci);
-						bdef.connections.push(cv);
-						break;
-					}
-					}
+						c.in = value;
+						c.out = else_branch.o_ports[i];
+						else_branch.connections.push(c);
+					});
+				}
+				return connect_conditional(condition, then_branch, else_branch, owner);
+			}
+			return lower(0, bdef);
+		}
+
+		function connect_conditional(condition, then_branch_bdef, else_branch_bdef, bdef) {
+			bdef.bdefs.push(then_branch_bdef);
+			bdef.bdefs.push(else_branch_bdef);
+
+			const ib = Object.create(bs.IfthenelseBlock);
+			ib.nOutputs = then_branch_bdef.o_ports.length;
+			ib.then_branch = then_branch_bdef;
+			ib.else_branch = else_branch_bdef;
+			ib.init();
+			ib.setOutputDatatype();
+			bdef.blocks.push(ib);
+
+			const cc = Object.create(bs.CompositeBlock.Connection);
+			cc.in = condition;
+			cc.out = ib.i_ports[0];
+			bdef.connections.push(cc);
+
+			return [[], ib.o_ports];
+		}
+
+		function convert_if_branch_bdef (branch, parents, bdef) {
+			const branch_block = create_definition({
+				id: 'if_branch__' + ifthenelse_branch_counter++,
+				inputs: [], outputs: branch.outputs,
+			}, bdef);
+			branch.outputs.forEach((output, i) => binding(output).r.init_parent = parents[i]);
+			convert_statements(branch.block.statements, branch_block);
+			return branch_block;
+		}
+
+		function convert_property_left (property_node, bdef) {
+			let x = property_node.expr;
+			if (x.name == 'VARIABLE') {
+				const r = binding(x);
+				return { p: convert_property(r.r, property_node.property_id, r.bd), bdef: r.bd };
+			}
+			else if (x.name == 'PROPERTY') {
+				const r = convert_property_left(x, bdef);
+				return { p: convert_property(r.p, property_node.property_id, bdef), bdef: r.bdef };
+			}
+		}
+
+		function convert_expr (expr_node, bdef) {
+
+			switch (expr_node.name) {
+			case 'VARIABLE': {
+				const v = binding(expr_node).r;
+				return [v.i_ports, v.o_ports];
+			}
+			case 'PROPERTY': {
+				const x = expr_node.expr;
+				if (x.name == 'VARIABLE') {
+					const r = binding(x);
+					const p = convert_property(r.r, expr_node.property_id, r.bd);
+					return [[], p.o_ports];
+				}
+				else {
+					const ps = convert_expr(x, bdef);
+					const of = ps[1][0].block;
+					const bd = findBdefByBlock(of, bdef);
+					const p  = convert_property(of, expr_node.property_id, bd);
+					return [[], p.o_ports];
+				}
+			}
+			case 'CONSTANT': {
+				const b = Object.create(bs.ConstantBlock);
+				b.value = expr_node.val;
+				b.init();
+				const type = expr_node.result_types[0];
+				b.datatype = () => type;
+				bdef.blocks.push(b);
+				return [[], b.o_ports];
+			}
+			case 'MEMORY_ELEMENT': {
+				const m = binding(expr_node).r;
+				const mr = Object.create(bs.MemoryReaderBlock);
+				mr.memoryblock = m;
+				mr.init();
+				const index_expr_ports = convert_expr(expr_node.args[0], bdef);
+				const ci = Object.create(bs.CompositeBlock.Connection);
+				ci.in  = index_expr_ports[1][0];
+				ci.out = mr.i_ports[0];
+				bdef.blocks.push(mr);
+				bdef.connections.push(ci);
+				return [[], [mr.o_ports[0]]];
+			}
+			case 'CALL_EXPR': {
+				const b = Object.create(bs.CallBlock);
+				b.inputs_N = expr_node.args.length;
+				b.outputs_N = expr_node.result_types.length;
+				b.id = expr_node.symbol.id;
+				calls.push({ block: b, symbol: expr_node.symbol });
+				b.init();
+				set_output_types(b, expr_node.result_types);
+				for (let argi = 0; argi < expr_node.args.length; argi++) {
+					const ports = convert_expr(expr_node.args[argi], bdef);
+					const c = Object.create(bs.CompositeBlock.Connection);
+					c.in = ports[1][0];
+					c.out = b.i_ports[argi];
+					bdef.connections.push(c);
+				}
+				bdef.blocks.push(b);
+				return [[], b.o_ports];
+			}
+			case 'INLINE_IF_THEN_ELSE': {
+				const condition = convert_expr(expr_node.args[0], bdef)[1][0];
+				const branches = expr_node.args.slice(1).map(expr => {
+					const branch = Object.create(bs.CompositeBlock);
+					branch.id = 'if_expr__' + (ifthenelse_branch_counter++);
+					branch.bdef_father = bdef;
+					branch.outputs_N = 1;
+					branch.init();
+					const value = convert_expr(expr, branch)[1][0];
+					const edge = Object.create(bs.CompositeBlock.Connection);
+					edge.in = value;
+					edge.out = branch.o_ports[0];
+					branch.connections.push(edge);
+					return branch;
 				});
-				break;
+				return connect_conditional(condition, branches[0], branches[1], bdef);
 			}
 			}
-		});
-	}
 
-	function convert_if_then_elses (if_node, outputs, bdef) {
-		if (!if_node.branches || if_node.branches.length < 2)
-			throw new Error("IF_THEN_ELSES requires at least if and else branches");
+			// Regular args exprs
 
-		const outputsTemplate = outputs.map(o => ({
-			name: 'VARIABLE',
-			id: o.id,
-			declaredType: o.declaredType
-		}));
+			const b = (function () {
+				switch (expr_node.name) {
+				case 'BITWISE_NOT_EXPR':
+					return Object.create(bs.BitwiseNotBlock);
+				case 'LOGICAL_NOT_EXPR':
+					return Object.create(bs.LogicalNotBlock);
+				case 'UMINUS_EXPR':
+					return Object.create(bs.UminusBlock);
+				case 'MODULO_EXPR':
+					return Object.create(bs.ModuloBlock);
+				case 'DIV_EXPR':
+					return Object.create(bs.DivisionBlock);
+				case 'TIMES_EXPR':
+					return Object.create(bs.MulBlock);
+				case 'MINUS_EXPR':
+					return Object.create(bs.SubtractionBlock);
+				case 'PLUS_EXPR':
+					return Object.create(bs.SumBlock);
+				case 'SHIFT_RIGHT_EXPR':
+					return Object.create(bs.ShiftRightBlock);
+				case 'SHIFT_LEFT_EXPR':
+					return Object.create(bs.ShiftLeftBlock);
+				case 'GREATEREQUAL_EXPR':
+					return Object.create(bs.GreaterEqualBlock);
+				case 'GREATER_EXPR':
+					return Object.create(bs.GreaterBlock);
+				case 'LESSEQUAL_EXPR':
+					return Object.create(bs.LessEqualBlock);
+				case 'LESS_EXPR':
+					return Object.create(bs.LessBlock);
+				case 'NOTEQUAL_EXPR':
+					return Object.create(bs.InequalityBlock);
+				case 'EQUAL_EXPR':
+					return Object.create(bs.EqualityBlock);
+				case 'BITWISE_AND_EXPR':
+					return Object.create(bs.BitwiseAndBlock);
+				case 'BITWISE_EXCLUSIVE_OR_EXPR':
+					return Object.create(bs.BitwiseXorBlock);
+				case 'BITWISE_INCLUSIVE_OR_EXPR':
+					return Object.create(bs.BitwiseOrBlock);
+				case 'LOGICAL_AND_EXPR':
+					return Object.create(bs.LogicalAndBlock);
+				case 'LOGICAL_OR_EXPR':
+					return Object.create(bs.LogicalOrBlock);
+				case 'CAST_EXPR':
+					if (expr_node.result_types[0] == TYPES.Int32)
+						return Object.create(bs.CastI32Block);
+					else if (expr_node.result_types[0] == TYPES.Float32)
+						return Object.create(bs.CastF32Block);
+					else if (expr_node.result_types[0] == TYPES.Bool)
+						return Object.create(bs.CastBoolBlock);
+					else
+						throw new Error("Unexpected cast type: " + expr_node.type);
+				default:
+					throw new Error("Unexpected AST expr node");
+				}
+			})();
 
-		const cond_expr_ports = convert_expr(if_node.branches[0].condition, bdef);
-		const then_branch_bdef = convert_if_branch_bdef(if_node.branches[0], outputsTemplate, bdef);
-		// Else-if is a nested conditional, so later conditions also run only
-		// when the preceding conditions were false.
-		const otherwise = if_node.branches.length == 2 ? if_node.branches[1] : {
-			block: { statements: [{ name: 'ASSIGNMENT', type: 'IF_THEN_ELSES',
-				outputs: outputsTemplate,
-				expr: { branches: if_node.branches.slice(1) }
-			}] }
-		};
-		const else_branch_bdef = convert_if_branch_bdef(otherwise, outputsTemplate, bdef);
-		return connect_conditional(cond_expr_ports[1][0], then_branch_bdef, else_branch_bdef, bdef);
-	}
+			b.init();
+			set_output_types(b, expr_node.result_types);
 
-	function connect_conditional(condition, then_branch_bdef, else_branch_bdef, bdef) {
-		bdef.bdefs.push(then_branch_bdef);
-		bdef.bdefs.push(else_branch_bdef);
+			for (let argi = 0; argi < expr_node.args.length; argi++) {
+				const ports = convert_expr(expr_node.args[argi], bdef);
+				const c = Object.create(bs.CompositeBlock.Connection);
+				c.in = ports[1][0];
+				c.out = b.i_ports[argi];
+				bdef.connections.push(c);
+			}
 
-		const ib = Object.create(bs.IfthenelseBlock);
-		ib.nOutputs = then_branch_bdef.o_ports.length;
-		ib.then_branch = then_branch_bdef;
-		ib.else_branch = else_branch_bdef;
-		ib.init();
-		ib.setOutputDatatype();
-		bdef.blocks.push(ib);
+			bdef.blocks.push(b);
 
-		const cc = Object.create(bs.CompositeBlock.Connection);
-		cc.in = condition;
-		cc.out = ib.i_ports[0];
-		bdef.connections.push(cc);
-
-		return [[], ib.o_ports];
-	}
-
-	function convert_if_branch_bdef (branch, outputsTemplate, bdef) {
-		const bdef_node = {
-			name: 'BLOCK_DEFINITION',
-			id: "if_branch__" + (ifthenelse_branch_counter++),
-			inputs: [],
-			outputs: outputsTemplate.map(o => ({
-				name: o.name,
-				id: o.id,
-				declaredType: o.declaredType
-			})),
-			statements: branch.block.statements
-		};
-
-		const branch_block = convert_block_definition(bdef_node, bdef);
-		for (const output of outputsTemplate) {
-			const local = findVarById(output.id, branch_block).r;
-			local.init_parent = findVarById(output.id, bdef).r;
+			return [[], b.o_ports];
 		}
-		return branch_block;
-	}
 
-	function convert_property_left (property_node, bdef) {
-		let x = property_node.expr;
-		if (x.name == 'VARIABLE') {
-			const r = findVarById(x.id, bdef) || findMemById(x.id, bdef);
-			return { p: convert_property(r.r, property_node.property_id, r.bd), bdef: r.bd };
-		}
-		else if (x.name == 'PROPERTY') {
-			const r = convert_property_left(x, bdef);
-			return { p: convert_property(r.p, property_node.property_id, bdef), bdef: r.bdef };
-		}
 	}
 
 	function convert_property (block, property, bdef) {
@@ -347,187 +518,6 @@
 			return props[0].block;
 		}
 		throw new Error("Too many properties found");
-	}
-
-	function convert_expr (expr_node, bdef) {
-
-		switch (expr_node.name) {
-		case 'VARIABLE': {
-			const v = findVarById(expr_node.id, bdef).r;
-			return [v.i_ports, v.o_ports];
-		}
-		case 'PROPERTY': {
-			const x = expr_node.expr;
-			if (x.name == 'VARIABLE') {
-				const r = findVarById(x.id, bdef) || findMemById(x.id, bdef);
-				const p = convert_property(r.r, expr_node.property_id, r.bd);
-				return [[], p.o_ports];
-			}
-			else {
-				const ps = convert_expr(x, bdef);
-				const of = ps[1][0].block;
-				const bd = findBdefByBlock(of, bdef);
-				const p  = convert_property(of, expr_node.property_id, bd);
-				return [[], p.o_ports];
-			}
-		}
-		case 'CONSTANT': {
-			const b = Object.create(bs.ConstantBlock);
-			b.value = expr_node.val;
-			b.init();
-			if (expr_node.type == 'INT32')
-				b.datatype = () => TYPES.Int32;
-			else if (expr_node.type == 'FLOAT32')
-				b.datatype = () => TYPES.Float32;
-			else if (expr_node.type == 'BOOL')
-				b.datatype = () => TYPES.Bool;
-			bdef.blocks.push(b);
-			return [[], b.o_ports];
-		}
-		case 'MEMORY_ELEMENT': {
-			const m = findMemById(expr_node.id, bdef).r;
-			const mr = Object.create(bs.MemoryReaderBlock);
-			mr.memoryblock = m;
-			mr.init();
-			const index_expr_ports = convert_expr(expr_node.args[0], bdef);
-			const ci = Object.create(bs.CompositeBlock.Connection);
-			ci.in  = index_expr_ports[1][0];
-			ci.out = mr.i_ports[0];
-			bdef.blocks.push(mr);
-			bdef.connections.push(ci);
-			return [[], [mr.o_ports[0]]];
-		}
-		case 'CALL_EXPR': {
-			const b = Object.create(bs.CallBlock);
-			b.inputs_N = expr_node.args.length;
-			b.outputs_N = expr_node.outputs_N;
-			b.id = expr_node.id;
-			b.ref = undefined; // bdef or cdef resolution must be done later, after setting output datatypes
-			b.init();
-			b.o_ports.forEach((p, i) => {
-				p.datatype = function () {
-					return this.block.ref.o_ports[i].datatype();
-				};
-			});
-			for (let argi = 0; argi < expr_node.args.length; argi++) {
-				const ports = convert_expr(expr_node.args[argi], bdef);
-				const c = Object.create(bs.CompositeBlock.Connection);
-				c.in = ports[1][0];
-				c.out = b.i_ports[argi];
-				bdef.connections.push(c);
-			}
-			bdef.blocks.push(b);
-			return [[], b.o_ports];
-		}
-		case 'INLINE_IF_THEN_ELSE': {
-			const condition = convert_expr(expr_node.args[0], bdef)[1][0];
-			const branches = expr_node.args.slice(1).map(expr => {
-				const branch = Object.create(bs.CompositeBlock);
-				branch.id = 'if_expr__' + (ifthenelse_branch_counter++);
-				branch.bdef_father = bdef;
-				branch.outputs_N = 1;
-				branch.init();
-				const value = convert_expr(expr, branch)[1][0];
-				const edge = Object.create(bs.CompositeBlock.Connection);
-				edge.in = value;
-				edge.out = branch.o_ports[0];
-				branch.connections.push(edge);
-				return branch;
-			});
-			return connect_conditional(condition, branches[0], branches[1], bdef);
-		}
-		}
-
-		// Regular args exprs
-
-		const b = (function () {
-			switch (expr_node.name) { 
-			case 'BITWISE_NOT_EXPR':
-				return Object.create(bs.BitwiseNotBlock);
-			case 'LOGICAL_NOT_EXPR':
-				return Object.create(bs.LogicalNotBlock);
-			case 'UMINUS_EXPR':
-				return Object.create(bs.UminusBlock);
-			case 'MODULO_EXPR':
-				return Object.create(bs.ModuloBlock);
-			case 'DIV_EXPR':
-				return Object.create(bs.DivisionBlock);
-			case 'TIMES_EXPR':
-				return Object.create(bs.MulBlock);
-			case 'MINUS_EXPR':
-				return Object.create(bs.SubtractionBlock);
-			case 'PLUS_EXPR':
-				return Object.create(bs.SumBlock);
-			case 'SHIFT_RIGHT_EXPR':
-				return Object.create(bs.ShiftRightBlock);
-			case 'SHIFT_LEFT_EXPR':
-				return Object.create(bs.ShiftLeftBlock);
-			case 'GREATEREQUAL_EXPR':
-				return Object.create(bs.GreaterEqualBlock);
-			case 'GREATER_EXPR':
-				return Object.create(bs.GreaterBlock);
-			case 'LESSEQUAL_EXPR':
-				return Object.create(bs.LessEqualBlock);
-			case 'LESS_EXPR':
-				return Object.create(bs.LessBlock);
-			case 'NOTEQUAL_EXPR':
-				return Object.create(bs.InequalityBlock);
-			case 'EQUAL_EXPR':
-				return Object.create(bs.EqualityBlock);
-			case 'BITWISE_AND_EXPR':
-				return Object.create(bs.BitwiseAndBlock);
-			case 'BITWISE_EXCLUSIVE_OR_EXPR':
-				return Object.create(bs.BitwiseXorBlock);
-			case 'BITWISE_INCLUSIVE_OR_EXPR':
-				return Object.create(bs.BitwiseOrBlock);
-			case 'LOGICAL_AND_EXPR':
-				return Object.create(bs.LogicalAndBlock);
-			case 'LOGICAL_OR_EXPR':
-				return Object.create(bs.LogicalOrBlock);
-			case 'CAST_EXPR':
-				if (expr_node.type == 'TYPE_INT32')
-					return Object.create(bs.CastI32Block);
-				else if (expr_node.type == 'TYPE_FLOAT32')
-					return Object.create(bs.CastF32Block);
-				else if (expr_node.type == 'TYPE_BOOL')
-					return Object.create(bs.CastBoolBlock);
-				else 
-					throw new Error("Unexpected cast type: " + expr_node.type);
-			default:
-				throw new Error("Unexpected AST expr node");
-			}
-		})();
-
-		b.init();
-
-		for (let argi = 0; argi < expr_node.args.length; argi++) {
-			const ports = convert_expr(expr_node.args[argi], bdef);
-			const c = Object.create(bs.CompositeBlock.Connection);
-			c.in = ports[1][0];
-			c.out = b.i_ports[argi];
-			bdef.connections.push(c);
-		}
-
-		bdef.blocks.push(b);
-
-		return [[], b.o_ports];
-	}
-
-	function resolve_block_call (b, bdef) {
-		const inputDataTypes = b.i_ports.map(p => p.datatype());
-		var r = findBdefBySignature(b.id, inputDataTypes, b.outputs_N, bdef);
-		if (r) {
-			b.ref = r.r;
-			b.type = "bdef";
-			return;
-		}
-		r = findCdefBySignature(b.id, inputDataTypes, b.outputs_N, bdef);
-		if (r) {
-			b.ref = r.r;
-			b.type = "cdef";
-			return;
-		}
-		throw new Error("No callable bdef or cdef found with that signature: " + b.id);
 	}
 
 	function check_recursive_calls (bdef, stack = []) {
@@ -723,7 +713,7 @@
 		b0.init();
 		bdef.blocks.push(b0);
 
-		const fs = findVarById("fs", bdef).r;
+		const fs = bdef.blocks.find(b => bs.VarBlock.isPrototypeOf(b) && b.id == "fs");
 
 		const toBeNormalized = bdef.properties.map(p => p.block);
 		for (let i = 0; i < toBeNormalized.length; i++) {
@@ -988,27 +978,6 @@
 		setUpdateRate(bdef, options);
 	}
 
-	function findVarById (id, bdef) {
-		let bd = bdef;
-		while (bd) {
-			let r = bd.blocks.find(b => bs.VarBlock.isPrototypeOf(b) && b.id == id);
-			if (r)
-				return { r, bd };
-			bd = bd.bdef_father;
-		}
-	}
-
-
-	function findMemById (id, bdef) {
-		let bd = bdef;
-		while (bd) {
-			let r = bd.blocks.find(b => bs.MemoryBlock.isPrototypeOf(b) && b.id == id);
-			if (r)
-				return { r, bd };
-			bd = bd.bdef_father;
-		}
-	}
-
 	// Hierarchly find bdef that contains block
 	function findBdefByBlock (block, bdef) {
 		let bd = bdef;
@@ -1017,49 +986,6 @@
 			if (r)
 				return bd;
 			bd = bd.bdef_father;
-		}
-	}
-
-	function findBdefBySignature (id, inputDataTypes, outputs_N, bdef) {
-		let bd = bdef;
-		while (bd) {
-			let r = bd.bdefs.find(b => 
-				(b.id == id) && 
-				(b.i_ports.length == inputDataTypes.length) &&
-				(b.i_ports.map(p => p.datatype()).every((t, i) => t == inputDataTypes[i])) &&
-				(b.o_ports.length == outputs_N));
-			if (r)
-				return { r, bd };
-			bd = bd.bdef_father;
-		}
-	}
-
-	function findCdefBySignature (id, inputDataTypes, outputs_N, bdef) {
-		let bd = bdef;
-		while (bd) {
-			let r = bd.cdefs.find(b => 
-				(b.id == id) && 
-				(b.i_ports.length == inputDataTypes.length) &&
-				(b.i_ports.map(p => p.datatype()).every((t, i) => t == inputDataTypes[i])) &&
-				(b.o_ports.length == outputs_N));
-			if (r)
-				return { r, bd };
-			bd = bd.bdef_father;
-		}
-	}
-
-	function getDataType (s) {
-		switch (s) {
-		case "TYPE_INT32":
-			return TYPES.Int32;
-		case "TYPE_FLOAT32":
-			return TYPES.Float32;
-		case "TYPE_BOOL":
-			return TYPES.Bool;
-		case undefined:
-			return TYPES.Float32;
-		default:
-			throw new Error("Unexpected datatype " + s);
 		}
 	}
 

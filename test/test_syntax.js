@@ -29,9 +29,9 @@
 
 	const GoodCodes = [
 		`
-			A = 5
+			int A = 5
 		`, `
-			B = true
+			bool B = true
 		`, `
 			C = 5.5e-5
 		`, `
@@ -52,10 +52,10 @@
 			y = A (x, u) { y = x * u; }
 		`, `
 			y = A (x) {
-				mem[fs * 5] int ciao
+				mem[int(fs * 5.0)] int ciao
 				ciao[0] = 5
-				ciao[int(y / 2)] = ciao[0] >> 5
-				y = ciao[x > 0.5 ? ciao[0] : ciao[1]]
+				ciao[int(y / 2.0)] = ciao[0] >> 5
+				y = float(ciao[x > 0.5 ? ciao[0] : ciao[1]])
 			}
 		`, `
 			y = if (true) {
@@ -83,33 +83,33 @@
 			}
 		`, `
 			A = 5.5;
-			A.fs = 9;
-			A.init = 5
+			A.fs = 9.0;
+			A.init = 5.0
 		`, `
 			A = 5.5
-			A.init = A.fs * 2
+			A.init = A.fs * 2.0
 		`, `
 			y = A (x) {
 				mem[5] int v
 				v.init = 5
-				y = v[2]
+				y = float(v[2])
 			}
 		`, `
 			y = A (x) {
 				mem[5] int v
 				v.init = [1, 2, 3, 4, 5]
-				y = v[2]
+				y = float(v[2])
 			}
 		`, `
 			y = A (x) {
 				mem[5] int v
 				v.init, y = B (x)
 			}
-			y1, y2 = B (x) {y1 = x; y2 = x;}
+			int y1, y2 = B (x) {y1 = int(x); y2 = x;}
 		`, `
 			y = A (x) {
-				y = x * 2
-				y.fs = ((x * x).fs * 2).init
+				y = x * 2.0
+				y.fs = ((x * x).fs * 2.0).init
 				y.fs.fs.fs = 0.5
 			}
 		`, `
@@ -134,8 +134,14 @@
 			}
 
 			y = decimator(x, bool bypass) {
+				bool y = delay(bool x) {
+					mem[1] bool s
+					y = s[0]
+					s[0] = x
+					s.init = x
+				}
 				y = if (!bypass) {
-					y, int s = if (delay(s)) {
+					y, bool s = if (delay(s)) {
 						y = x
 						s = false
 					} else {

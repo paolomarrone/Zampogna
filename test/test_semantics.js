@@ -16,6 +16,63 @@ const delay = `float y = delay(float x) {
 const clock = [0, 1, 0, 1, 1, 0, 0, 1];
 const samples = [1, 2, 3, 4, 5, 6, 7, 8];
 const tests = [
+    { name: 'typed overloads with different output counts in branches',
+      code: `y = choose(float v) { y = v + 100.0; }
+      a, b = choose(int v) { a = float(v); b = float(v) + 10.0; }
+      a, b = probe(x, c) {
+        a, b = if(c > 0.5) { a, b = choose(int(x)); }
+        else { a = choose(x); b = -1.0; };
+      }`, inputs: [samples, clock],
+      expected: [[101, 2, 103, 4, 5, 106, 107, 8], [-1, 12, -1, 14, 15, -1, -1, 18]] },
+    { name: 'branch outputs inherit integer and boolean declarations',
+      code: `int selected = choose(float x) {
+        selected = if(x > 2.0) { selected = int(x); }
+          else if(x > 0.0) { selected = 1; } else { selected = 0; };
+      }
+      bool gate = flag(float x) {
+        gate = if(x > 1.0) { gate = true; } else { gate = false; };
+      }
+      a, b = probe(x) { a = float(choose(x)); b = float(flag(x)); }`,
+      inputs: [[-2, 0, 1, 2, 3]], expected: [[0, 0, 1, 1, 3], [0, 0, 0, 1, 1]] },
+    { name: 'nested captures belong to their parent instance',
+      code: `y = parent(v) {
+        t = v * 10.0;
+        y = child() { y = delay(t); }
+        y = child();
+      }
+      a, b = probe(x, c) {
+        a = parent(x);
+        b = if(c > 0.5) { b = parent(x + 100.0); } else { b = -1.0; };
+      }`, inputs: [samples, clock],
+      expected: [[0, 10, 20, 30, 40, 50, 60, 70], [-1, 1000, -1, 1020, 1040, -1, -1, 1050]] },
+    { name: 'lexical calls and captures survive caller shadowing',
+      code: `y = helper(v) { y = delay(v); }
+      a, b = probe(x, c) {
+        t = x * 10.0;
+        y = captured() { y = helper(t); }
+        a = captured();
+        b = if(c > 0.5) {
+          t = x + 100.0;
+          y = helper(v) { y = v + 1.0; }
+          b = captured() + helper(t);
+        } else { b = -1.0; };
+      }`, inputs: [samples, clock],
+      expected: [[0, 10, 20, 30, 40, 50, 60, 70], [-1, 103, -1, 125, 146, -1, -1, 159]] },
+    { name: 'external overloads resolve from argument types',
+      prefix: 'include choose_float\ninclude choose_int\n', cOnly: true,
+      files: {
+        'choose_float.json': JSON.stringify({
+          block_name: 'choose_c', header: 'static float choose_float(float x) { return x + 100.0f; }',
+          block_inputs: [{ type: 'float32' }], block_outputs: [{ type: 'float32' }],
+          process1: { f_name: 'choose_float', f_inputs: ['i0'], f_outputs: ['o0'] },
+        }),
+        'choose_int.json': JSON.stringify({
+          block_name: 'choose_c', header: 'static float choose_int(int x, float *b) { *b = x + 10.0f; return x; }',
+          block_inputs: [{ type: 'int32' }], block_outputs: [{ type: 'float32' }, { type: 'float32' }],
+          process1: { f_name: 'choose_int', f_inputs: ['i0', 'o1'], f_outputs: ['o0'] },
+        }),
+      }, code: `a, b = probe(x) { a = choose_c(x); l, r = choose_c(int(x)); b = l + r; }`,
+      inputs: [samples], expected: [[101, 102, 103, 104, 105, 106, 107, 108], [12, 14, 16, 18, 20, 22, 24, 26]] },
     { name: 'shared inner negation and repeated constants',
       code: `a, b = probe(x, c) {
         a, b = if(c > 0.5) {

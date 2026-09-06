@@ -112,14 +112,14 @@
 		if (shouldStop("parse"))
 			return maybeReturnAt("parse");
 
-		/***** SYNTAX VALIDATION *****/
-		syntax.validateAST(AST);
-		debug.log("syntax validation complete");
+		/***** NAME RESOLUTION AND TYPE CHECKING *****/
+		syntax.validateAST(AST, jsons);
+		debug.log("name resolution and type checking complete");
 		if (shouldStop("syntax"))
 			return maybeReturnAt("syntax");
 
 		/***** AST -> GRAPH *****/
-		const g = graph.ASTToGraph(AST, options, jsons);
+		const g = graph.ASTToGraph(AST, options);
 		ret.graph = g;
 		debug.log("graph build complete");
 		if (debug.enabled && debug.outdir)
