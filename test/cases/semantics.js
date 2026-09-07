@@ -199,6 +199,37 @@ const tests = [
         int v = gate ? 12 / int(x) : -1;
         a = float(gate); b = float(v);
       }`, inputs: [[0, 2, 3]], expected: [[0, 1, 1], [-1, 6, 4]] },
+    { name: 'eager logical operands',
+      code: `a, b = probe(x, c) {
+        a = float((c > 0.5) && (delay(x) > 0.0));
+        b = float((c > 0.5) || (delay(x) > 0.0));
+      }`, inputs: [[1, 1, -1, -1, 1, -1, 1, -1], [0, 1, 1, 0, 0, 1, 1, 0]],
+      // AND must retain x[0] while c[0] is false; OR must retain x[2]
+      // while c[2] is true. Both histories advance on every sample.
+      expected: [[0, 1, 1, 0, 0, 1, 0, 0], [0, 1, 1, 0, 0, 1, 1, 1]] },
+    { name: 'eager logical operands in branch',
+      code: `a, b = probe(x, c) {
+        a, b = if(c >= 0.0) {
+          a = float((c > 0.5) && (delay(x) > 0.0));
+          b = float((c > 0.5) || (delay(x) > 0.0));
+        } else { a = -1.0; b = -1.0; };
+      }`, inputs: [[100, 1, 200, -1, 300, 1, -1, 400, 1, -1], [-1, 1, -1, 0, -1, 1, 1, -1, 0, 0]],
+      expected: [[-1, 0, -1, 0, -1, 0, 1, -1, 0, 0], [-1, 1, -1, 1, -1, 1, 1, -1, 0, 1]] },
+    { name: 'external private instance state', prefix: 'include history\n', cOnly: true,
+      files: { 'history.json': JSON.stringify({
+        block_name: 'history', state: 'history_state',
+        header: `typedef struct { float previous; } history_state;
+          static void history_reset(history_state *s) { s->previous = 0.0f; }
+          static float history_process(history_state *s, float x) {
+            float previous = s->previous; s->previous = x; return previous;
+          }`,
+        block_inputs: [{ type: 'float32' }], block_outputs: [{ type: 'float32' }],
+        reset_state: { f_name: 'history_reset', f_inputs: ['state'], f_outputs: [] },
+        process1: { f_name: 'history_process', f_inputs: ['state', 'i0'], f_outputs: ['o0'] },
+      }) }, code: `a, b = probe(x) {
+        _ = history(x + 100.0);
+        a = history(x); b = history(x * 10.0);
+      }`, inputs: [[-1, 2, -3, 4]], expected: [[0, -1, 2, -3], [0, -10, 20, -30]] },
     { name: 'external C branch clock and callback order', prefix: 'include tick\n', cOnly: true,
       files: { 'tick.json': JSON.stringify({
         header: '#include "tick.h"', block_name: 'tick',

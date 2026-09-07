@@ -40,7 +40,8 @@ node test/test_semantics.js --filter 'independent instance' --keep
 node test/test_semantics.js --cc clang --extended
 ```
 
-`cases/semantics.js` contains the original 43 regression cases.
+`cases/semantics.js` contains the original 43 regression cases and checks for
+eager boolean operands, their enclosing branch clock, and private external state.
 `cases/streams.js` adds long deterministic streams, circular delay wraparound,
 long inactive branches, tiny values and IEEE special values, distinct instance
 timelines, midstream resets, zero-input generators and empty calls.

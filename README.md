@@ -57,6 +57,20 @@ y = if (enabled) {
 
 For `t = [10, 20, 30, 40]` and `enabled = [true, false, true, true]`, with zero initialization, `previous_t` is `[0, 10, 20, 30]`. The inner delay returns `0`, `10`, and `30` on its three executions. Move a delay outside the branch when you want history from every sample.
 
+### Boolean expressions
+
+`&&` and `||` evaluate both operands. Operations and calls written in either operand follow the enclosing branch's clock, regardless of the other operand's value. For example, in `enabled && (delay(x) > 0.0)`, the delay advances on every execution of the enclosing branch, including when `enabled` is false. Inside an inactive branch, neither operand executes.
+
+Use `if` or `?:` when an operation must execute conditionally. In particular, a boolean operand cannot guard an invalid operation: write `n != 0 ? 10 / n : 0` to guard integer division. Eager evaluation does not impose a left-to-right statement order; computations follow data dependencies.
+
+### External block contract
+
+An external block's observable behavior is confined to its declared outputs. Its callbacks may read their declared inputs and update outputs and private instance-owned state or coefficients. Mutable globals, state shared between instances, I/O, and dependence on undeclared ambient values such as wall-clock time or a global random generator are forbidden. Immutable lookup tables and random generators with explicit inputs and private state are compatible with this contract.
+
+Independent calls have no observable execution-order guarantee. A call whose outputs do not contribute to a live result may be omitted, including when its outputs are discarded with `_`. This applies to its setup callbacks as well as processing. Private state must still be preserved for every live call on its own branch clock.
+
+External C implementations are trusted to obey this contract; the compiler does not analyze their C bodies to verify it.
+
 ### Compiler implementation
 
 Semantic analysis declares each lexical scope before checking expressions, resolves calls by their argument types, and records canonical types and symbol references on the AST. Omitted types mean `float32`, so `f(x)` and `f(float x)` cannot define separate overloads. A matching overload in the nearest scope wins; other input signatures remain available from enclosing scopes. Output count is checked after selecting the overload. Graph construction links these resolved symbols, including captures and external calls, without resolving names again. Branch outputs have separate symbols and inherit the enclosing output types.
