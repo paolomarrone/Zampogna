@@ -36,6 +36,7 @@
   "license": "ISC",
   "scripts": {
     "test": "node --test",
+    "plot:impulse": "ZAMPOGNA_PLOT=1 node --test test/examples.test.js",
     "gen-grammar": "jison src/grammar.jison src/lex.jisonflex -o src/grammar.js",
     "gen-web": "esbuild src/zampogna.js --bundle --format=iife --global-name=zampogna --platform=browser --external:fs --external:path --outfile=web/zampogna-web.js"
   },
