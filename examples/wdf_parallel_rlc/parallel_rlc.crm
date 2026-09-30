@@ -1,0 +1,60 @@
+pi = 3.141592653589793
+
+b, R0 = wdf_resistor(a, R) {
+	b = 0
+	R0 = R
+}
+
+b, R0 = wdf_capacitor(a, C) {
+	b = delay1(a)
+	R0 = 0.5 / (C * fs)
+}
+
+b, R0 = wdf_inductor(a, L) {
+	b = -delay1(a)
+	R0 = 2 * L * fs
+}
+
+b = wdf_voltage_source_root(a, voltage) {
+	b = 2 * voltage - a
+}
+
+bu, bl, br, R0 = wdf_3port_series(au, al, ar, Rl, Rr) {
+	sum = au + al + ar
+	R0 = Rl + Rr
+	bu = -(al + ar)
+	bl = al - (Rl / R0) * sum
+	br = ar - (Rr / R0) * sum
+}
+
+bu, b1, b2, b3, R0 = wdf_4port_parallel(au, a1, a2, a3, R1, R2, R3) {
+	R0 = 1 / (1 / R1 + 1 / R2 + 1 / R3)
+	bu = (R0 / R1) * a1 + (R0 / R2) * a2 + (R0 / R3) * a3
+	junction = au + bu
+	b1 = junction - a1
+	b2 = junction - a2
+	b3 = junction - a3
+}
+
+band, notch = parallel_rlc(x, frequency, q) {
+	f0 = (0.005 + 0.195 * frequency) * fs
+	quality = 0.5 + 9.5 * q
+	angular = 2 * pi * f0
+	C = 1e-8
+	L = 1 / (angular * angular * C)
+	R = quality / (angular * C)
+	sourceR = 1000
+
+	bS, RS = wdf_resistor(aS, sourceR)
+	bR, RR = wdf_resistor(aR, R)
+	bL, RL = wdf_inductor(aL, L)
+	bC, RC = wdf_capacitor(aC, C)
+	bP, aR, aL, aC, RP = wdf_4port_parallel(aP, bR, bL, bC, RR, RL, RC)
+	bV = wdf_voltage_source_root(aV, x)
+	aV, aS, aP, RT = wdf_3port_series(bV, bS, bP, RS, RP)
+	@aL = 0
+	@aC = 0
+
+	band = -0.5 * (aP + bP)
+	notch = -0.5 * (aS + bS)
+}

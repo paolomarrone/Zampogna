@@ -1,0 +1,12 @@
+pi = 3.141592653589793
+
+y = wdf_allpass(x, cutoff) {
+	frequency = (0.001 + 0.249 * cutoff) * fs
+	R = 1000
+	C = 1 / (2 * pi * frequency * R)
+	k = 2 * fs * R * C
+	coefficient = (1 - k) / (1 + k)
+
+	y = coefficient * x + delay1(x) - coefficient * delay1(y)
+	@y = 0
+}

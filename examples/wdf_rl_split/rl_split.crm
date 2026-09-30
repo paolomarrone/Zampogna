@@ -1,0 +1,38 @@
+pi = 3.141592653589793
+
+b, R0 = wdf_resistor(a, R) {
+	b = 0
+	R0 = R
+}
+
+b, R0 = wdf_inductor(a, L) {
+	b = -delay1(a)
+	R0 = 2 * L * fs
+}
+
+b = wdf_voltage_source_root(a, voltage) {
+	b = 2 * voltage - a
+}
+
+bu, bl, br, R0 = wdf_3port_series(au, al, ar, Rl, Rr) {
+	sum = au + al + ar
+	R0 = Rl + Rr
+	bu = -(al + ar)
+	bl = al - (Rl / R0) * sum
+	br = ar - (Rr / R0) * sum
+}
+
+low, high = rl_split(x, cutoff) {
+	frequency = (0.001 + 0.249 * cutoff) * fs
+	R = 1000
+	L = R / (2 * pi * frequency)
+
+	bR, RR = wdf_resistor(aR, R)
+	bL, RL = wdf_inductor(aL, L)
+	bV = wdf_voltage_source_root(aV, x)
+	aV, aR, aL, Rp = wdf_3port_series(bV, bR, bL, RR, RL)
+	@aL = 0
+
+	low = -0.5 * (aR + bR)
+	high = -0.5 * (aL + bL)
+}

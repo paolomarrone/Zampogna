@@ -1,0 +1,49 @@
+pi = 3.141592653589793
+
+b, R0 = wdf_dashpot(a, damping) {
+	b = 0
+	R0 = damping
+}
+
+b, R0 = wdf_spring(a, stiffness) {
+	b = delay1(a)
+	R0 = stiffness / (2 * fs)
+}
+
+b, R0 = wdf_mass(a, mass) {
+	b = -delay1(a)
+	R0 = 2 * mass * fs
+}
+
+b = wdf_force_source_root(a, force) {
+	b = 2 * force - a
+}
+
+bu, b1, b2, b3, R0 = wdf_4port_series(au, a1, a2, a3, R1, R2, R3) {
+	sum = au + a1 + a2 + a3
+	R0 = R1 + R2 + R3
+	bu = -(a1 + a2 + a3)
+	b1 = a1 - (R1 / R0) * sum
+	b2 = a2 - (R2 / R0) * sum
+	b3 = a3 - (R3 / R0) * sum
+}
+
+position = mass_spring_damper(force, frequency, damping) {
+	f0 = (0.001 + 0.04 * frequency) * fs
+	ratio = 0.01 + 0.99 * damping
+	angular = 2 * pi * f0
+	mass = 0.01
+	stiffness = angular * angular * mass
+	dashpot = 2 * ratio * mass * angular
+
+	bD, RD = wdf_dashpot(aD, dashpot)
+	bM, RM = wdf_mass(aM, mass)
+	bK, RK = wdf_spring(aK, stiffness)
+	bF = wdf_force_source_root(aF, force)
+	aF, aD, aM, aK, RRoot = wdf_4port_series(bF, bD, bM, bK, RD, RM, RK)
+
+	@aM = 0
+	@aK = 0
+
+	position = -0.5 * (aK + bK) / stiffness
+}

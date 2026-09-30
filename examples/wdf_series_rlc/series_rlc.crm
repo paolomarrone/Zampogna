@@ -1,0 +1,50 @@
+pi = 3.141592653589793
+
+b, R0 = wdf_resistor(a, R) {
+	b = 0
+	R0 = R
+}
+
+b, R0 = wdf_capacitor(a, C) {
+	b = delay1(a)
+	R0 = 0.5 / (C * fs)
+}
+
+b, R0 = wdf_inductor(a, L) {
+	b = -delay1(a)
+	R0 = 2 * L * fs
+}
+
+b = wdf_voltage_source_root(a, voltage) {
+	b = 2 * voltage - a
+}
+
+bu, b1, b2, b3, R0 = wdf_4port_series(au, a1, a2, a3, R1, R2, R3) {
+	sum = au + a1 + a2 + a3
+	R0 = R1 + R2 + R3
+	bu = -(a1 + a2 + a3)
+	b1 = a1 - (R1 / R0) * sum
+	b2 = a2 - (R2 / R0) * sum
+	b3 = a3 - (R3 / R0) * sum
+}
+
+low, band, high = series_rlc(x, frequency, q) {
+	f0 = (0.005 + 0.195 * frequency) * fs
+	quality = 0.5 + 9.5 * q
+	angular = 2 * pi * f0
+	C = 1e-7
+	L = 1 / (angular * angular * C)
+	R = angular * L / quality
+
+	bR, RR = wdf_resistor(aR, R)
+	bL, RL = wdf_inductor(aL, L)
+	bC, RC = wdf_capacitor(aC, C)
+	bV = wdf_voltage_source_root(aV, x)
+	aV, aR, aL, aC, Rp = wdf_4port_series(bV, bR, bL, bC, RR, RL, RC)
+	@aL = 0
+	@aC = 0
+
+	low = -0.5 * (aC + bC)
+	band = -0.5 * (aR + bR)
+	high = -0.5 * (aL + bL)
+}

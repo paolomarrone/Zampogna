@@ -1,0 +1,73 @@
+pi = 3.141592653589793
+
+b, R0 = wdf_resistor(a, R) {
+	b = 0
+	R0 = R
+}
+
+b, R0 = wdf_capacitor(a, C) {
+	b = delay1(a)
+	R0 = 0.5 / (C * fs)
+}
+
+b, R0 = wdf_inductor(a, L) {
+	b = -delay1(a)
+	R0 = 2 * L * fs
+}
+
+b = wdf_voltage_source_root(a, voltage) {
+	b = 2 * voltage - a
+}
+
+bu, bl, br, R0 = wdf_3port_series(au, al, ar, Rl, Rr) {
+	sum = au + al + ar
+	R0 = Rl + Rr
+	bu = -(al + ar)
+	bl = al - (Rl / R0) * sum
+	br = ar - (Rr / R0) * sum
+}
+
+bu, bl, br, R0 = wdf_3port_parallel(au, al, ar, Rl, Rr) {
+	R0 = 1 / (1 / Rl + 1 / Rr)
+	bu = (R0 / Rl) * al + (R0 / Rr) * ar
+	junction = au + bu
+	bl = junction - al
+	br = junction - ar
+}
+
+bu, b1, b2, b3, R0 = wdf_4port_series(au, a1, a2, a3, R1, R2, R3) {
+	sum = au + a1 + a2 + a3
+	R0 = R1 + R2 + R3
+	bu = -(a1 + a2 + a3)
+	b1 = a1 - (R1 / R0) * sum
+	b2 = a2 - (R2 / R0) * sum
+	b3 = a3 - (R3 / R0) * sum
+}
+
+y = lc_ladder(x, cutoff) {
+	frequency = (0.002 + 0.198 * cutoff) * fs
+	angular = 2 * pi * frequency
+	termination = 1000
+	sourceR = termination
+	L1 = termination / angular
+	C2 = 2 / (termination * angular)
+	L3 = termination / angular
+
+	bLoad, RLoad = wdf_resistor(aLoad, termination)
+	bL3, RL3 = wdf_inductor(aL3, L3)
+	bS3, aL3, aLoad, RS3 = wdf_3port_series(aS3, bL3, bLoad, RL3, RLoad)
+
+	bC2, RC2 = wdf_capacitor(aC2, C2)
+	bP2, aC2, aS3, RP2 = wdf_3port_parallel(aP2, bC2, bS3, RC2, RS3)
+
+	bSource, RSource = wdf_resistor(aSource, sourceR)
+	bL1, RL1 = wdf_inductor(aL1, L1)
+	bV = wdf_voltage_source_root(aV, x)
+	aV, aSource, aL1, aP2, RRoot = wdf_4port_series(bV, bSource, bL1, bP2, RSource, RL1, RP2)
+
+	@aL1 = 0
+	@aC2 = 0
+	@aL3 = 0
+
+	y = 0.5 * (aLoad + bLoad)
+}

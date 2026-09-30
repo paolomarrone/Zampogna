@@ -1,0 +1,72 @@
+b, R0 = wdf_resistor(a, R) {
+	b = 0
+	R0 = R
+}
+
+b, R0 = wdf_capacitor(a, C) {
+	b = delay1(a)
+	R0 = 0.5 / (C * fs)
+}
+
+b, R0 = wdf_inductor(a, L) {
+	b = -delay1(a)
+	R0 = 2 * L * fs
+}
+
+b = wdf_voltage_source_root(a, voltage) {
+	b = 2 * voltage - a
+}
+
+bu, bl, br, R0 = wdf_3port_series(au, al, ar, Rl, Rr) {
+	sum = au + al + ar
+	R0 = Rl + Rr
+	bu = -(al + ar)
+	bl = al - (Rl / R0) * sum
+	br = ar - (Rr / R0) * sum
+}
+
+bu, b1, b2, b3, R0 = wdf_4port_series(au, a1, a2, a3, R1, R2, R3) {
+	sum = au + a1 + a2 + a3
+	R0 = R1 + R2 + R3
+	bu = -(a1 + a2 + a3)
+	b1 = a1 - (R1 / R0) * sum
+	b2 = a2 - (R2 / R0) * sum
+	b3 = a3 - (R3 / R0) * sum
+}
+
+bu, b1, b2, b3, R0 = wdf_4port_parallel(au, a1, a2, a3, R1, R2, R3) {
+	R0 = 1 / (1 / R1 + 1 / R2 + 1 / R3)
+	bu = (R0 / R1) * a1 + (R0 / R2) * a2 + (R0 / R3) * a3
+	junction = au + bu
+	b1 = junction - a1
+	b2 = junction - a2
+	b3 = junction - a3
+}
+
+y = guitar_pickup(x, tone) {
+	coilR = 6000
+	coilL = 2.5
+	cableC = 570e-12
+	loadR = 333333
+	toneC = 22e-9
+	toneR = 1000 + 249000 * tone
+
+	bToneR, RToneR = wdf_resistor(aToneR, toneR)
+	bToneC, RToneC = wdf_capacitor(aToneC, toneC)
+	bTone, aToneR, aToneC, RTone = wdf_3port_series(aTone, bToneR, bToneC, RToneR, RToneC)
+
+	bLoad, RLoad = wdf_resistor(aLoad, loadR)
+	bCable, RCable = wdf_capacitor(aCable, cableC)
+	bOutput, aLoad, aCable, aTone, ROutput = wdf_4port_parallel(aOutput, bLoad, bCable, bTone, RLoad, RCable, RTone)
+
+	bCoilR, RCoilR = wdf_resistor(aCoilR, coilR)
+	bCoilL, RCoilL = wdf_inductor(aCoilL, coilL)
+	bV = wdf_voltage_source_root(aV, x)
+	aV, aCoilR, aCoilL, aOutput, RRoot = wdf_4port_series(bV, bCoilR, bCoilL, bOutput, RCoilR, RCoilL, ROutput)
+
+	@aToneC = 0
+	@aCable = 0
+	@aCoilL = 0
+
+	y = -0.5 * (aOutput + bOutput)
+}
