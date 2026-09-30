@@ -20,7 +20,7 @@
     "ChangeLog"
   ],
   "engines": {
-    "node": ">=12"
+    "node": ">=18"
   },
   "repository": {
     "type": "git",
