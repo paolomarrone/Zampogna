@@ -35,6 +35,7 @@
   "author": "Paolo Marrone <lallero.31@gmail.com> (https://ciaramella.dev/)",
   "license": "ISC",
   "scripts": {
+    "test": "node --test",
     "gen-grammar": "jison src/grammar.jison src/lex.jisonflex -o src/grammar.js",
     "gen-web": "esbuild src/zampogna.js --bundle --format=iife --global-name=zampogna --platform=browser --external:fs --external:path --outfile=web/zampogna-web.js"
   },
