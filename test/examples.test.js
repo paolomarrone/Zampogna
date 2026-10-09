@@ -7,6 +7,33 @@ const vm = require('vm')
 const zampogna = require('../src/zampogna')
 
 const targets = ['C', 'cpp', 'VST2', 'yaaaeapa', 'MATLAB', 'js', 'd']
+const baxandallMidpointMatrix48k = [
+	-0.3541201353, -0.136194244, 0.1666767299, 0.03048247658, 0.479203105, -0.509685576,
+	-1.188094497, 0.6921623349, -1.503207684, 0.1889548153, 0.3151130378, -0.5040677786,
+	0.1660256535, -0.1716433465, -0.6698843241, 0.1584723443, -0.1640900373, 0.005617693067,
+	0.2899197936, 0.206012398, 1.513145924, 0.7191583514, -1.22322619, -0.495932132,
+	0.4559454024, 0.03436904028, -0.156738326, -0.1223692968, -0.3873163164, -0.490314424,
+	-0.8981747627, -0.1018252075, 0.009938398376, -0.09188681096, -0.908113122
+]
+
+function omega3(x) {
+	if (x < -3.341459552768620)
+		return 0
+	if (x < 8) {
+		const a = -1.314293149877800e-3
+		const b = 4.775931364975583e-2
+		const c = 3.631952663804445e-1
+		const d = 6.313183464296682e-1
+		return ((a * x + b) * x + c) * x + d
+	}
+	return x - Math.log(x)
+}
+
+function omega4(x) {
+	const y = omega3(x)
+	return y - (y - Math.exp(x - y)) / (y + 1)
+}
+
 const examples = [{
 	name: 'lp_wdf',
 	file: 'examples/lp_wdf/lp_wdf.crm',
@@ -79,6 +106,46 @@ const examples = [{
 	sampleRate: 48000,
 	parameters: { frequency: 0.2, damping: 0.3 },
 	outputs: ['position']
+}, {
+	name: 'wdf_comp_rc_lowpass',
+	file: 'examples/wdf_comp/crm/rc_lowpass/rc_lowpass.crm',
+	entry: 'paper_rc_lowpass',
+	controls: [],
+	sampleRate: 48000,
+	parameters: {},
+	outputs: ['low']
+}, {
+	name: 'wdf_comp_preamp_eq',
+	file: 'examples/wdf_comp/crm/preamp_eq/preamp_eq.crm',
+	entry: 'paper_preamp_eq',
+	controls: [],
+	sampleRate: 48000,
+	parameters: {},
+	outputs: ['output']
+}, {
+	name: 'wdf_comp_diode_clipper',
+	file: 'examples/wdf_comp/crm/diode_clipper/diode_clipper.crm',
+	entry: 'paper_diode_clipper',
+	controls: [],
+	sampleRate: 48000,
+	parameters: {},
+	externals: {
+		wdf_log: Math.log,
+		wdf_sign: Math.sign,
+		wdf_omega4: omega4
+	},
+	outputs: ['output']
+}, {
+	name: 'wdf_comp_baxandall_eq',
+	file: 'examples/wdf_comp/crm/baxandall_eq/baxandall_eq.crm',
+	entry: 'paper_baxandall_eq',
+	controls: ['bass', 'treble'],
+	sampleRate: 48000,
+	parameters: { bass: 0.5, treble: 0.5 },
+	externals: {
+		baxandall_scattering: index => baxandallMidpointMatrix48k[index]
+	},
+	outputs: ['output']
 }]
 
 function compile(example, target) {
@@ -93,7 +160,7 @@ function compile(example, target) {
 	}
 }
 
-function loadProcessor(files, sampleRate) {
+function loadProcessor(files, sampleRate, externals = {}) {
 	const source = files.find(file => file.name === 'processor.js')
 	let Processor
 
@@ -106,6 +173,7 @@ function loadProcessor(files, sampleRate) {
 	vm.runInNewContext(source.str, {
 		AudioWorkletProcessor,
 		sampleRate,
+		...externals,
 		registerProcessor: (name, implementation) => {
 			Processor = implementation
 		}
@@ -115,7 +183,7 @@ function loadProcessor(files, sampleRate) {
 }
 
 function createProcessor(example) {
-	const processor = loadProcessor(compile(example, 'js'), example.sampleRate)
+	const processor = loadProcessor(compile(example, 'js'), example.sampleRate, example.externals)
 	for (const [name, value] of Object.entries(example.parameters))
 		processor.instance[name] = value
 	return processor
@@ -175,6 +243,7 @@ function writeImpulsePlot(example, series) {
 	const y = value => padding + (maximum - value) * (height - 2 * padding) / range
 	const points = data => Array.from(data, (value, index) => `${x(index)},${y(value)}`).join(' ')
 	const parameters = Object.entries(example.parameters).map(([name, value]) => `${name} ${value}`).join(', ')
+	const parameterLabel = parameters ? `, ${parameters}` : ''
 	const curves = series.map((item, index) =>
 		`<polyline points="${points(item.data)}" fill="none" stroke="${item.color || colors[index]}" stroke-width="${item.reference ? 4 : 2}"${item.reference ? ' stroke-dasharray="7 5"' : ''}/>`
 	).join('\n')
@@ -189,7 +258,7 @@ function writeImpulsePlot(example, series) {
 
 	const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}">
 <rect width="100%" height="100%" fill="white"/>
-<text x="${padding}" y="25" font-family="sans-serif" font-size="18">${example.name} impulse response — ${example.sampleRate} Hz, ${parameters}</text>
+<text x="${padding}" y="25" font-family="sans-serif" font-size="18">${example.name} impulse response — ${example.sampleRate} Hz${parameterLabel}</text>
 <line x1="${padding}" y1="${y(0)}" x2="${width - padding}" y2="${y(0)}" stroke="#777"/>
 <line x1="${padding}" y1="${padding}" x2="${padding}" y2="${height - padding}" stroke="#777"/>
 ${curves}

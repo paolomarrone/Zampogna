@@ -1,0 +1,128 @@
+b, R0 = wdf_resistor(a, R) {
+	b = 0
+	R0 = R
+}
+
+b, R0 = wdf_capacitor(a, C) {
+	b = delay1(a)
+	R0 = 0.5 / (C * fs)
+}
+
+b, R0 = wdf_rc_series(a, R, C) {
+	old = delay1(state)
+	k = 2 * C * R / (2 * C * R + 1 / fs)
+	b = -old
+	state = -a + k * (a + old)
+	R0 = R + 0.5 / (C * fs)
+	@state = 0
+}
+
+b, R0 = wdf_rc_parallel(a, R, C) {
+	old = delay1(state)
+	twoRC = 2 * C * R
+	k = twoRC / (twoRC + 1 / fs)
+	b = k * old
+	state = b + a - old
+	R0 = R / (1 + 2 * C * R * fs)
+	@state = 0
+}
+
+b = wdf_voltage_source_root(a, voltage) {
+	b = 2 * voltage - a
+}
+
+bu, bl, br, R0 = wdf_3port_series(au, al, ar, Rl, Rr) {
+	sum = au + al + ar
+	R0 = Rl + Rr
+	bu = -(al + ar)
+	bl = al - (Rl / R0) * sum
+	br = ar - (Rr / R0) * sum
+}
+
+bu, bl, br, R0 = wdf_3port_parallel(au, al, ar, Rl, Rr) {
+	R0 = 1 / (1 / Rl + 1 / Rr)
+	bu = (R0 / Rl) * al + (R0 / Rr) * ar
+	junction = au + bu
+	bl = junction - al
+	br = junction - ar
+}
+
+bu, b0, b1, b2, b3, b4, R0 = baxandall_rtype(au, a0, a1, a2, a3, a4, R0p, R1p, R2p, R3p, R4p) {
+	s00 = baxandall_scattering(0, R0p, R1p, R2p, R3p, R4p)
+	s01 = baxandall_scattering(1, R0p, R1p, R2p, R3p, R4p)
+	s02 = baxandall_scattering(2, R0p, R1p, R2p, R3p, R4p)
+	s03 = baxandall_scattering(3, R0p, R1p, R2p, R3p, R4p)
+	s04 = baxandall_scattering(4, R0p, R1p, R2p, R3p, R4p)
+	s05 = baxandall_scattering(5, R0p, R1p, R2p, R3p, R4p)
+	s10 = baxandall_scattering(6, R0p, R1p, R2p, R3p, R4p)
+	s11 = baxandall_scattering(7, R0p, R1p, R2p, R3p, R4p)
+	s12 = baxandall_scattering(8, R0p, R1p, R2p, R3p, R4p)
+	s13 = baxandall_scattering(9, R0p, R1p, R2p, R3p, R4p)
+	s14 = baxandall_scattering(10, R0p, R1p, R2p, R3p, R4p)
+	s15 = baxandall_scattering(11, R0p, R1p, R2p, R3p, R4p)
+	s20 = baxandall_scattering(12, R0p, R1p, R2p, R3p, R4p)
+	s21 = baxandall_scattering(13, R0p, R1p, R2p, R3p, R4p)
+	s22 = baxandall_scattering(14, R0p, R1p, R2p, R3p, R4p)
+	s23 = baxandall_scattering(15, R0p, R1p, R2p, R3p, R4p)
+	s24 = baxandall_scattering(16, R0p, R1p, R2p, R3p, R4p)
+	s25 = baxandall_scattering(17, R0p, R1p, R2p, R3p, R4p)
+	s30 = baxandall_scattering(18, R0p, R1p, R2p, R3p, R4p)
+	s31 = baxandall_scattering(19, R0p, R1p, R2p, R3p, R4p)
+	s32 = baxandall_scattering(20, R0p, R1p, R2p, R3p, R4p)
+	s33 = baxandall_scattering(21, R0p, R1p, R2p, R3p, R4p)
+	s34 = baxandall_scattering(22, R0p, R1p, R2p, R3p, R4p)
+	s35 = baxandall_scattering(23, R0p, R1p, R2p, R3p, R4p)
+	s40 = baxandall_scattering(24, R0p, R1p, R2p, R3p, R4p)
+	s41 = baxandall_scattering(25, R0p, R1p, R2p, R3p, R4p)
+	s42 = baxandall_scattering(26, R0p, R1p, R2p, R3p, R4p)
+	s43 = baxandall_scattering(27, R0p, R1p, R2p, R3p, R4p)
+	s44 = baxandall_scattering(28, R0p, R1p, R2p, R3p, R4p)
+	s45 = baxandall_scattering(29, R0p, R1p, R2p, R3p, R4p)
+	s50 = baxandall_scattering(30, R0p, R1p, R2p, R3p, R4p)
+	s51 = baxandall_scattering(31, R0p, R1p, R2p, R3p, R4p)
+	s52 = baxandall_scattering(32, R0p, R1p, R2p, R3p, R4p)
+	s53 = baxandall_scattering(33, R0p, R1p, R2p, R3p, R4p)
+	s54 = baxandall_scattering(34, R0p, R1p, R2p, R3p, R4p)
+
+	bu = s05 * a0 + s15 * a1 + s25 * a2 + s35 * a3 + s45 * a4
+	b0 = s00 * a0 + s10 * a1 + s20 * a2 + s30 * a3 + s40 * a4 + s50 * au
+	b1 = s01 * a0 + s11 * a1 + s21 * a2 + s31 * a3 + s41 * a4 + s51 * au
+	b2 = s02 * a0 + s12 * a1 + s22 * a2 + s32 * a3 + s42 * a4 + s52 * au
+	b3 = s03 * a0 + s13 * a1 + s23 * a2 + s33 * a3 + s43 * a4 + s53 * au
+	b4 = s04 * a0 + s14 * a1 + s24 * a2 + s34 * a3 + s44 * a4 + s54 * au
+
+	numerator = (R0p * R1p + (R0p + R1p) * R2p) * R3p + (R0p * R1p + (R0p + R1p) * R2p + (R0p + R1p) * R3p) * R4p
+	denominator = R0p * R1p + (R0p + R1p) * R2p + (R0p + R2p) * R3p + (R1p + R2p + R3p) * R4p
+	R0 = numerator / denominator
+}
+
+y = paper_baxandall_eq(x, bass, treble) {
+	pot = 100000
+	trebleA = pot * treble
+	trebleB = pot * (1 - treble)
+	resA = trebleA * 10000 / (trebleA + 10000)
+	resB = trebleB * 1000 / (trebleB + 1000)
+
+	bS4, RS4 = wdf_rc_series(aS4, resA, 6.4e-9)
+	bS5, RS5 = wdf_rc_series(aS5, resB, 64e-9)
+	bRl, RRl = wdf_resistor(aRl, 1e6)
+	bP1, aRl, aS5, RP1 = wdf_3port_parallel(aP1, bRl, bS5, RRl, RS5)
+
+	bResc, RResc = wdf_resistor(aResc, 10000)
+
+	bP3, RP3 = wdf_rc_parallel(aP3, pot * (1 - bass), 220e-9)
+	bResb, RResb = wdf_resistor(aResb, 1000)
+	bS3, aResb, aP3, RS3 = wdf_3port_series(aS3, bResb, bP3, RResb, RP3)
+
+	bP2, RP2 = wdf_rc_parallel(aP2, pot * bass, 22e-9)
+	bResa, RResa = wdf_resistor(aResa, 10000)
+	bS2, aResa, aP2, RS2 = wdf_3port_series(aS2, bResa, bP2, RResa, RP2)
+
+	bR, aS4, aP1, aResc, aS3, aS2, RR = baxandall_rtype(aR, bS4, bP1, bResc, bS3, bS2, RS4, RP1, RResc, RS3, RS2)
+	bCa, RCa = wdf_capacitor(aCa, 1e-6)
+	bV = wdf_voltage_source_root(aV, x)
+	aV, aCa, aR, RRoot = wdf_3port_series(bV, bCa, bR, RCa, RR)
+	@aCa = 0
+
+	y = 0.5 * (aRl + bRl)
+}

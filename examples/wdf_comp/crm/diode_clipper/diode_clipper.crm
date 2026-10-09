@@ -1,0 +1,37 @@
+b, R0 = wdf_capacitor(a, C) {
+	b = delay1(a)
+	R0 = 0.5 / (C * fs)
+}
+
+b, R0 = wdf_resistive_voltage_source(a, voltage, R) {
+	b = voltage
+	R0 = R
+}
+
+bu, bl, br, R0 = wdf_3port_parallel(au, al, ar, Rl, Rr) {
+	R0 = 1 / (1 / Rl + 1 / Rr)
+	bu = (R0 / Rl) * al + (R0 / Rr) * ar
+	junction = au + bu
+	bl = junction - al
+	br = junction - ar
+}
+
+b = wdf_diode_pair_root(a, R) {
+	thermal = 25.85e-3
+	saturation = 1e-9
+	reciprocal = 1 / thermal
+	logR = wdf_log(R * saturation * reciprocal)
+	lambda = wdf_sign(a)
+	scaled = lambda * a * reciprocal
+	b = a - 2 * thermal * lambda * (wdf_omega4(logR + scaled) - wdf_omega4(logR - scaled))
+}
+
+y = paper_diode_clipper(x) {
+	bC, RC = wdf_capacitor(aC, 1e-6)
+	bV, RV = wdf_resistive_voltage_source(aV, x, 1000)
+	bP, aC, aV, RP = wdf_3port_parallel(bD, bC, bV, RC, RV)
+	bD = wdf_diode_pair_root(bP, RP)
+	@aC = 0
+
+	y = 0.5 * (aC + bC)
+}

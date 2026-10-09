@@ -1,0 +1,31 @@
+b, R0 = wdf_resistor(a, R) {
+	b = 0
+	R0 = R
+}
+
+b, R0 = wdf_capacitor(a, C) {
+	b = delay1(a)
+	R0 = 0.5 / (C * fs)
+}
+
+b = wdf_voltage_source_root(a, voltage) {
+	b = 2 * voltage - a
+}
+
+bu, bl, br, R0 = wdf_3port_series(au, al, ar, Rl, Rr) {
+	sum = au + al + ar
+	R0 = Rl + Rr
+	bu = -(al + ar)
+	bl = al - (Rl / R0) * sum
+	br = ar - (Rr / R0) * sum
+}
+
+y = paper_rc_lowpass(x) {
+	bR, RR = wdf_resistor(aR, 1000)
+	bC, RC = wdf_capacitor(aC, 1e-6)
+	bV = wdf_voltage_source_root(aV, x)
+	aV, aR, aC, RRoot = wdf_3port_series(bV, bR, bC, RR, RC)
+	@aC = 0
+
+	y = 0.5 * (aC + bC)
+}

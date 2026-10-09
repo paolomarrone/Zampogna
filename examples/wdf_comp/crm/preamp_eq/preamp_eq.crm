@@ -1,0 +1,61 @@
+b, R0 = wdf_resistor(a, R) {
+	b = 0
+	R0 = R
+}
+
+b, R0 = wdf_capacitor(a, C) {
+	b = delay1(a)
+	R0 = 0.5 / (C * fs)
+}
+
+b = wdf_voltage_source_root(a, voltage) {
+	b = 2 * voltage - a
+}
+
+bu, bl, br, R0 = wdf_3port_series(au, al, ar, Rl, Rr) {
+	sum = au + al + ar
+	R0 = Rl + Rr
+	bu = -(al + ar)
+	bl = al - (Rl / R0) * sum
+	br = ar - (Rr / R0) * sum
+}
+
+bu, bl, br, R0 = wdf_3port_parallel(au, al, ar, Rl, Rr) {
+	R0 = 1 / (1 / Rl + 1 / Rr)
+	bu = (R0 / Rl) * al + (R0 / Rr) * ar
+	junction = au + bu
+	bl = junction - al
+	br = junction - ar
+}
+
+y = paper_preamp_eq(x) {
+	bLflR, RLflR = wdf_resistor(aLflR, 15000)
+	bLflC, RLflC = wdf_capacitor(aLflC, 0.15e-6)
+	bLfl, aLflR, aLflC, RLfl = wdf_3port_parallel(aLfl, bLflR, bLflC, RLflR, RLflC)
+
+	bShunt, RShunt = wdf_resistor(aShunt, 4674)
+	bSs, aShunt, aLfl, RSs = wdf_3port_series(aSs, bShunt, bLfl, RShunt, RLfl)
+
+	bHfc, RHfc = wdf_capacitor(aHfc, 3.3e-6)
+	bPs, aSs, aHfc, RPs = wdf_3port_parallel(aPs, bSs, bHfc, RSs, RHfc)
+
+	bHflR, RHflR = wdf_resistor(aHflR, 80000)
+	bHflC, RHflC = wdf_capacitor(aHflC, 2.7e-9)
+	bHfl, aHflR, aHflC, RHfl = wdf_3port_series(aHfl, bHflR, bHflC, RHflR, RHflC)
+
+	bSeries, RSeries = wdf_resistor(aSeries, 10000)
+	bPp, aSeries, aHfl, RPp = wdf_3port_parallel(aPp, bSeries, bHfl, RSeries, RHfl)
+
+	bSo, aPp, aPs, RSo = wdf_3port_series(aSo, bPp, bPs, RPp, RPs)
+
+	bLfc, RLfc = wdf_capacitor(aLfc, 4.7e-9)
+	bV = wdf_voltage_source_root(aV, x)
+	aV, aLfc, aSo, RRoot = wdf_3port_series(bV, bLfc, bSo, RLfc, RSo)
+
+	@aLflC = 0
+	@aHfc = 0
+	@aHflC = 0
+	@aLfc = 0
+
+	y = 0.5 * (aHfc + bHfc)
+}
